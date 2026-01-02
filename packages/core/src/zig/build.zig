@@ -127,6 +127,11 @@ pub fn build(b: *std.Build) void {
         .name = "opentui-bench",
         .root_module = bench_mod,
     });
+
+    // Install step for benchmark executable, usable for recording profiles.
+    const install_bench = b.addInstallArtifact(bench_exe, .{});
+    b.getInstallStep().dependOn(&install_bench.step);
+
     const run_bench = b.addRunArtifact(bench_exe);
     if (b.args) |args| {
         run_bench.addArgs(args);

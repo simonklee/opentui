@@ -175,6 +175,7 @@ fn benchGetGraphemes(
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
+    bench_filter: ?[]const u8,
 ) ![]BenchResult {
     // Global pool and unicode data are initialized once in bench.zig
     _ = gp.initGlobalPool(allocator);
@@ -190,6 +191,16 @@ pub fn run(
 
     for (text_types) |text_type| {
         for (sizes) |size| {
+            const type_str = switch (text_type) {
+                .ascii => "ASCII",
+                .mixed => "Mixed",
+                .heavy_unicode => "Heavy Unicode",
+            };
+            var name_buf: [128]u8 = undefined;
+            const preview_name = std.fmt.bufPrint(&name_buf, "getGraphemes {s} ({d} bytes", .{ type_str, size }) catch continue;
+
+            if (!bench_utils.matchesBenchFilter(preview_name, bench_filter)) continue;
+
             const result = try benchGetGraphemes(
                 allocator,
                 size,
