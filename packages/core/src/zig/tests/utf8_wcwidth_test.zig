@@ -249,6 +249,12 @@ test "wcwidth: zero-width characters are handled correctly" {
     try testing.expectEqual(@as(u32, 1), width); // Only 'e' contributes
 }
 
+test "wcwidth: latin-1 supplement precomposed width 1" {
+    const text = "\u{00E9}"; // Latin small letter e with acute
+    const width = utf8.calculateTextWidth(text, 4, false, .wcwidth);
+    try testing.expectEqual(@as(u32, 1), width);
+}
+
 test "wcwidth: variation selectors" {
     // VS15 (text presentation) and VS16 (emoji presentation)
     const text_vs16 = "☺\u{FE0F}"; // Smiling face + VS16

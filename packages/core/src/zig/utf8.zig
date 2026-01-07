@@ -479,6 +479,14 @@ inline fn eastAsianWidth(cp: u21) u32 {
         return 0;
     }
 
+    // Fast path for Latin text: U+00A0 to U+02FF are all width 1.
+    // This works because U+0300 (Combining Diacriticals) is the first
+    // zero-width block, and C1 controls (0x80-0x9F) are handled above.
+    // Covers: Latin-1 Supplement, Latin Extended-A/B, IPA, Spacing Modifiers.
+    if (cp < 0x0300) {
+        return 1;
+    }
+
     // Zero-width characters: combining marks and format characters
     if ((cp >= 0x0300 and cp <= 0x036F) or // Combining Diacritical Marks
         (cp >= 0x1AB0 and cp <= 0x1AFF) or // Combining Diacritical Marks Extended
