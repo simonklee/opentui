@@ -1138,7 +1138,7 @@ pub const OptimizedBuffer = struct {
         var currentX = x;
         var currentY = y + @as(i32, @intCast(firstVisibleLine));
         const text_buffer = view.getTextBuffer();
-        const total_line_count = text_buffer.getLineCount();
+        const total_line_count = text_buffer.lineCount();
 
         const line_info = view.getCachedLineInfo();
         var globalCharPos: u32 = if (firstVisibleLine < line_info.starts.len)
