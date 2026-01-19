@@ -1,11 +1,14 @@
 const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
 const text_buffer = @import("../text-buffer.zig");
+const static_text_buffer = @import("../static-text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
 const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
+const StaticTextBuffer = static_text_buffer.StaticTextBuffer;
 const UnifiedTextBufferView = text_buffer_view.UnifiedTextBufferView;
+const StaticTextBufferView = text_buffer_view.StaticTextBufferView;
 const WrapMode = text_buffer.WrapMode;
 const BenchResult = bench_utils.BenchResult;
 const BenchStats = bench_utils.BenchStats;
@@ -324,6 +327,224 @@ fn benchMeasureForDimensionsLayout(
     };
 }
 
+// StaticTextBuffer setText benchmarks
+fn benchSetTextStatic(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    iterations: usize,
+    show_mem: bool,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(allocator);
+
+    // Small text
+    {
+        const name = "StaticTextBuffer setText small (3 lines, 40 bytes)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            const text = "Hello, world!\nSecond line\nThird line";
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
+
+            for (0..iterations) |i| {
+                var sb = try StaticTextBuffer.init(allocator, pool, .unicode);
+                defer sb.deinit();
+
+                var timer = try std.time.Timer.start();
+                try sb.setText(text);
+                stats.record(timer.read());
+
+                if (i == iterations - 1 and show_mem) {
+                    final_mem = sb.arena.queryCapacity();
+                }
+            }
+
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const mem = try allocator.alloc(MemStat, 1);
+                mem[0] = .{ .name = "STB", .bytes = final_mem };
+                break :blk mem;
+            } else null;
+
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
+        }
+    }
+
+    // Large multi-line text
+    {
+        const text_stats = computeLargeTextStats(5000, 1 * 1024 * 1024);
+        const text_mb = @as(f64, @floatFromInt(text_stats.bytes)) / (1024.0 * 1024.0);
+        const name = try std.fmt.allocPrint(
+            allocator,
+            "StaticTextBuffer setText large ({d} lines, {d:.2} MiB)",
+            .{ text_stats.line_count, text_mb },
+        );
+
+        if (!bench_utils.matchesBenchFilter(name, bench_filter)) {
+            allocator.free(name);
+        } else {
+            const text = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
+            defer allocator.free(text);
+
+            var stats = BenchStats{};
+            var final_mem: usize = 0;
+
+            for (0..iterations) |i| {
+                var sb = try StaticTextBuffer.init(allocator, pool, .unicode);
+                defer sb.deinit();
+
+                var timer = try std.time.Timer.start();
+                try sb.setText(text);
+                stats.record(timer.read());
+
+                if (i == iterations - 1 and show_mem) {
+                    final_mem = sb.arena.queryCapacity();
+                }
+            }
+
+            const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+                const mem = try allocator.alloc(MemStat, 1);
+                mem[0] = .{ .name = "STB", .bytes = final_mem };
+                break :blk mem;
+            } else null;
+
+            try results.append(allocator, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = mem_stats,
+            });
+        }
+    }
+
+    return try results.toOwnedSlice(allocator);
+}
+
+// StaticTextBuffer wrap benchmarks (measuring setWrapMode + getVirtualLineCount)
+fn benchWrapStatic(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    text: []const u8,
+    wrap_width: u32,
+    wrap_mode: WrapMode,
+    iterations: usize,
+    show_mem: bool,
+) !BenchResult {
+    var stats = BenchStats{};
+    var final_tb_mem: usize = 0;
+    var final_view_mem: usize = 0;
+
+    for (0..iterations) |i| {
+        var sb = try StaticTextBuffer.init(allocator, pool, .unicode);
+        defer sb.deinit();
+
+        try sb.setText(text);
+
+        var view = try StaticTextBufferView.init(allocator, sb);
+        defer view.deinit();
+
+        view.setWrapMode(wrap_mode);
+
+        var timer = try std.time.Timer.start();
+        view.setWrapWidth(wrap_width);
+        const count = view.getVirtualLineCount();
+        stats.record(timer.read());
+        _ = count;
+
+        if (i == iterations - 1 and show_mem) {
+            final_tb_mem = sb.arena.queryCapacity();
+            final_view_mem = view.getArenaAllocatedBytes();
+        }
+    }
+
+    const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+        const mem = try allocator.alloc(MemStat, 2);
+        mem[0] = .{ .name = "STB", .bytes = final_tb_mem };
+        mem[1] = .{ .name = "View", .bytes = final_view_mem };
+        break :blk mem;
+    } else null;
+
+    return .{
+        .name = "",
+        .min_ns = stats.min_ns,
+        .avg_ns = stats.avg(),
+        .max_ns = stats.max_ns,
+        .total_ns = stats.total_ns,
+        .iterations = iterations,
+        .mem_stats = mem_stats,
+    };
+}
+
+// StaticTextBuffer measureForDimensions benchmark
+fn benchMeasureForDimensionsLayoutStatic(
+    allocator: std.mem.Allocator,
+    pool: *gp.GraphemePool,
+    text: []const u8,
+    measure_width: u32,
+    layout_passes: usize,
+    iterations: usize,
+    show_mem: bool,
+) !BenchResult {
+    const steps: usize = 200;
+
+    var stats = BenchStats{};
+    var final_tb_mem: usize = 0;
+    var final_view_mem: usize = 0;
+
+    for (0..iterations) |i| {
+        var sb = try StaticTextBuffer.init(allocator, pool, .unicode);
+        defer sb.deinit();
+
+        try sb.setText(text);
+
+        var view = try StaticTextBufferView.init(allocator, sb);
+        defer view.deinit();
+
+        view.setWrapMode(.word);
+
+        var timer = try std.time.Timer.start();
+        for (0..steps) |_| {
+            // Simulate Yoga's repeated measure calls within a single layout pass.
+            for (0..layout_passes) |_| {
+                _ = try view.measureForDimensions(measure_width, 24);
+            }
+        }
+        stats.record(timer.read());
+
+        if (i == iterations - 1 and show_mem) {
+            final_tb_mem = sb.arena.queryCapacity();
+            final_view_mem = view.getArenaAllocatedBytes();
+        }
+    }
+
+    const mem_stats: ?[]const MemStat = if (show_mem) blk: {
+        const mem = try allocator.alloc(MemStat, 2);
+        mem[0] = .{ .name = "STB", .bytes = final_tb_mem };
+        mem[1] = .{ .name = "View", .bytes = final_view_mem };
+        break :blk mem;
+    } else null;
+
+    return .{
+        .name = "",
+        .min_ns = stats.min_ns,
+        .avg_ns = stats.avg(),
+        .max_ns = stats.max_ns,
+        .total_ns = stats.total_ns,
+        .iterations = iterations,
+        .mem_stats = mem_stats,
+    };
+}
+
 pub fn run(
     allocator: std.mem.Allocator,
     show_mem: bool,
@@ -337,16 +558,20 @@ pub fn run(
 
     const iterations: usize = 10;
 
-    // Run setText benchmarks
+    // Run setText benchmarks for UnifiedTextBuffer
     const setText_results = try benchSetText(allocator, pool, iterations, show_mem, bench_filter);
     try all_results.appendSlice(allocator, setText_results);
 
+    // Run setText benchmarks for StaticTextBuffer
+    const setText_static_results = try benchSetTextStatic(allocator, pool, iterations, show_mem, bench_filter);
+    try all_results.appendSlice(allocator, setText_static_results);
+
+    // Lazy text generation for wrapping benchmarks
     var text_multiline: ?[]u8 = null;
     defer if (text_multiline) |text| allocator.free(text);
     var text_singleline: ?[]u8 = null;
     defer if (text_singleline) |text| allocator.free(text);
     const multiline_stats = computeLargeTextStats(5000, 1 * 1024 * 1024);
-    const multiline_mb = @as(f64, @floatFromInt(multiline_stats.bytes)) / (1024.0 * 1024.0);
 
     // Run measureForDimensions benchmarks
     const layout_passes: usize = 3;
@@ -361,10 +586,12 @@ pub fn run(
         .{ .label = "layout static wrap", .streaming = false, .width = wrap_width },
     };
 
+    const multiline_mb = @as(f64, @floatFromInt(multiline_stats.bytes)) / (1024.0 * 1024.0);
+
     for (measure_scenarios) |scenario| {
         const bench_name = try std.fmt.allocPrint(
             allocator,
-            "TextBufferView measureForDimensions ({s}, {d:.2} MiB)",
+            "UnifiedTextBufferView measureForDimensions ({s}, {d:.2} MiB)",
             .{ scenario.label, multiline_mb },
         );
 
@@ -392,8 +619,47 @@ pub fn run(
         try all_results.append(allocator, bench_result);
     }
 
-    // Test wrapping scenarios
-    const scenarios = [_]struct {
+    // StaticTextBuffer measureForDimensions benchmarks (no streaming, static content only)
+    const static_measure_scenarios = [_]struct {
+        label: []const u8,
+        width: u32,
+    }{
+        .{ .label = "layout static wrap", .width = wrap_width },
+        .{ .label = "layout static intrinsic", .width = 0 },
+    };
+
+    for (static_measure_scenarios) |scenario| {
+        const bench_name = try std.fmt.allocPrint(
+            allocator,
+            "StaticTextBufferView measureForDimensions ({s}, {d:.2} MiB)",
+            .{ scenario.label, multiline_mb },
+        );
+
+        if (!bench_utils.matchesBenchFilter(bench_name, bench_filter)) {
+            allocator.free(bench_name);
+            continue;
+        }
+
+        if (text_multiline == null) {
+            text_multiline = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
+        }
+
+        var bench_result = try benchMeasureForDimensionsLayoutStatic(
+            allocator,
+            pool,
+            text_multiline.?,
+            scenario.width,
+            layout_passes,
+            iterations,
+            show_mem,
+        );
+        bench_result.name = bench_name;
+
+        try all_results.append(allocator, bench_result);
+    }
+
+    // Test wrapping scenarios - shared between Unified and Static buffers
+    const wrap_scenarios = [_]struct {
         width: u32,
         mode: WrapMode,
         mode_str: []const u8,
@@ -413,7 +679,8 @@ pub fn run(
         .{ .width = 120, .mode = .word, .mode_str = "word", .single_line = true },
     };
 
-    for (scenarios) |scenario| {
+    // UnifiedTextBuffer wrap benchmarks
+    for (wrap_scenarios) |scenario| {
         if (scenario.single_line) {
             if (text_singleline == null) {
                 text_singleline = try generateLargeTextSingleLine(allocator, 2 * 1024 * 1024);
@@ -426,7 +693,7 @@ pub fn run(
         const text = if (scenario.single_line) text_singleline.? else text_multiline.?;
         const line_type = if (scenario.single_line) "single" else "multi";
 
-        const bench_name = try std.fmt.allocPrint(allocator, "TextBufferView wrap ({s}, width={d}, {s}-line)", .{
+        const bench_name = try std.fmt.allocPrint(allocator, "UnifiedTextBufferView wrap ({s}, width={d}, {s}-line)", .{
             scenario.mode_str,
             scenario.width,
             line_type,
@@ -438,6 +705,46 @@ pub fn run(
         }
 
         var bench_result = try benchWrap(
+            allocator,
+            pool,
+            text,
+            scenario.width,
+            scenario.mode,
+            iterations,
+            show_mem,
+        );
+        bench_result.name = bench_name;
+
+        try all_results.append(allocator, bench_result);
+    }
+
+    // StaticTextBuffer wrap benchmarks
+    for (wrap_scenarios) |scenario| {
+        const line_type = if (scenario.single_line) "single" else "multi";
+
+        const bench_name = try std.fmt.allocPrint(allocator, "StaticTextBufferView wrap ({s}, width={d}, {s}-line)", .{
+            scenario.mode_str,
+            scenario.width,
+            line_type,
+        });
+
+        if (!bench_utils.matchesBenchFilter(bench_name, bench_filter)) {
+            allocator.free(bench_name);
+            continue;
+        }
+
+        if (scenario.single_line) {
+            if (text_singleline == null) {
+                text_singleline = try generateLargeTextSingleLine(allocator, 2 * 1024 * 1024);
+            }
+        } else {
+            if (text_multiline == null) {
+                text_multiline = try generateLargeText(allocator, 5000, 1 * 1024 * 1024);
+            }
+        }
+        const text = if (scenario.single_line) text_singleline.? else text_multiline.?;
+
+        var bench_result = try benchWrapStatic(
             allocator,
             pool,
             text,
