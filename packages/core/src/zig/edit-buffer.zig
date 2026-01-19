@@ -667,7 +667,7 @@ pub const EditBuffer = struct {
 
                 // Check this chunk if cursor is within it OR if we've already passed the cursor
                 if (cursor.col < next_cols or passed_cursor) {
-                    const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator, self.tb.width_method) catch {
+                    const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator(), self.tb.width_method) catch {
                         cols_before = next_cols;
                         passed_cursor = true;
                         continue;
@@ -730,7 +730,7 @@ pub const EditBuffer = struct {
             if (seg.asText()) |chunk| {
                 const next_cols = cols_before + chunk.width;
 
-                const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator, self.tb.width_method) catch {
+                const wrap_offsets = chunk.getWrapOffsets(&self.tb.mem_registry, self.tb.allocator(), self.tb.width_method) catch {
                     cols_before = next_cols;
                     continue;
                 };

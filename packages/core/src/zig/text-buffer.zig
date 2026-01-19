@@ -47,7 +47,7 @@ pub const UnifiedTextBuffer = struct {
     default_bg: ?RGBA,
     default_attributes: ?u32,
 
-    allocator: Allocator,
+    arena_allocator: Allocator,
     global_allocator: Allocator,
     arena: *std.heap.ArenaAllocator,
 
@@ -112,7 +112,7 @@ pub const UnifiedTextBuffer = struct {
             .default_fg = null,
             .default_bg = null,
             .default_attributes = null,
-            .allocator = internal_allocator,
+            .arena_allocator = internal_allocator,
             .global_allocator = global_allocator,
             .arena = internal_arena,
             .rope = rope,
@@ -167,6 +167,49 @@ pub const UnifiedTextBuffer = struct {
         self.arena.deinit();
         self.global_allocator.destroy(self.arena);
         self.global_allocator.destroy(self);
+    }
+
+    pub const Defaults = struct {
+        fg: ?RGBA,
+        bg: ?RGBA,
+        attributes: ?u32,
+    };
+
+    pub fn defaults(self: *const Self) Defaults {
+        return .{
+            .fg = self.default_fg,
+            .bg = self.default_bg,
+            .attributes = self.default_attributes,
+        };
+    }
+
+    pub fn memRegistry(self: *const Self) *const MemRegistry {
+        return &self.mem_registry;
+    }
+
+    pub fn allocator(self: *const Self) Allocator {
+        return self.arena_allocator;
+    }
+
+    pub fn widthMethod(self: *const Self) utf8.WidthMethod {
+        return self.width_method;
+    }
+
+    pub fn maxLineWidth(self: *const Self) u32 {
+        return iter_mod.getMaxLineWidth(&self.rope);
+    }
+
+    pub fn lineWidthAt(self: *Self, row: u32) u32 {
+        return iter_mod.lineWidthAt(&self.rope, row);
+    }
+
+    pub fn walkLinesAndSegments(
+        self: *const Self,
+        ctx: *anyopaque,
+        segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
+        line_end_callback: *const fn (ctx: *anyopaque, line_info: iter_mod.LineInfo) void,
+    ) void {
+        iter_mod.walkLinesAndSegments(&self.rope, ctx, segment_callback, line_end_callback);
     }
 
     // View registration (same as original)
@@ -280,7 +323,7 @@ pub const UnifiedTextBuffer = struct {
 
         self.mem_registry.clear();
 
-        self.rope = UnifiedRope.init(self.allocator) catch return;
+        self.rope = UnifiedRope.init(self.arena_allocator) catch return;
 
         self.markAllViewsDirty();
     }
@@ -415,21 +458,21 @@ pub const UnifiedTextBuffer = struct {
     /// Returns segments array and total width
     pub fn textToSegments(
         self: *const Self,
-        allocator: Allocator,
+        alloc: Allocator,
         text: []const u8,
         mem_id: u8,
         byte_offset: u32,
         prepend_linestart: bool,
     ) TextBufferError!struct { segments: std.ArrayListUnmanaged(Segment), total_width: u32, allocator: Allocator } {
-        var break_result = utf8.LineBreakResult.init(allocator);
+        var break_result = utf8.LineBreakResult.init(alloc);
         defer break_result.deinit();
         try utf8.findLineBreaks(text, &break_result);
 
         var segments: std.ArrayListUnmanaged(Segment) = .{};
-        errdefer segments.deinit(allocator);
+        errdefer segments.deinit(alloc);
 
         if (prepend_linestart) {
-            try segments.append(allocator, Segment{ .linestart = {} });
+            try segments.append(alloc, Segment{ .linestart = {} });
         }
 
         var local_start: u32 = 0;
@@ -444,23 +487,23 @@ pub const UnifiedTextBuffer = struct {
 
             if (local_end > local_start) {
                 const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + local_end);
-                try segments.append(allocator, Segment{ .text = chunk });
+                try segments.append(alloc, Segment{ .text = chunk });
                 total_width += chunk.width;
             }
 
-            try segments.append(allocator, Segment{ .brk = {} });
-            try segments.append(allocator, Segment{ .linestart = {} });
+            try segments.append(alloc, Segment{ .brk = {} });
+            try segments.append(alloc, Segment{ .linestart = {} });
 
             local_start = break_pos + 1;
         }
 
         if (local_start < text.len) {
             const chunk = self.createChunk(mem_id, byte_offset + local_start, byte_offset + @as(u32, @intCast(text.len)));
-            try segments.append(allocator, Segment{ .text = chunk });
+            try segments.append(alloc, Segment{ .text = chunk });
             total_width += chunk.width;
         }
 
-        return .{ .segments = segments, .total_width = total_width, .allocator = allocator };
+        return .{ .segments = segments, .total_width = total_width, .allocator = alloc };
     }
 
     pub fn getLineCount(self: *const Self) u32 {
@@ -902,7 +945,7 @@ pub const UnifiedTextBuffer = struct {
 
         _ = self.arena.reset(.retain_capacity);
 
-        self.rope = UnifiedRope.init(self.allocator) catch return TextBufferError.OutOfMemory;
+        self.rope = UnifiedRope.init(self.arena_allocator) catch return TextBufferError.OutOfMemory;
 
         if (total_len > self.styled_capacity) {
             if (self.styled_buffer) |old_buf| {
@@ -974,7 +1017,7 @@ pub const UnifiedTextBuffer = struct {
 
         self.clear();
 
-        const content = self.allocator.alloc(u8, file_size) catch return TextBufferError.OutOfMemory;
+        const content = self.arena_allocator.alloc(u8, file_size) catch return TextBufferError.OutOfMemory;
         const bytes_read = file.readAll(content) catch return TextBufferError.OutOfMemory;
         const text = content[0..bytes_read];
         const mem_id = try self.mem_registry.register(text, false);
@@ -982,7 +1025,7 @@ pub const UnifiedTextBuffer = struct {
         try self.setTextInternal(mem_id, text);
     }
 
-    pub fn getTabWidth(self: *const Self) u8 {
+    pub fn tabWidth(self: *const Self) u8 {
         return self.tab_width;
     }
 
@@ -1004,7 +1047,7 @@ pub const UnifiedTextBuffer = struct {
         logger.debug("Char count: {}", .{self.getLength()});
         logger.debug("Byte size: {}", .{self.getByteSize()});
 
-        const rope_text = self.rope.toText(self.allocator) catch {
+        const rope_text = self.rope.toText(self.arena_allocator) catch {
             logger.debug("Failed to generate rope text representation", .{});
             return;
         };
