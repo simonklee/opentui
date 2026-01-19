@@ -14,9 +14,18 @@ export interface TextChunk {
   link?: { url: string }
 }
 
+/** Internal tag for buffer type selection */
+export type TextBufferKind = "static" | "unified"
+
+export interface TextBufferCreateOptions {
+  /** When true, creates a full rope-backed buffer with edit capabilities (default: false) */
+  editable?: boolean
+}
+
 export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
+  private _kind: TextBufferKind
   private _length: number = 0
   private _byteSize: number = 0
   private _lineInfo?: LineInfo
@@ -26,14 +35,48 @@ export class TextBuffer {
   private _memId?: number
   private _appendedChunks: Uint8Array[] = []
 
-  constructor(lib: RenderLib, ptr: Pointer) {
+  constructor(lib: RenderLib, ptr: Pointer, kind: TextBufferKind = "unified") {
     this.lib = lib
     this.bufferPtr = ptr
+    this._kind = kind
   }
 
-  static create(widthMethod: WidthMethod): TextBuffer {
+  /**
+   * Create a TextBuffer.
+   * @param widthMethod - Width calculation method ("wcwidth" or "unicode")
+   * @param options - Optional configuration
+   * @param options.editable - When false, creates static read-only buffer (default: true for full editing support)
+   */
+  static create(widthMethod: WidthMethod, options?: TextBufferCreateOptions): TextBuffer {
     const lib = resolveRenderLib()
-    return lib.createTextBuffer(widthMethod)
+    const editable = options?.editable ?? true
+
+    if (editable) {
+      // Editable buffer (default) uses the full UnifiedTextBuffer with rope backend
+      const ptr = lib.createTextBuffer(widthMethod).ptr
+      return new TextBuffer(lib, ptr, "unified")
+    } else {
+      // Static buffer - uses StaticTextBuffer for read-only display
+      const ptr = lib.createStaticTextBuffer(widthMethod)
+      return new TextBuffer(lib, ptr, "static")
+    }
+  }
+
+  /** Returns the buffer kind: "static" for read-only, "unified" for editable */
+  public get bufferKind(): TextBufferKind {
+    return this._kind
+  }
+
+  /** Returns true if this is a static (read-only) buffer */
+  public isStatic(): boolean {
+    return this._kind === "static"
+  }
+
+  /** Throws an error if called on a static buffer */
+  private requireEditable(operation: string): void {
+    if (this._kind === "static") {
+      throw new Error(`TextBuffer.${operation} requires editable: true`)
+    }
   }
 
   // Fail loud and clear
@@ -62,6 +105,7 @@ export class TextBuffer {
 
   public append(text: string): void {
     this.guard()
+    this.requireEditable("append")
     const textBytes = this.lib.encoder.encode(text)
     // Keep the bytes alive to prevent garbage collection
     this._appendedChunks.push(textBytes)
@@ -73,6 +117,7 @@ export class TextBuffer {
 
   public loadFile(path: string): void {
     this.guard()
+    this.requireEditable("loadFile")
     const success = this.lib.textBufferLoadFile(this.bufferPtr, path)
     if (!success) {
       throw new Error(`Failed to load file: ${path}`)
@@ -168,43 +213,52 @@ export class TextBuffer {
   /**
    * Add a highlight using character offsets into the full text.
    * start/end in highlight represent absolute character positions.
+   * Note: Only available on editable buffers.
    */
   public addHighlightByCharRange(highlight: Highlight): void {
     this.guard()
+    this.requireEditable("addHighlightByCharRange")
     this.lib.textBufferAddHighlightByCharRange(this.bufferPtr, highlight)
   }
 
   /**
    * Add a highlight to a specific line by column positions.
    * start/end in highlight represent column offsets.
+   * Note: Only available on editable buffers.
    */
   public addHighlight(lineIdx: number, highlight: Highlight): void {
     this.guard()
+    this.requireEditable("addHighlight")
     this.lib.textBufferAddHighlight(this.bufferPtr, lineIdx, highlight)
   }
 
   public removeHighlightsByRef(hlRef: number): void {
     this.guard()
+    this.requireEditable("removeHighlightsByRef")
     this.lib.textBufferRemoveHighlightsByRef(this.bufferPtr, hlRef)
   }
 
   public clearLineHighlights(lineIdx: number): void {
     this.guard()
+    this.requireEditable("clearLineHighlights")
     this.lib.textBufferClearLineHighlights(this.bufferPtr, lineIdx)
   }
 
   public clearAllHighlights(): void {
     this.guard()
+    this.requireEditable("clearAllHighlights")
     this.lib.textBufferClearAllHighlights(this.bufferPtr)
   }
 
   public getLineHighlights(lineIdx: number): Array<Highlight> {
     this.guard()
+    // Read operation - works on both static and unified buffers
     return this.lib.textBufferGetLineHighlights(this.bufferPtr, lineIdx)
   }
 
   public getHighlightCount(): number {
     this.guard()
+    // Read operation - works on both static and unified buffers
     return this.lib.textBufferGetHighlightCount(this.bufferPtr)
   }
 
@@ -254,6 +308,10 @@ export class TextBuffer {
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
-    this.lib.destroyTextBuffer(this.bufferPtr)
+    if (this._kind === "static") {
+      this.lib.destroyStaticTextBuffer(this.bufferPtr)
+    } else {
+      this.lib.destroyTextBuffer(this.bufferPtr)
+    }
   }
 }

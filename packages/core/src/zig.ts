@@ -565,6 +565,24 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+
+    // StaticTextBuffer functions
+    createStaticTextBuffer: {
+      args: ["u8"],
+      returns: "ptr",
+    },
+    destroyStaticTextBuffer: {
+      args: ["ptr"],
+      returns: "void",
+    },
+    createStaticTextBufferView: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    destroyStaticTextBufferView: {
+      args: ["ptr"],
+      returns: "void",
+    },
     textBufferViewSetSelection: {
       args: ["ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
@@ -1517,6 +1535,12 @@ export interface RenderLib {
     height: number,
   ) => { lineCount: number; maxWidth: number } | null
   textBufferViewGetVirtualLineCount: (view: Pointer) => number
+
+  // StaticTextBuffer methods
+  createStaticTextBuffer: (widthMethod: WidthMethod) => Pointer
+  destroyStaticTextBuffer: (buffer: Pointer) => void
+  createStaticTextBufferView: (textBuffer: Pointer) => Pointer
+  destroyStaticTextBufferView: (view: Pointer) => void
 
   readonly encoder: TextEncoder
   readonly decoder: TextDecoder
@@ -2569,6 +2593,32 @@ class FFIRenderLib implements RenderLib {
 
   public destroyTextBufferView(view: Pointer): void {
     this.opentui.symbols.destroyTextBufferView(view)
+  }
+
+  // StaticTextBuffer methods
+  public createStaticTextBuffer(widthMethod: WidthMethod): Pointer {
+    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
+    const bufferPtr = this.opentui.symbols.createStaticTextBuffer(widthMethodCode)
+    if (!bufferPtr) {
+      throw new Error("Failed to create StaticTextBuffer")
+    }
+    return bufferPtr
+  }
+
+  public destroyStaticTextBuffer(buffer: Pointer): void {
+    this.opentui.symbols.destroyStaticTextBuffer(buffer)
+  }
+
+  public createStaticTextBufferView(textBuffer: Pointer): Pointer {
+    const viewPtr = this.opentui.symbols.createStaticTextBufferView(textBuffer)
+    if (!viewPtr) {
+      throw new Error("Failed to create StaticTextBufferView")
+    }
+    return viewPtr
+  }
+
+  public destroyStaticTextBufferView(view: Pointer): void {
+    this.opentui.symbols.destroyStaticTextBufferView(view)
   }
 
   public textBufferViewSetSelection(

@@ -14,6 +14,34 @@ describe("TextBuffer", () => {
     buffer.destroy()
   })
 
+  describe("buffer kinds", () => {
+    it("should create unified buffer by default", () => {
+      const defaultBuffer = TextBuffer.create("wcwidth")
+      expect(defaultBuffer.bufferKind).toBe("unified")
+      expect(defaultBuffer.isStatic()).toBe(false)
+      defaultBuffer.destroy()
+    })
+
+    it("should create static buffer when editable: false", () => {
+      const staticBuffer = TextBuffer.create("wcwidth", { editable: false })
+      expect(staticBuffer.bufferKind).toBe("static")
+      expect(staticBuffer.isStatic()).toBe(true)
+      staticBuffer.destroy()
+    })
+
+    it("should throw on append for static buffer", () => {
+      const staticBuffer = TextBuffer.create("wcwidth", { editable: false })
+      expect(() => staticBuffer.append(" World")).toThrow("TextBuffer.append requires editable: true")
+      staticBuffer.destroy()
+    })
+
+    it("should throw on loadFile for static buffer", () => {
+      const staticBuffer = TextBuffer.create("wcwidth", { editable: false })
+      expect(() => staticBuffer.loadFile("/nonexistent")).toThrow("TextBuffer.loadFile requires editable: true")
+      staticBuffer.destroy()
+    })
+  })
+
   describe("setText and setStyledText", () => {
     it("should set text content", () => {
       const text = "Hello World"

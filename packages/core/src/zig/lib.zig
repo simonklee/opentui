@@ -8,6 +8,7 @@ const gp = @import("grapheme.zig");
 const link = @import("link.zig");
 const text_buffer = @import("text-buffer.zig");
 const text_buffer_view = @import("text-buffer-view.zig");
+const static_text_buffer = @import("static-text-buffer.zig");
 const edit_buffer_mod = @import("edit-buffer.zig");
 const editor_view = @import("editor-view.zig");
 const syntax_style = @import("syntax-style.zig");
@@ -697,6 +698,33 @@ export fn createTextBufferView(tb: *text_buffer.UnifiedTextBuffer) ?*text_buffer
 }
 
 export fn destroyTextBufferView(view: *text_buffer_view.UnifiedTextBufferView) void {
+    view.deinit();
+}
+
+// StaticTextBuffer functions
+export fn createStaticTextBuffer(widthMethod: u8) ?*static_text_buffer.StaticTextBuffer {
+    const pool = gp.initGlobalPool(globalArena);
+    const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
+
+    const sb = static_text_buffer.StaticTextBuffer.init(globalAllocator, pool, wMethod) catch {
+        return null;
+    };
+
+    return sb;
+}
+
+export fn destroyStaticTextBuffer(sb: *static_text_buffer.StaticTextBuffer) void {
+    sb.deinit();
+}
+
+export fn createStaticTextBufferView(sb: *static_text_buffer.StaticTextBuffer) ?*text_buffer_view.StaticTextBufferView {
+    const view = text_buffer_view.StaticTextBufferView.init(globalAllocator, sb) catch {
+        return null;
+    };
+    return view;
+}
+
+export fn destroyStaticTextBufferView(view: *text_buffer_view.StaticTextBufferView) void {
     view.deinit();
 }
 
