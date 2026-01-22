@@ -66,6 +66,7 @@ import * as scrollboxOverlayHitTest from "./scrollbox-overlay-hit-test"
 import * as scrollboxMouseTest from "./scrollbox-mouse-test"
 import * as textTruncationDemo from "./text-truncation-demo"
 import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
+import * as staticBufferDemo from "./static-buffer-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -111,6 +112,12 @@ const examples: Example[] = [
     description: "Text wrapping example",
     run: textWrapExample.run,
     destroy: textWrapExample.destroy,
+  },
+  {
+    name: "Static Buffer Demo",
+    description: "Compare StaticTextBuffer vs UnifiedTextBuffer - side-by-side view with metrics",
+    run: staticBufferDemo.run,
+    destroy: staticBufferDemo.destroy,
   },
   {
     name: "Console Demo",
