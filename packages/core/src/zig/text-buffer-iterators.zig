@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
 const mem_registry_mod = @import("mem-registry.zig");
+const shared = @import("text-buffer-shared.zig");
 const utf8 = @import("utf8.zig");
 
 const Segment = seg_mod.Segment;
@@ -422,47 +423,20 @@ pub fn extractTextBetweenOffsets(
             const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
 
             const chunk_start_offset = ctx.char_offset.*;
-            const chunk_end_offset = chunk_start_offset + chunk.width;
-
-            // Skip chunk if it's entirely outside range
-            if (chunk_end_offset <= ctx.start or chunk_start_offset >= ctx.end) {
-                ctx.char_offset.* = chunk_end_offset;
-                return;
+            const result = shared.extractChunkBetweenOffsets(
+                chunk,
+                ctx.mem_registry,
+                ctx.tab_width,
+                ctx.start,
+                ctx.end,
+                chunk_start_offset,
+                ctx.out_buffer,
+                ctx.out_index,
+            );
+            if (result.has_content) {
+                ctx.line_had_content = true;
             }
-
-            ctx.line_had_content = true;
-
-            const chunk_bytes = chunk.getBytes(ctx.mem_registry);
-            const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-
-            const local_start_col: u32 = if (ctx.start > chunk_start_offset) ctx.start - chunk_start_offset else 0;
-            const local_end_col: u32 = @min(ctx.end - chunk_start_offset, chunk.width);
-
-            var byte_start: u32 = 0;
-            var byte_end: u32 = @intCast(chunk_bytes.len);
-
-            if (local_start_col > 0) {
-                const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.tab_width, is_ascii_only, false, .unicode);
-                byte_start = start_result.byte_offset;
-            }
-
-            if (local_end_col < chunk.width) {
-                const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true, .unicode);
-                byte_end = end_result.byte_offset;
-            }
-
-            if (byte_start < byte_end and byte_start < chunk_bytes.len) {
-                const actual_end = @min(byte_end, @as(u32, @intCast(chunk_bytes.len)));
-                const selected_bytes = chunk_bytes[byte_start..actual_end];
-                const copy_len = @min(selected_bytes.len, ctx.out_buffer.len - ctx.out_index.*);
-
-                if (copy_len > 0) {
-                    @memcpy(ctx.out_buffer[ctx.out_index.* .. ctx.out_index.* + copy_len], selected_bytes[0..copy_len]);
-                    ctx.out_index.* += copy_len;
-                }
-            }
-
-            ctx.char_offset.* = chunk_end_offset;
+            ctx.char_offset.* = result.new_offset;
         }
 
         fn line_end_callback(ctx_ptr: *anyopaque, line_info: LineInfo) void {
