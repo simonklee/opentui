@@ -55,6 +55,9 @@ pub const StaticBackend = struct {
     total_bytes: u32,
 
     pub fn init(global_allocator: Allocator, width_method: utf8.WidthMethod) TextBufferError!Self {
+        assert(@intFromPtr(global_allocator.ptr) != 0);
+        assert(@intFromPtr(global_allocator.vtable) != 0);
+        assert(@intFromEnum(width_method) <= @intFromEnum(utf8.WidthMethod.no_zwj));
         const internal_arena = global_allocator.create(std.heap.ArenaAllocator) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(internal_arena);
         internal_arena.* = std.heap.ArenaAllocator.init(global_allocator);
@@ -93,6 +96,9 @@ pub const StaticBackend = struct {
     }
 
     pub fn deinit(self: *Self, _: Allocator) void {
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         self.segments.deinit(self.global_allocator);
         self.line_starts.deinit(self.global_allocator);
         self.line_widths.deinit(self.global_allocator);
@@ -103,12 +109,17 @@ pub const StaticBackend = struct {
     }
 
     pub fn allocator(self: *const Self) Allocator {
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         return self.arena_allocator;
     }
 
     pub fn setTabWidth(self: *Self, mem_registry: *const MemRegistry, width: u8) bool {
         assert(width >= 2);
         assert(@as(u32, width) <= Limits.max_tab_width);
+        assert(self.tab_width >= 2);
+        assert(@as(u32, self.tab_width) <= Limits.max_tab_width);
         const clamped_width: u8 = if (width < 2) 2 else width;
         const new_width: u8 = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
         if (self.tab_width == new_width) return false;
@@ -129,10 +140,15 @@ pub const StaticBackend = struct {
     }
 
     pub fn tabWidth(self: *const Self) u8 {
+        assert(self.tab_width >= 2);
+        assert(@as(u32, self.tab_width) <= Limits.max_tab_width);
         return self.tab_width;
     }
 
     pub fn clear(self: *Self) void {
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         self.segments.clearRetainingCapacity();
         self.line_starts.clearRetainingCapacity();
         self.line_widths.clearRetainingCapacity();
@@ -150,6 +166,10 @@ pub const StaticBackend = struct {
     }
 
     pub fn reset(self: *Self) void {
+        const seg_count: u32 = @intCast(self.segments.items.len);
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        assert(seg_count <= Limits.max_segments);
+        assert(line_count <= Limits.max_lines);
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
         self.segments.clearRetainingCapacity();
@@ -169,24 +189,35 @@ pub const StaticBackend = struct {
     }
 
     pub fn getLength(self: *const Self) u32 {
+        assert(self.total_width <= Limits.max_bytes);
+        assert(self.max_line_width <= self.total_width);
         return self.total_width;
     }
 
     pub fn getByteSize(self: *const Self) u32 {
+        assert(self.total_bytes <= Limits.max_bytes);
         const line_count = self.getLineCount();
+        assert(line_count >= 1);
         return self.total_bytes + (line_count - 1);
     }
 
     pub fn getLineCount(self: *const Self) u32 {
         const line_count: u32 = @intCast(self.line_widths.items.len);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         return line_count;
     }
 
     pub fn lineWidthAt(self: *const Self, row: u32) u32 {
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        assert(line_count >= 1);
+        assert(row < line_count);
         return self.line_widths.items[@intCast(row)];
     }
 
     pub fn maxLineWidth(self: *const Self) u32 {
+        assert(self.max_line_width <= self.total_width);
+        assert(self.total_width <= Limits.max_bytes);
         return self.max_line_width;
     }
 
@@ -196,7 +227,17 @@ pub const StaticBackend = struct {
         segment_callback: *const fn (ctx: *anyopaque, line_idx: u32, chunk: *const TextChunk, chunk_idx_in_line: u32) void,
         line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
     ) void {
-        const line_count = self.getLineCount();
+        assert(self.line_widths.items.len == self.line_starts.items.len);
+        assert(self.line_widths.items.len == self.line_seg_start.items.len);
+        assert(self.line_widths.items.len == self.line_seg_end.items.len);
+        const seg_count: u32 = @intCast(self.segments.items.len);
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        assert(seg_count <= Limits.max_segments);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        assert(@intFromPtr(ctx) != 0);
+        assert(@intFromPtr(segment_callback) != 0);
+        assert(@intFromPtr(line_end_callback) != 0);
         var line_idx: u32 = 0;
         while (line_idx < line_count) : (line_idx += 1) {
             const seg_start: u32 = self.line_seg_start.items[@intCast(line_idx)];
@@ -223,6 +264,8 @@ pub const StaticBackend = struct {
     }
 
     pub fn setTextFromMemId(self: *Self, mem_registry: *const MemRegistry, mem_id: u8) TextBufferError!void {
+        assert(mem_id <= @as(u8, @intCast(Limits.max_mem_buffers)));
+        assert(mem_registry.get(mem_id) != null);
         const text = mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
         try self.setTextInternal(mem_registry, mem_id, text);
@@ -237,6 +280,9 @@ pub const StaticBackend = struct {
 
     fn setTextInternal(self: *Self, mem_registry: *const MemRegistry, mem_id: u8, text: []const u8) TextBufferError!void {
         const text_len: u32 = @intCast(text.len);
+        assert(text_len <= Limits.max_bytes);
+        assert(mem_id <= @as(u8, @intCast(Limits.max_mem_buffers)));
+        assert(mem_registry.get(mem_id) != null);
         self.segments.clearRetainingCapacity();
         self.line_starts.clearRetainingCapacity();
         self.line_widths.clearRetainingCapacity();
@@ -323,11 +369,17 @@ pub const StaticBackend = struct {
     }
 
     fn createChunk(self: *const Self, mem_registry: *const MemRegistry, mem_id: u8, byte_start: u32, byte_end: u32) TextChunk {
+        assert(mem_registry.get(mem_id) != null);
+        assert(byte_start <= byte_end);
         return shared.createChunk(mem_registry, self.tab_width, self.width_method, mem_id, byte_start, byte_end);
     }
 
     fn rebuildLineIndex(self: *Self) void {
         const seg_count: u32 = @intCast(self.segments.items.len);
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        assert(seg_count <= Limits.max_segments);
+        assert(line_count <= Limits.max_lines);
+        if (self.segments.items.len > 0) assert(self.segments.items[0].isLineStart());
         self.line_starts.clearRetainingCapacity();
         self.line_widths.clearRetainingCapacity();
         self.line_seg_start.clearRetainingCapacity();
@@ -389,7 +441,11 @@ pub const StaticBackend = struct {
     }
 
     pub fn getPlainTextIntoBuffer(self: *const Self, mem_registry: *const MemRegistry, out_buffer: []u8) usize {
-        const line_count = self.getLineCount();
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        const out_len: u32 = @intCast(out_buffer.len);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        assert(out_len <= Limits.max_bytes);
         var out_index: usize = 0;
 
         const Context = struct {
@@ -439,10 +495,16 @@ pub const StaticBackend = struct {
         end_offset: u32,
         out_buffer: []u8,
     ) usize {
-        const line_count = self.getLineCount();
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        const out_len: u32 = @intCast(out_buffer.len);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         const total_weight: u32 = self.total_width + (line_count - 1);
         var clamped_end = end_offset;
         if (clamped_end > total_weight) clamped_end = total_weight;
+        assert(start_offset <= clamped_end);
+        assert(clamped_end <= total_weight);
+        assert(out_len <= Limits.max_bytes);
         if (start_offset >= clamped_end) return 0;
         if (out_buffer.len == 0) return 0;
         if (start_offset >= total_weight) return 0;
@@ -512,7 +574,14 @@ pub const StaticBackend = struct {
         end_col: u32,
         out_buffer: []u8,
     ) usize {
-        const line_count = self.getLineCount();
+        const line_count: u32 = @intCast(self.line_widths.items.len);
+        const out_len: u32 = @intCast(out_buffer.len);
+        assert(start_row < line_count);
+        assert(end_row < line_count);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        if (start_row == end_row) assert(start_col <= end_col);
+        assert(out_len <= Limits.max_bytes);
         if (start_row >= line_count or end_row >= line_count) return 0;
 
         const start_line_width = self.lineWidthAt(start_row);

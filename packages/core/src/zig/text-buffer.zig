@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
@@ -12,6 +13,7 @@ const static_backend = @import("text-buffer-backend-static.zig");
 
 const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
+const Limits = static_backend.StaticBackend.Limits;
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
@@ -70,6 +72,10 @@ pub const TextBuffer = struct {
         width_method: utf8.WidthMethod,
         kind: BackendKind,
     ) TextBufferError!*Self {
+        assert(@intFromPtr(pool) != 0);
+        assert(@intFromPtr(global_allocator.ptr) != 0);
+        assert(@intFromPtr(global_allocator.vtable) != 0);
+        assert(@intFromEnum(width_method) <= @intFromEnum(utf8.WidthMethod.no_zwj));
         const self = global_allocator.create(Self) catch return TextBufferError.OutOfMemory;
         errdefer global_allocator.destroy(self);
 
@@ -111,6 +117,9 @@ pub const TextBuffer = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         if (self.syntax_style) |style| {
             (@constCast(style)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
@@ -133,14 +142,23 @@ pub const TextBuffer = struct {
     }
 
     pub fn defaults(self: *const Self) Defaults {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         return self.default_values;
     }
 
     pub fn memRegistry(self: *const Self) *const MemRegistry {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         return &self.mem_registry;
     }
 
     pub fn allocator(self: *const Self) Allocator {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         return switch (self.backend) {
             .unified => |*backend| backend.allocator(),
             .static => |*backend| backend.allocator(),
@@ -148,14 +166,23 @@ pub const TextBuffer = struct {
     }
 
     pub fn widthMethod(self: *const Self) utf8.WidthMethod {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         return self.width_method;
     }
 
     pub fn tabWidth(self: *const Self) u8 {
+        assert(self.tab_width >= 2);
+        assert(@as(u32, self.tab_width) <= Limits.max_tab_width);
         return self.tab_width;
     }
 
     pub fn setTabWidth(self: *Self, width: u8) void {
+        assert(width >= 2);
+        assert(@as(u32, width) <= Limits.max_tab_width);
+        assert(self.tab_width >= 2);
+        assert(@as(u32, self.tab_width) <= Limits.max_tab_width);
         const clamped_width = @max(2, width);
         const new_width = if (clamped_width % 2 == 0) clamped_width else clamped_width + 1;
         if (self.tab_width == new_width) return;
@@ -175,18 +202,36 @@ pub const TextBuffer = struct {
     }
 
     pub fn setDefaultFg(self: *Self, fg: ?RGBA) void {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        if (fg) |rgba| assert(!std.math.isNan(rgba[0]));
+        if (fg) |rgba| assert(!std.math.isNan(rgba[3]));
         self.default_values.fg = fg;
     }
 
     pub fn setDefaultBg(self: *Self, bg: ?RGBA) void {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        if (bg) |rgba| assert(!std.math.isNan(rgba[1]));
+        if (bg) |rgba| assert(!std.math.isNan(rgba[3]));
         self.default_values.bg = bg;
     }
 
     pub fn setDefaultAttributes(self: *Self, attributes: ?u32) void {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        if (attributes) |value| assert(value <= std.math.maxInt(u32));
+        if (attributes) |value| assert(value >= 0);
         self.default_values.attributes = attributes;
     }
 
     pub fn resetDefaults(self: *Self) void {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         self.default_values.fg = null;
         self.default_values.bg = null;
         self.default_values.attributes = null;
@@ -198,6 +243,11 @@ pub const TextBuffer = struct {
     }
 
     pub fn setSyntaxStyle(self: *Self, syntax_style: ?*const SyntaxStyle) void {
+        const line_count = self.getLineCount();
+        if (syntax_style) |style| assert(@intFromPtr(style) != 0);
+        assert(@intFromPtr(self) != 0);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         if (self.syntax_style) |prev| {
             (@constCast(prev)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
@@ -208,34 +258,57 @@ pub const TextBuffer = struct {
     }
 
     pub fn getSyntaxStyle(self: *const Self) ?*const SyntaxStyle {
+        const line_count = self.getLineCount();
+        if (self.syntax_style) |style| assert(@intFromPtr(style) != 0);
+        assert(@intFromPtr(self) != 0);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         return self.syntax_style;
     }
 
     pub fn registerView(self: *Self) TextBufferError!u32 {
+        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        assert(view_count <= Limits.max_views);
+        assert(self.view_registry.next_view_id <= Limits.max_views);
         return self.view_registry.registerView(self.global_allocator);
     }
 
     pub fn unregisterView(self: *Self, view_id: u32) void {
+        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        assert(view_count <= Limits.max_views);
         self.view_registry.unregisterView(self.global_allocator, view_id);
     }
 
     pub fn isViewDirty(self: *const Self, view_id: u32) bool {
+        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        assert(view_count <= Limits.max_views);
         return self.view_registry.isViewDirty(view_id);
     }
 
     pub fn clearViewDirty(self: *Self, view_id: u32) void {
+        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        assert(view_count <= Limits.max_views);
         self.view_registry.clearViewDirty(view_id);
     }
 
     pub fn getContentEpoch(self: *const Self) u64 {
-        return self.view_registry.getContentEpoch();
+        const epoch = self.view_registry.getContentEpoch();
+        assert(epoch < std.math.maxInt(u64));
+        assert(epoch >= 0);
+        return epoch;
     }
 
     fn markAllViewsDirty(self: *Self) void {
+        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        assert(view_count <= Limits.max_views);
+        assert(self.view_registry.next_view_id <= Limits.max_views);
         self.view_registry.markAllViewsDirty();
     }
 
     pub fn markViewsDirty(self: *Self) void {
+        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        assert(view_count <= Limits.max_views);
+        assert(self.view_registry.next_view_id <= Limits.max_views);
         self.markAllViewsDirty();
     }
 
@@ -254,10 +327,13 @@ pub const TextBuffer = struct {
     }
 
     pub fn getLineCount(self: *const Self) u32 {
-        return switch (self.backend) {
+        const line_count = switch (self.backend) {
             .unified => |*backend| backend.getLineCount(),
             .static => |*backend| backend.getLineCount(),
         };
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        return line_count;
     }
 
     pub fn lineCount(self: *const Self) u32 {
@@ -265,6 +341,8 @@ pub const TextBuffer = struct {
     }
 
     pub fn lineWidthAt(self: *const Self, row: u32) u32 {
+        const line_count = self.getLineCount();
+        assert(row < line_count);
         return switch (self.backend) {
             .unified => |*backend| backend.lineWidthAt(row),
             .static => |*backend| backend.lineWidthAt(row),
@@ -279,6 +357,9 @@ pub const TextBuffer = struct {
     }
 
     pub fn clear(self: *Self) void {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         switch (self.backend) {
             .unified => |*backend| backend.clear(),
             .static => |*backend| backend.clear(),
@@ -287,6 +368,9 @@ pub const TextBuffer = struct {
     }
 
     pub fn reset(self: *Self) void {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         self.highlights.clearRetainingCapacity();
 
         if (self.styled_buffer) |buf| {
@@ -307,16 +391,26 @@ pub const TextBuffer = struct {
     }
 
     pub fn setText(self: *Self, text: []const u8) TextBufferError!void {
+        const text_len: u32 = @intCast(text.len);
+        const line_count = self.getLineCount();
+        assert(text_len <= Limits.max_bytes);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         const mem_id = try self.mem_registry.register(text, false);
         try self.setTextInternal(mem_id, text);
     }
 
     pub fn setTextFromMemId(self: *Self, mem_id: u8) TextBufferError!void {
+        const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         const text = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
         try self.setTextInternal(mem_id, text);
     }
 
     pub fn append(self: *Self, text: []const u8) TextBufferError!void {
+        const text_len: u32 = @intCast(text.len);
+        assert(text_len <= Limits.max_bytes);
         if (text.len == 0) {
             return;
         }
@@ -343,7 +437,9 @@ pub const TextBuffer = struct {
     }
 
     fn setTextInternal(self: *Self, mem_id: u8, text: []const u8) TextBufferError!void {
-        _ = text;
+        const text_len: u32 = @intCast(text.len);
+        assert(text_len <= Limits.max_bytes);
+        assert(self.mem_registry.get(mem_id) != null);
         switch (self.backend) {
             .unified => |*backend| try backend.setTextFromMemId(&self.mem_registry, mem_id),
             .static => |*backend| try backend.setTextFromMemId(&self.mem_registry, mem_id),
@@ -366,6 +462,10 @@ pub const TextBuffer = struct {
     }
 
     pub fn loadFile(self: *Self, path: []const u8) TextBufferError!void {
+        const path_len: u32 = @intCast(path.len);
+        assert(path_len > 0);
+        assert(path_len <= Limits.max_bytes);
+        assert(@intFromPtr(self) != 0);
         const file = std.fs.cwd().openFile(path, .{}) catch |err| {
             return switch (err) {
                 error.FileNotFound => TextBufferError.InvalidIndex,
@@ -376,6 +476,7 @@ pub const TextBuffer = struct {
         defer file.close();
 
         const file_size = file.getEndPos() catch return TextBufferError.OutOfMemory;
+        if (file_size > @as(u64, Limits.max_bytes)) return TextBufferError.OutOfMemory;
         const file_size_usize: usize = @intCast(file_size);
 
         const content = self.global_allocator.alloc(u8, file_size_usize) catch return TextBufferError.OutOfMemory;
@@ -388,6 +489,11 @@ pub const TextBuffer = struct {
     }
 
     pub fn getPlainTextIntoBuffer(self: *const Self, out_buffer: []u8) usize {
+        const line_count = self.getLineCount();
+        const out_len: u32 = @intCast(out_buffer.len);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        assert(out_len <= Limits.max_bytes);
         return switch (self.backend) {
             .unified => |*backend| backend.getPlainTextIntoBuffer(&self.mem_registry, out_buffer),
             .static => |*backend| backend.getPlainTextIntoBuffer(&self.mem_registry, out_buffer),
@@ -395,6 +501,12 @@ pub const TextBuffer = struct {
     }
 
     pub fn getTextRange(self: *const Self, start_offset: u32, end_offset: u32, out_buffer: []u8) usize {
+        const line_count = self.getLineCount();
+        const out_len: u32 = @intCast(out_buffer.len);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        assert(start_offset <= end_offset);
+        assert(out_len <= Limits.max_bytes);
         return switch (self.backend) {
             .unified => |*backend| backend.getTextRange(&self.mem_registry, start_offset, end_offset, out_buffer),
             .static => |*backend| backend.getTextRange(&self.mem_registry, start_offset, end_offset, out_buffer),
@@ -409,6 +521,14 @@ pub const TextBuffer = struct {
         end_col: u32,
         out_buffer: []u8,
     ) usize {
+        const line_count = self.getLineCount();
+        const out_len: u32 = @intCast(out_buffer.len);
+        assert(start_row < line_count);
+        assert(end_row < line_count);
+        if (start_row == end_row) assert(start_col <= end_col);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        assert(out_len <= Limits.max_bytes);
         return switch (self.backend) {
             .unified => |*backend| backend.getTextRangeByCoords(&self.mem_registry, start_row, start_col, end_row, end_col, out_buffer),
             .static => |*backend| backend.getTextRangeByCoords(&self.mem_registry, start_row, start_col, end_row, end_col, out_buffer),
@@ -416,10 +536,18 @@ pub const TextBuffer = struct {
     }
 
     pub fn registerMemBuffer(self: *Self, data: []const u8, owned: bool) TextBufferError!u8 {
+        const data_len: u32 = @intCast(data.len);
+        assert(data_len <= Limits.max_bytes);
+        assert(owned == true or owned == false);
+        assert(@intFromPtr(self) != 0);
         return try self.mem_registry.register(data, owned);
     }
 
     pub fn replaceMemBuffer(self: *Self, mem_id: u8, data: []const u8, owned: bool) TextBufferError!void {
+        const data_len: u32 = @intCast(data.len);
+        assert(data_len <= Limits.max_bytes);
+        assert(owned == true or owned == false);
+        assert(@intFromPtr(self) != 0);
         try self.mem_registry.replace(mem_id, data, owned);
     }
 
@@ -437,6 +565,8 @@ pub const TextBuffer = struct {
         byte_start: u32,
         byte_end: u32,
     ) TextChunk {
+        assert(self.mem_registry.get(mem_id) != null);
+        assert(byte_start <= byte_end);
         return shared.createChunk(&self.mem_registry, self.tab_width, self.width_method, mem_id, byte_start, byte_end);
     }
 
@@ -513,10 +643,16 @@ pub const TextBuffer = struct {
     }
 
     pub fn startHighlightsTransaction(self: *Self) void {
+        const span_count: u32 = @intCast(self.highlights.line_spans.items.len);
+        assert(self.highlights.highlight_batch_depth < std.math.maxInt(u32));
+        assert(span_count <= Limits.max_lines);
         self.highlights.startTransaction();
     }
 
     pub fn endHighlightsTransaction(self: *Self) void {
+        const span_count: u32 = @intCast(self.highlights.line_spans.items.len);
+        assert(self.highlights.highlight_batch_depth <= std.math.maxInt(u32));
+        assert(span_count <= Limits.max_lines);
         self.highlights.endTransaction(self, lineWidthForHighlights);
     }
 
@@ -530,17 +666,24 @@ pub const TextBuffer = struct {
         hl_ref: u16,
     ) TextBufferError!void {
         const line_count = self.getLineCount();
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        assert(hl_ref <= std.math.maxInt(u16));
         if (line_idx >= line_count) {
             return TextBufferError.InvalidIndex;
         }
 
-        if (col_start >= col_end) {
+        const line_width = self.lineWidthAt(@intCast(line_idx));
+        const clamped_start = if (col_start > line_width) line_width else col_start;
+        const clamped_end = if (col_end > line_width) line_width else col_end;
+
+        if (clamped_start >= clamped_end) {
             return;
         }
 
         const hl = Highlight{
-            .col_start = col_start,
-            .col_end = col_end,
+            .col_start = clamped_start,
+            .col_end = clamped_end,
             .style_id = style_id,
             .priority = priority,
             .hl_ref = hl_ref,
@@ -559,6 +702,7 @@ pub const TextBuffer = struct {
         priority: u8,
         hl_ref: u16,
     ) TextBufferError!void {
+        assert(hl_ref <= std.math.maxInt(u16));
         const char_start = self.coordsToOffset(start_row, start_col) orelse return TextBufferError.InvalidIndex;
         const char_end = self.coordsToOffset(end_row, end_col) orelse return TextBufferError.InvalidIndex;
         return self.addHighlightByCharRange(char_start, char_end, style_id, priority, hl_ref);
@@ -573,12 +717,18 @@ pub const TextBuffer = struct {
         hl_ref: u16,
     ) TextBufferError!void {
         const line_count = self.getLineCount();
-        if (char_start >= char_end or line_count == 0) {
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
+        assert(hl_ref <= std.math.maxInt(u16));
+        if (line_count == 0) {
             return;
         }
 
         switch (self.backend) {
             .unified => |*backend| {
+                const total_weight = backend.rope.totalWeight();
+                const clamped_end = if (char_end > total_weight) total_weight else char_end;
+                if (char_start >= clamped_end) return;
                 const Context = struct {
                     buffer: *Self,
                     char_start: u32,
@@ -619,7 +769,7 @@ pub const TextBuffer = struct {
                 var ctx = Context{
                     .buffer = self,
                     .char_start = char_start,
-                    .char_end = char_end,
+                    .char_end = clamped_end,
                     .style_id = style_id,
                     .priority = priority,
                     .hl_ref = hl_ref,
@@ -627,9 +777,9 @@ pub const TextBuffer = struct {
                 iter_mod.walkLines(&backend.rope, &ctx, Context.callback, false);
             },
             .static => |*backend| {
-                if (line_count == 0) return;
                 const total_weight: u32 = backend.total_width + (line_count - 1);
-                if (char_start >= char_end or char_end > total_weight) return;
+                const clamped_end = if (char_end > total_weight) total_weight else char_end;
+                if (char_start >= clamped_end) return;
 
                 var line_idx: u32 = 0;
                 while (line_idx < line_count) : (line_idx += 1) {
@@ -638,10 +788,10 @@ pub const TextBuffer = struct {
                     const line_end = line_start + line_width;
 
                     if (line_end <= char_start) continue;
-                    if (line_start >= char_end) break;
+                    if (line_start >= clamped_end) break;
 
                     const col_start = if (char_start > line_start) char_start - line_start else 0;
-                    const col_end = if (char_end < line_end) char_end - line_start else line_width;
+                    const col_end = if (clamped_end < line_end) clamped_end - line_start else line_width;
 
                     if (col_start < col_end) {
                         self.addHighlight(@intCast(line_idx), col_start, col_end, style_id, priority, hl_ref) catch {};
@@ -652,18 +802,29 @@ pub const TextBuffer = struct {
     }
 
     pub fn removeHighlightsByRef(self: *Self, hl_ref: u16) void {
+        const hl_count: u32 = @intCast(self.highlights.line_highlights.items.len);
+        assert(hl_ref >= 0);
+        assert(hl_count <= Limits.max_lines);
         self.highlights.removeHighlightsByRef(self, lineWidthForHighlights, hl_ref);
     }
 
     pub fn clearLineHighlights(self: *Self, line_idx: usize) void {
+        const hl_count: u32 = @intCast(self.highlights.line_highlights.items.len);
+        assert(hl_count <= Limits.max_lines);
         self.highlights.clearLineHighlights(line_idx);
     }
 
     pub fn clearAllHighlights(self: *Self) void {
+        const hl_count: u32 = @intCast(self.highlights.line_highlights.items.len);
+        const span_count: u32 = @intCast(self.highlights.line_spans.items.len);
+        assert(hl_count <= Limits.max_lines);
+        assert(span_count <= Limits.max_lines);
         self.highlights.clearAllHighlights();
     }
 
     pub fn getLineHighlights(self: *const Self, line_idx: usize) []const Highlight {
+        const hl_count: u32 = @intCast(self.highlights.line_highlights.items.len);
+        assert(hl_count <= Limits.max_lines);
         return self.highlights.getLineHighlights(line_idx);
     }
 
@@ -672,10 +833,16 @@ pub const TextBuffer = struct {
     }
 
     pub fn getHighlightCount(self: *const Self) u32 {
+        const hl_count: u32 = @intCast(self.highlights.line_highlights.items.len);
+        const span_count: u32 = @intCast(self.highlights.line_spans.items.len);
+        assert(hl_count <= Limits.max_lines);
+        assert(span_count <= Limits.max_lines);
         return self.highlights.getHighlightCount();
     }
 
     pub fn getLineSpans(self: *Self, line_idx: usize) []const StyleSpan {
+        const span_count: u32 = @intCast(self.highlights.line_spans.items.len);
+        assert(span_count <= Limits.max_lines);
         return self.highlights.getLineSpans(self, lineWidthForHighlights, line_idx);
     }
 
@@ -686,7 +853,7 @@ pub const TextBuffer = struct {
 
     fn measureTextForStyledText(ctx_ptr: *anyopaque, text: []const u8) u32 {
         const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
-        return shared.measureText(self.width_method, self.tab_width, text);
+        return self.measureText(text);
     }
 
     fn addHighlightByCharRangeForStyledText(
@@ -712,6 +879,11 @@ pub const TextBuffer = struct {
     }
 
     pub fn setStyledText(self: *Self, chunks: []const StyledChunk) TextBufferError!void {
+        const chunk_count: u32 = @intCast(chunks.len);
+        const line_count = self.getLineCount();
+        assert(chunk_count <= Limits.max_segments);
+        assert(line_count >= 1);
+        assert(line_count <= Limits.max_lines);
         if (chunks.len == 0) {
             self.clear();
             self.clearAllHighlights();
@@ -759,6 +931,9 @@ pub const TextBuffer = struct {
     }
 
     pub fn measureText(self: *const Self, text: []const u8) u32 {
+        const text_len: u32 = @intCast(text.len);
+        assert(text_len <= Limits.max_bytes);
+        assert(@as(u32, self.tab_width) <= Limits.max_tab_width);
         return shared.measureText(self.width_method, self.tab_width, text);
     }
 
