@@ -6,10 +6,8 @@ const buffer = @import("buffer.zig");
 const renderer = @import("renderer.zig");
 const gp = @import("grapheme.zig");
 const link = @import("link.zig");
-const handle = @import("text-buffer-handle.zig");
 const text_buffer = @import("text-buffer.zig");
 const text_buffer_view = @import("text-buffer-view.zig");
-const static_text_buffer = @import("static-text-buffer.zig");
 const edit_buffer_mod = @import("edit-buffer.zig");
 const editor_view = @import("editor-view.zig");
 const syntax_style = @import("syntax-style.zig");
@@ -578,255 +576,201 @@ export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dat
     rendererPtr.writeOut(data);
 }
 
-fn asUnifiedBuffer(h: *handle.TextBufferHeader) *text_buffer.UnifiedTextBuffer {
-    return @alignCast(@fieldParentPtr("header", h));
-}
-
-fn asStaticBuffer(h: *handle.TextBufferHeader) *static_text_buffer.StaticTextBuffer {
-    return @alignCast(@fieldParentPtr("header", h));
-}
-
-fn asUnifiedView(h: *handle.TextBufferViewHeader) *text_buffer_view.UnifiedTextBufferView {
-    return @alignCast(@fieldParentPtr("header", h));
-}
-
-fn asStaticView(h: *handle.TextBufferViewHeader) *text_buffer_view.StaticTextBufferView {
-    return @alignCast(@fieldParentPtr("header", h));
-}
-
-fn dispatchBuffer(
-    h: *handle.TextBufferHeader,
-    comptime method_name: []const u8,
-    args: anytype,
-) @TypeOf(@call(.auto, @field(text_buffer.UnifiedTextBuffer, method_name), .{asUnifiedBuffer(h)} ++ args)) {
-    return switch (h.kind) {
-        .unified => @call(.auto, @field(text_buffer.UnifiedTextBuffer, method_name), .{asUnifiedBuffer(h)} ++ args),
-        .static => @call(.auto, @field(static_text_buffer.StaticTextBuffer, method_name), .{asStaticBuffer(h)} ++ args),
-    };
-}
-
-fn dispatchView(
-    h: *handle.TextBufferViewHeader,
-    comptime method_name: []const u8,
-    args: anytype,
-) @TypeOf(@call(.auto, @field(text_buffer_view.UnifiedTextBufferView, method_name), .{asUnifiedView(h)} ++ args)) {
-    return switch (h.kind) {
-        .unified => @call(.auto, @field(text_buffer_view.UnifiedTextBufferView, method_name), .{asUnifiedView(h)} ++ args),
-        .static => @call(.auto, @field(text_buffer_view.StaticTextBufferView, method_name), .{asStaticView(h)} ++ args),
-    };
-}
-
-export fn createTextBuffer(widthMethod: u8, editable: bool) ?*handle.TextBufferHeader {
+export fn createTextBuffer(widthMethod: u8, editable: bool) ?*text_buffer.TextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    if (editable) {
-        const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, wMethod) catch {
-            return null;
-        };
-        return &tb.header;
-    }
-
-    const sb = static_text_buffer.StaticTextBuffer.init(globalAllocator, pool, wMethod) catch {
+    const kind: text_buffer.TextBuffer.BackendKind = if (editable) .unified else .static;
+    const tb = text_buffer.TextBuffer.init(globalAllocator, pool, wMethod, kind) catch {
         return null;
     };
-    return &sb.header;
+    return tb;
 }
 
-export fn destroyTextBuffer(h: *handle.TextBufferHeader) void {
-    dispatchBuffer(h, "deinit", .{});
+export fn destroyTextBuffer(tb: *text_buffer.TextBuffer) void {
+    tb.deinit();
 }
 
-export fn textBufferGetLength(h: *handle.TextBufferHeader) u32 {
-    return dispatchBuffer(h, "getLength", .{});
+export fn textBufferGetLength(tb: *text_buffer.TextBuffer) u32 {
+    return tb.getLength();
 }
 
-export fn textBufferGetByteSize(h: *handle.TextBufferHeader) u32 {
-    return dispatchBuffer(h, "getByteSize", .{});
+export fn textBufferGetByteSize(tb: *text_buffer.TextBuffer) u32 {
+    return tb.getByteSize();
 }
 
-export fn textBufferReset(h: *handle.TextBufferHeader) void {
-    dispatchBuffer(h, "reset", .{});
+export fn textBufferReset(tb: *text_buffer.TextBuffer) void {
+    tb.reset();
 }
 
-export fn textBufferClear(h: *handle.TextBufferHeader) void {
-    dispatchBuffer(h, "clear", .{});
+export fn textBufferClear(tb: *text_buffer.TextBuffer) void {
+    tb.clear();
 }
 
-export fn textBufferSetDefaultFg(h: *handle.TextBufferHeader, fg: ?[*]const f32) void {
+export fn textBufferSetDefaultFg(tb: *text_buffer.TextBuffer, fg: ?[*]const f32) void {
     const fgColor = if (fg) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-    dispatchBuffer(h, "setDefaultFg", .{fgColor});
+    tb.setDefaultFg(fgColor);
 }
 
-export fn textBufferSetDefaultBg(h: *handle.TextBufferHeader, bg: ?[*]const f32) void {
+export fn textBufferSetDefaultBg(tb: *text_buffer.TextBuffer, bg: ?[*]const f32) void {
     const bgColor = if (bg) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
-    dispatchBuffer(h, "setDefaultBg", .{bgColor});
+    tb.setDefaultBg(bgColor);
 }
 
-export fn textBufferSetDefaultAttributes(h: *handle.TextBufferHeader, attr: ?[*]const u32) void {
+export fn textBufferSetDefaultAttributes(tb: *text_buffer.TextBuffer, attr: ?[*]const u32) void {
     const attributes = if (attr) |a| a[0] else null;
-    dispatchBuffer(h, "setDefaultAttributes", .{attributes});
+    tb.setDefaultAttributes(attributes);
 }
 
-export fn textBufferResetDefaults(h: *handle.TextBufferHeader) void {
-    dispatchBuffer(h, "resetDefaults", .{});
+export fn textBufferResetDefaults(tb: *text_buffer.TextBuffer) void {
+    tb.resetDefaults();
 }
 
-export fn textBufferGetTabWidth(h: *handle.TextBufferHeader) u8 {
-    return dispatchBuffer(h, "tabWidth", .{});
+export fn textBufferGetTabWidth(tb: *text_buffer.TextBuffer) u8 {
+    return tb.tabWidth();
 }
 
-export fn textBufferSetTabWidth(h: *handle.TextBufferHeader, width: u8) void {
-    dispatchBuffer(h, "setTabWidth", .{width});
+export fn textBufferSetTabWidth(tb: *text_buffer.TextBuffer, width: u8) void {
+    tb.setTabWidth(width);
 }
 
-export fn textBufferRegisterMemBuffer(h: *handle.TextBufferHeader, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
+export fn textBufferRegisterMemBuffer(tb: *text_buffer.TextBuffer, dataPtr: [*]const u8, dataLen: usize, owned: bool) u16 {
     const data = dataPtr[0..dataLen];
-    const mem_id = dispatchBuffer(h, "registerMemBuffer", .{data, owned}) catch return 0xFFFF;
+    const mem_id = tb.registerMemBuffer(data, owned) catch return 0xFFFF;
     return @intCast(mem_id);
 }
 
-export fn textBufferReplaceMemBuffer(h: *handle.TextBufferHeader, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
+export fn textBufferReplaceMemBuffer(tb: *text_buffer.TextBuffer, id: u8, dataPtr: [*]const u8, dataLen: usize, owned: bool) bool {
     const data = dataPtr[0..dataLen];
-    dispatchBuffer(h, "replaceMemBuffer", .{id, data, owned}) catch return false;
+    tb.replaceMemBuffer(id, data, owned) catch return false;
     return true;
 }
 
-export fn textBufferClearMemRegistry(h: *handle.TextBufferHeader) void {
-    dispatchBuffer(h, "clearMemRegistry", .{});
+export fn textBufferClearMemRegistry(tb: *text_buffer.TextBuffer) void {
+    tb.clearMemRegistry();
 }
 
-export fn textBufferSetTextFromMem(h: *handle.TextBufferHeader, id: u8) void {
-    dispatchBuffer(h, "setTextFromMemId", .{id}) catch {};
+export fn textBufferSetTextFromMem(tb: *text_buffer.TextBuffer, id: u8) void {
+    tb.setTextFromMemId(id) catch {};
 }
 
-export fn textBufferAppend(h: *handle.TextBufferHeader, dataPtr: [*]const u8, dataLen: usize) void {
+export fn textBufferAppend(tb: *text_buffer.TextBuffer, dataPtr: [*]const u8, dataLen: usize) void {
     const data = dataPtr[0..dataLen];
-    dispatchBuffer(h, "append", .{data}) catch {};
+    tb.append(data) catch {};
 }
 
-export fn textBufferAppendFromMemId(h: *handle.TextBufferHeader, id: u8) void {
-    dispatchBuffer(h, "appendFromMemId", .{id}) catch {};
+export fn textBufferAppendFromMemId(tb: *text_buffer.TextBuffer, id: u8) void {
+    tb.appendFromMemId(id) catch {};
 }
 
-export fn textBufferLoadFile(h: *handle.TextBufferHeader, pathPtr: [*]const u8, pathLen: usize) bool {
+export fn textBufferLoadFile(tb: *text_buffer.TextBuffer, pathPtr: [*]const u8, pathLen: usize) bool {
     const path = pathPtr[0..pathLen];
-    dispatchBuffer(h, "loadFile", .{path}) catch return false;
+    tb.loadFile(path) catch return false;
     return true;
 }
 
 export fn textBufferSetStyledText(
-    h: *handle.TextBufferHeader,
+    tb: *text_buffer.TextBuffer,
     chunksPtr: [*]const text_buffer.StyledChunk,
     chunkCount: usize,
 ) void {
     if (chunkCount == 0) return;
     const chunks = chunksPtr[0..chunkCount];
-    dispatchBuffer(h, "setStyledText", .{chunks}) catch {};
+    tb.setStyledText(chunks) catch {};
 }
 
-export fn textBufferGetLineCount(h: *handle.TextBufferHeader) u32 {
-    return dispatchBuffer(h, "getLineCount", .{});
+export fn textBufferGetLineCount(tb: *text_buffer.TextBuffer) u32 {
+    return tb.getLineCount();
 }
 
-export fn textBufferGetPlainText(h: *handle.TextBufferHeader, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferGetPlainText(tb: *text_buffer.TextBuffer, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
-    return dispatchBuffer(h, "getPlainTextIntoBuffer", .{outBuffer});
+    return tb.getPlainTextIntoBuffer(outBuffer);
 }
 
 // TextBufferView functions (Array-based for backward compatibility)
-export fn createTextBufferView(h: *handle.TextBufferHeader) ?*handle.TextBufferViewHeader {
-    switch (h.kind) {
-        .unified => {
-            const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, asUnifiedBuffer(h)) catch {
-                return null;
-            };
-            return &view.header;
-        },
-        .static => {
-            const view = text_buffer_view.StaticTextBufferView.init(globalAllocator, asStaticBuffer(h)) catch {
-                return null;
-            };
-            return &view.header;
-        },
-    }
+export fn createTextBufferView(tb: *text_buffer.TextBuffer) ?*text_buffer_view.TextBufferView {
+    const view = text_buffer_view.TextBufferView.init(globalAllocator, tb) catch {
+        return null;
+    };
+    return view;
 }
 
-export fn destroyTextBufferView(h: *handle.TextBufferViewHeader) void {
-    dispatchView(h, "deinit", .{});
+export fn destroyTextBufferView(view: *text_buffer_view.TextBufferView) void {
+    view.deinit();
 }
 
-export fn textBufferViewSetSelection(h: *handle.TextBufferViewHeader, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+export fn textBufferViewSetSelection(view: *text_buffer_view.TextBufferView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-    dispatchView(h, "setSelection", .{ start, end, bg, fg });
+    view.setSelection(start, end, bg, fg);
 }
 
-export fn textBufferViewResetSelection(h: *handle.TextBufferViewHeader) void {
-    dispatchView(h, "resetSelection", .{});
+export fn textBufferViewResetSelection(view: *text_buffer_view.TextBufferView) void {
+    view.resetSelection();
 }
 
-export fn textBufferViewGetSelectionInfo(h: *handle.TextBufferViewHeader) u64 {
-    return dispatchView(h, "packSelectionInfo", .{});
+export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.TextBufferView) u64 {
+    return view.packSelectionInfo();
 }
 
-export fn textBufferViewSetLocalSelection(h: *handle.TextBufferViewHeader, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+export fn textBufferViewSetLocalSelection(view: *text_buffer_view.TextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-    return dispatchView(h, "setLocalSelection", .{ anchorX, anchorY, focusX, focusY, bg, fg });
+    return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
-export fn textBufferViewUpdateSelection(h: *handle.TextBufferViewHeader, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+export fn textBufferViewUpdateSelection(view: *text_buffer_view.TextBufferView, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-    dispatchView(h, "updateSelection", .{ end, bg, fg });
+    view.updateSelection(end, bg, fg);
 }
 
-export fn textBufferViewUpdateLocalSelection(h: *handle.TextBufferViewHeader, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+export fn textBufferViewUpdateLocalSelection(view: *text_buffer_view.TextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
-    return dispatchView(h, "updateLocalSelection", .{ anchorX, anchorY, focusX, focusY, bg, fg });
+    return view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
-export fn textBufferViewResetLocalSelection(h: *handle.TextBufferViewHeader) void {
-    dispatchView(h, "resetLocalSelection", .{});
+export fn textBufferViewResetLocalSelection(view: *text_buffer_view.TextBufferView) void {
+    view.resetLocalSelection();
 }
 
-export fn textBufferViewSetWrapWidth(h: *handle.TextBufferViewHeader, width: u32) void {
+export fn textBufferViewSetWrapWidth(view: *text_buffer_view.TextBufferView, width: u32) void {
     const wrap_width = if (width == 0) null else width;
-    dispatchView(h, "setWrapWidth", .{wrap_width});
+    view.setWrapWidth(wrap_width);
 }
 
-export fn textBufferViewSetWrapMode(h: *handle.TextBufferViewHeader, mode: u8) void {
+export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferView, mode: u8) void {
     const wrapMode: text_buffer.WrapMode = switch (mode) {
         0 => .none,
         1 => .char,
         2 => .word,
         else => .none,
     };
-    dispatchView(h, "setWrapMode", .{wrapMode});
+    view.setWrapMode(wrapMode);
 }
 
-export fn textBufferViewSetViewportSize(h: *handle.TextBufferViewHeader, width: u32, height: u32) void {
-    dispatchView(h, "setViewportSize", .{ width, height });
+export fn textBufferViewSetViewportSize(view: *text_buffer_view.TextBufferView, width: u32, height: u32) void {
+    view.setViewportSize(width, height);
 }
 
-export fn textBufferViewSetViewport(h: *handle.TextBufferViewHeader, x: u32, y: u32, width: u32, height: u32) void {
+export fn textBufferViewSetViewport(view: *text_buffer_view.TextBufferView, x: u32, y: u32, width: u32, height: u32) void {
     const viewport = text_buffer_view.Viewport{
         .x = x,
         .y = y,
         .width = width,
         .height = height,
     };
-    dispatchView(h, "setViewport", .{viewport});
+    view.setViewport(viewport);
 }
 
-export fn textBufferViewGetVirtualLineCount(h: *handle.TextBufferViewHeader) u32 {
-    return dispatchView(h, "getVirtualLineCount", .{});
+export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.TextBufferView) u32 {
+    return view.getVirtualLineCount();
 }
 
-export fn textBufferViewGetLineInfoDirect(h: *handle.TextBufferViewHeader, outPtr: *ExternalLineInfo) void {
-    const line_info = dispatchView(h, "getCachedLineInfo", .{});
+export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.TextBufferView, outPtr: *ExternalLineInfo) void {
+    const line_info = view.getCachedLineInfo();
 
     outPtr.* = .{
         .starts_ptr = line_info.starts.ptr,
@@ -841,8 +785,8 @@ export fn textBufferViewGetLineInfoDirect(h: *handle.TextBufferViewHeader, outPt
     };
 }
 
-export fn textBufferViewGetLogicalLineInfoDirect(h: *handle.TextBufferViewHeader, outPtr: *ExternalLineInfo) void {
-    const line_info = dispatchView(h, "getLogicalLineInfo", .{});
+export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.TextBufferView, outPtr: *ExternalLineInfo) void {
+    const line_info = view.getLogicalLineInfo();
 
     outPtr.* = .{
         .starts_ptr = line_info.starts.ptr,
@@ -857,27 +801,27 @@ export fn textBufferViewGetLogicalLineInfoDirect(h: *handle.TextBufferViewHeader
     };
 }
 
-export fn textBufferViewGetSelectedText(h: *handle.TextBufferViewHeader, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferViewGetSelectedText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
-    return dispatchView(h, "getSelectedTextIntoBuffer", .{outBuffer});
+    return view.getSelectedTextIntoBuffer(outBuffer);
 }
 
-export fn textBufferViewGetPlainText(h: *handle.TextBufferViewHeader, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferViewGetPlainText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
-    return dispatchView(h, "getPlainTextIntoBuffer", .{outBuffer});
+    return view.getPlainTextIntoBuffer(outBuffer);
 }
 
-export fn textBufferViewSetTabIndicator(h: *handle.TextBufferViewHeader, indicator: u32) void {
-    dispatchView(h, "setTabIndicator", .{indicator});
+export fn textBufferViewSetTabIndicator(view: *text_buffer_view.TextBufferView, indicator: u32) void {
+    view.setTabIndicator(indicator);
 }
 
-export fn textBufferViewSetTabIndicatorColor(h: *handle.TextBufferViewHeader, color: [*]const f32) void {
+export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.TextBufferView, color: [*]const f32) void {
     const rgba = utils.f32PtrToRGBA(color);
-    dispatchView(h, "setTabIndicatorColor", .{rgba});
+    view.setTabIndicatorColor(rgba);
 }
 
-export fn textBufferViewSetTruncate(h: *handle.TextBufferViewHeader, truncate: bool) void {
-    dispatchView(h, "setTruncate", .{truncate});
+export fn textBufferViewSetTruncate(view: *text_buffer_view.TextBufferView, truncate: bool) void {
+    view.setTruncate(truncate);
 }
 
 pub const ExternalMeasureResult = extern struct {
@@ -885,8 +829,8 @@ pub const ExternalMeasureResult = extern struct {
     max_width: u32,
 };
 
-export fn textBufferViewMeasureForDimensions(h: *handle.TextBufferViewHeader, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
-    const result = dispatchView(h, "measureForDimensions", .{ width, height }) catch return false;
+export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.TextBufferView, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
+    const result = view.measureForDimensions(width, height) catch return false;
     outPtr.* = .{
         .line_count = result.line_count,
         .max_width = result.max_width,
@@ -911,9 +855,8 @@ export fn destroyEditBuffer(edit_buffer: *edit_buffer_mod.EditBuffer) void {
     edit_buffer.deinit();
 }
 
-export fn editBufferGetTextBuffer(edit_buffer: *edit_buffer_mod.EditBuffer) *handle.TextBufferHeader {
-    const tb = edit_buffer.getTextBuffer();
-    return &tb.header;
+export fn editBufferGetTextBuffer(edit_buffer: *edit_buffer_mod.EditBuffer) *text_buffer.TextBuffer {
+    return edit_buffer.getTextBuffer();
 }
 
 export fn editBufferInsertText(edit_buffer: *edit_buffer_mod.EditBuffer, textPtr: [*]const u8, textLen: usize) void {
@@ -998,7 +941,7 @@ export fn editBufferGetEOL(edit_buffer: *edit_buffer_mod.EditBuffer, outPtr: *Ex
 
 export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, offset: u32, outPtr: *ExternalLogicalCursor) bool {
     const iter_mod = @import("text-buffer-iterators.zig");
-    const coords = iter_mod.offsetToCoords(&edit_buffer.tb.rope, offset) orelse return false;
+    const coords = iter_mod.offsetToCoords(edit_buffer.tb.rope(), offset) orelse return false;
     outPtr.* = .{
         .row = coords.row,
         .col = coords.col,
@@ -1009,12 +952,12 @@ export fn editBufferOffsetToPosition(edit_buffer: *edit_buffer_mod.EditBuffer, o
 
 export fn editBufferPositionToOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32, col: u32) u32 {
     const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, col) orelse 0;
+    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, col) orelse 0;
 }
 
 export fn editBufferGetLineStartOffset(edit_buffer: *edit_buffer_mod.EditBuffer, row: u32) u32 {
     const iter_mod = @import("text-buffer-iterators.zig");
-    return iter_mod.coordsToOffset(&edit_buffer.tb.rope, row, 0) orelse 0;
+    return iter_mod.coordsToOffset(edit_buffer.tb.rope(), row, 0) orelse 0;
 }
 
 export fn editBufferGetTextRange(edit_buffer: *edit_buffer_mod.EditBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
@@ -1171,9 +1114,8 @@ export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, outPtr: *Ex
     };
 }
 
-export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *handle.TextBufferViewHeader {
-    const tbv = view.getTextBufferView();
-    return &tbv.header;
+export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffer_view.TextBufferView {
+    return view.getTextBufferView();
 }
 
 export fn editorViewGetLogicalLineInfoDirect(view: *editor_view.EditorView, outPtr: *ExternalLineInfo) void {
@@ -1378,14 +1320,11 @@ export fn bufferDrawEditorView(
 
 export fn bufferDrawTextBufferView(
     bufferPtr: *buffer.OptimizedBuffer,
-    viewPtr: *handle.TextBufferViewHeader,
+    viewPtr: *text_buffer_view.TextBufferView,
     x: i32,
     y: i32,
 ) void {
-    switch (viewPtr.kind) {
-        .unified => bufferPtr.drawTextBuffer(asUnifiedView(viewPtr), x, y) catch {},
-        .static => bufferPtr.drawTextBuffer(asStaticView(viewPtr), x, y) catch {},
-    }
+    bufferPtr.drawTextBuffer(viewPtr, x, y) catch {};
 }
 
 pub const ExternalHighlight = extern struct {
@@ -1423,45 +1362,45 @@ pub const ExternalLineInfo = extern struct {
 };
 
 export fn textBufferAddHighlightByCharRange(
-    h: *handle.TextBufferHeader,
+    tb: *text_buffer.TextBuffer,
     hl_ptr: [*]const ExternalHighlight,
 ) void {
     const hl = hl_ptr[0];
-    dispatchBuffer(h, "addHighlightByCharRange", .{ hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref }) catch {};
+    tb.addHighlightByCharRange(hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
 export fn textBufferAddHighlight(
-    h: *handle.TextBufferHeader,
+    tb: *text_buffer.TextBuffer,
     line_idx: u32,
     hl_ptr: [*]const ExternalHighlight,
 ) void {
     const hl = hl_ptr[0];
     // For line-based highlights, start/end are column offsets
-    dispatchBuffer(h, "addHighlight", .{ line_idx, hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref }) catch {};
+    tb.addHighlight(line_idx, hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
-export fn textBufferRemoveHighlightsByRef(h: *handle.TextBufferHeader, hl_ref: u16) void {
-    dispatchBuffer(h, "removeHighlightsByRef", .{hl_ref});
+export fn textBufferRemoveHighlightsByRef(tb: *text_buffer.TextBuffer, hl_ref: u16) void {
+    tb.removeHighlightsByRef(hl_ref);
 }
 
-export fn textBufferClearLineHighlights(h: *handle.TextBufferHeader, line_idx: u32) void {
-    dispatchBuffer(h, "clearLineHighlights", .{line_idx});
+export fn textBufferClearLineHighlights(tb: *text_buffer.TextBuffer, line_idx: u32) void {
+    tb.clearLineHighlights(line_idx);
 }
 
-export fn textBufferClearAllHighlights(h: *handle.TextBufferHeader) void {
-    dispatchBuffer(h, "clearAllHighlights", .{});
+export fn textBufferClearAllHighlights(tb: *text_buffer.TextBuffer) void {
+    tb.clearAllHighlights();
 }
 
-export fn textBufferSetSyntaxStyle(h: *handle.TextBufferHeader, style: ?*syntax_style.SyntaxStyle) void {
-    dispatchBuffer(h, "setSyntaxStyle", .{style});
+export fn textBufferSetSyntaxStyle(tb: *text_buffer.TextBuffer, style: ?*syntax_style.SyntaxStyle) void {
+    tb.setSyntaxStyle(style);
 }
 
 export fn textBufferGetLineHighlightsPtr(
-    h: *handle.TextBufferHeader,
+    tb: *text_buffer.TextBuffer,
     line_idx: u32,
     out_count: *usize,
 ) ?[*]const ExternalHighlight {
-    const highs = dispatchBuffer(h, "getLineHighlightsSlice", .{line_idx});
+    const highs = tb.getLineHighlightsSlice(@intCast(line_idx));
 
     if (highs.len == 0) {
         out_count.* = 0;
@@ -1488,18 +1427,18 @@ export fn textBufferFreeLineHighlights(ptr: [*]const ExternalHighlight, count: u
     globalAllocator.free(@constCast(ptr)[0..count]);
 }
 
-export fn textBufferGetHighlightCount(h: *handle.TextBufferHeader) u32 {
-    return dispatchBuffer(h, "getHighlightCount", .{});
+export fn textBufferGetHighlightCount(tb: *text_buffer.TextBuffer) u32 {
+    return tb.getHighlightCount();
 }
 
-export fn textBufferGetTextRange(h: *handle.TextBufferHeader, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferGetTextRange(tb: *text_buffer.TextBuffer, start_offset: u32, end_offset: u32, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
-    return dispatchBuffer(h, "getTextRange", .{ start_offset, end_offset, outBuffer });
+    return tb.getTextRange(start_offset, end_offset, outBuffer);
 }
 
-export fn textBufferGetTextRangeByCoords(h: *handle.TextBufferHeader, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferGetTextRangeByCoords(tb: *text_buffer.TextBuffer, start_row: u32, start_col: u32, end_row: u32, end_col: u32, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
-    return dispatchBuffer(h, "getTextRangeByCoords", .{ start_row, start_col, end_row, end_col, outBuffer });
+    return tb.getTextRangeByCoords(start_row, start_col, end_row, end_col, outBuffer);
 }
 
 // SyntaxStyle functions

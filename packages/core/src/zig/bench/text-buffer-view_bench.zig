@@ -1,14 +1,13 @@
 const std = @import("std");
 const bench_utils = @import("../bench-utils.zig");
 const text_buffer = @import("../text-buffer.zig");
-const static_text_buffer = @import("../static-text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
-const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
-const StaticTextBuffer = static_text_buffer.StaticTextBuffer;
-const UnifiedTextBufferView = text_buffer_view.UnifiedTextBufferView;
-const StaticTextBufferView = text_buffer_view.StaticTextBufferView;
+const UnifiedTextBuffer = text_buffer.TextBuffer;
+const StaticTextBuffer = text_buffer.TextBuffer;
+const UnifiedTextBufferView = text_buffer_view.TextBufferView;
+const StaticTextBufferView = text_buffer_view.TextBufferView;
 const WrapMode = text_buffer.WrapMode;
 const BenchResult = bench_utils.BenchResult;
 const BenchStats = bench_utils.BenchStats;
@@ -112,7 +111,7 @@ fn benchSetText(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .unified);
                 defer tb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -162,7 +161,7 @@ fn benchSetText(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .unified);
                 defer tb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -209,7 +208,7 @@ fn benchWrap(
     var final_view_mem: usize = 0;
 
     for (0..iterations) |i| {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .unified);
         defer tb.deinit();
 
         try tb.setText(text);
@@ -270,7 +269,7 @@ fn benchMeasureForDimensionsLayout(
     const newline_stride: usize = 20;
 
     for (0..iterations) |i| {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .unified);
         defer tb.deinit();
 
         try tb.setText(text);
@@ -347,7 +346,7 @@ fn benchSetTextStatic(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var sb = try StaticTextBuffer.init(allocator, pool, .unicode);
+                var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
                 defer sb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -355,7 +354,7 @@ fn benchSetTextStatic(
                 stats.record(timer.read());
 
                 if (i == iterations - 1 and show_mem) {
-                    final_mem = sb.arena.queryCapacity();
+                    final_mem = sb.getArenaAllocatedBytes();
                 }
             }
 
@@ -397,7 +396,7 @@ fn benchSetTextStatic(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var sb = try StaticTextBuffer.init(allocator, pool, .unicode);
+                var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
                 defer sb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -405,7 +404,7 @@ fn benchSetTextStatic(
                 stats.record(timer.read());
 
                 if (i == iterations - 1 and show_mem) {
-                    final_mem = sb.arena.queryCapacity();
+                    final_mem = sb.getArenaAllocatedBytes();
                 }
             }
 
@@ -445,7 +444,7 @@ fn benchWrapStatic(
     var final_view_mem: usize = 0;
 
     for (0..iterations) |i| {
-        var sb = try StaticTextBuffer.init(allocator, pool, .unicode);
+        var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
         defer sb.deinit();
 
         try sb.setText(text);
@@ -462,7 +461,7 @@ fn benchWrapStatic(
         _ = count;
 
         if (i == iterations - 1 and show_mem) {
-            final_tb_mem = sb.arena.queryCapacity();
+            final_tb_mem = sb.getArenaAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
         }
     }
@@ -502,7 +501,7 @@ fn benchMeasureForDimensionsLayoutStatic(
     var final_view_mem: usize = 0;
 
     for (0..iterations) |i| {
-        var sb = try StaticTextBuffer.init(allocator, pool, .unicode);
+        var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
         defer sb.deinit();
 
         try sb.setText(text);
@@ -522,7 +521,7 @@ fn benchMeasureForDimensionsLayoutStatic(
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
-            final_tb_mem = sb.arena.queryCapacity();
+            final_tb_mem = sb.getArenaAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
         }
     }
