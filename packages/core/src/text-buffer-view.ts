@@ -1,21 +1,21 @@
 import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
-import type { TextBuffer } from "./text-buffer"
+import type { UnifiedTextBuffer } from "./text-buffer"
 
 export class TextBufferView {
   private lib: RenderLib
   private viewPtr: Pointer
-  private textBuffer: TextBuffer
+  private textBuffer: UnifiedTextBuffer
   private _destroyed: boolean = false
 
-  constructor(lib: RenderLib, ptr: Pointer, textBuffer: TextBuffer) {
+  constructor(lib: RenderLib, ptr: Pointer, textBuffer: UnifiedTextBuffer) {
     this.lib = lib
     this.viewPtr = ptr
     this.textBuffer = textBuffer
   }
 
-  static create(textBuffer: TextBuffer): TextBufferView {
+  static create(textBuffer: UnifiedTextBuffer): TextBufferView {
     const lib = resolveRenderLib()
     const viewPtr = lib.createTextBufferView(textBuffer.ptr)
     return new TextBufferView(lib, viewPtr, textBuffer)

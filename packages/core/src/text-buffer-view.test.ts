@@ -1,15 +1,15 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { TextBuffer } from "./text-buffer"
+import { UnifiedTextBuffer } from "./text-buffer"
 import { TextBufferView } from "./text-buffer-view"
 import { StyledText, stringToStyledText } from "./lib/styled-text"
 import { RGBA } from "./lib/RGBA"
 
 describe("TextBufferView", () => {
-  let buffer: TextBuffer
+  let buffer: UnifiedTextBuffer
   let view: TextBufferView
 
   beforeEach(() => {
-    buffer = TextBuffer.create("wcwidth")
+    buffer = UnifiedTextBuffer.create("wcwidth")
     view = TextBufferView.create(buffer)
   })
 

@@ -98,7 +98,7 @@ pub const EditBuffer = struct {
         const self = try allocator.create(EditBuffer);
         errdefer allocator.destroy(self);
 
-        const text_buffer = try TextBuffer.init(allocator, pool, width_method, .unified);
+        const text_buffer = try TextBuffer.init(allocator, pool, width_method, .rope);
         errdefer text_buffer.deinit();
 
         const add_buffer = try AddBuffer.init(allocator, text_buffer, 65536);

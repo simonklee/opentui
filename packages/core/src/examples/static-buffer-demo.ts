@@ -28,7 +28,7 @@ import {
   blue,
   type KeyEvent,
 } from ".."
-import { TextBuffer } from "../text-buffer"
+import { UnifiedTextBuffer } from "../text-buffer"
 import { TextBufferView } from "../text-buffer-view"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -40,8 +40,8 @@ let statusText: TextRenderable | null = null
 let metricsText: TextRenderable | null = null
 
 // Direct buffer references for metrics
-let staticBuffer: TextBuffer | null = null
-let unifiedBuffer: TextBuffer | null = null
+let staticBuffer: UnifiedTextBuffer | null = null
+let unifiedBuffer: UnifiedTextBuffer | null = null
 let staticView: TextBufferView | null = null
 let unifiedView: TextBufferView | null = null
 
@@ -102,10 +102,10 @@ function clearUpdateInterval(): void {
 
 function createBufferPair(renderer: CliRenderer): void {
   // Create static buffer (default)
-  staticBuffer = TextBuffer.create(renderer.widthMethod, { editable: false })
+  staticBuffer = UnifiedTextBuffer.create(renderer.widthMethod, { editable: false })
 
   // Create unified buffer (editable)
-  unifiedBuffer = TextBuffer.create(renderer.widthMethod, { editable: true })
+  unifiedBuffer = UnifiedTextBuffer.create(renderer.widthMethod, { editable: true })
 
   // Create views for both
   staticView = TextBufferView.create(staticBuffer)

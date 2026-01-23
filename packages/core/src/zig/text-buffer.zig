@@ -8,7 +8,7 @@ const highlight_mod = @import("text-buffer-highlights.zig");
 const shared = @import("text-buffer-shared.zig");
 const ss = @import("syntax-style.zig");
 const gp = @import("grapheme.zig");
-const unified_backend = @import("text-buffer-backend-unified.zig");
+const rope_backend = @import("text-buffer-backend-rope.zig");
 const static_backend = @import("text-buffer-backend-static.zig");
 
 const utf8 = @import("utf8.zig");
@@ -29,7 +29,7 @@ pub const StyleSpan = seg_mod.StyleSpan;
 pub const WrapMode = seg_mod.WrapMode;
 pub const ChunkFitResult = seg_mod.ChunkFitResult;
 pub const GraphemeInfo = seg_mod.GraphemeInfo;
-pub const SegmentsResult = unified_backend.SegmentsResult;
+pub const SegmentsResult = rope_backend.SegmentsResult;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
 
@@ -38,9 +38,9 @@ pub const StyledChunk = shared.StyledChunk;
 pub const TextBuffer = struct {
     const Self = @This();
 
-    pub const BackendKind = enum { unified, static };
+    pub const BackendKind = enum { rope, static };
     pub const Backend = union(BackendKind) {
-        unified: unified_backend.UnifiedBackend,
+        rope: rope_backend.RopeBackend,
         static: static_backend.StaticBackend,
     };
 
@@ -89,11 +89,11 @@ pub const TextBuffer = struct {
         errdefer highlights.deinit();
 
         var backend: Backend = switch (kind) {
-            .unified => .{ .unified = try unified_backend.UnifiedBackend.init(global_allocator, width_method) },
+            .rope => .{ .rope = try rope_backend.RopeBackend.init(global_allocator, width_method) },
             .static => .{ .static = try static_backend.StaticBackend.init(global_allocator, width_method) },
         };
         errdefer switch (backend) {
-            .unified => |*backend_unified| backend_unified.deinit(global_allocator),
+            .rope => |*backend_rope| backend_rope.deinit(global_allocator),
             .static => |*backend_static| backend_static.deinit(global_allocator),
         };
 
@@ -134,7 +134,7 @@ pub const TextBuffer = struct {
         self.mem_registry.deinit();
 
         switch (self.backend) {
-            .unified => |*backend| backend.deinit(self.global_allocator),
+            .rope => |*backend| backend.deinit(self.global_allocator),
             .static => |*backend| backend.deinit(self.global_allocator),
         }
 
@@ -160,7 +160,7 @@ pub const TextBuffer = struct {
         assert(line_count >= 1);
         assert(line_count <= Limits.max_lines);
         return switch (self.backend) {
-            .unified => |*backend| backend.allocator(),
+            .rope => |*backend| backend.allocator(),
             .static => |*backend| backend.allocator(),
         };
     }
@@ -190,7 +190,7 @@ pub const TextBuffer = struct {
         self.tab_width = new_width;
 
         switch (self.backend) {
-            .unified => |*backend| {
+            .rope => |*backend| {
                 _ = backend.setTabWidth(new_width);
             },
             .static => |*backend| {
@@ -314,21 +314,21 @@ pub const TextBuffer = struct {
 
     pub fn getLength(self: *const Self) u32 {
         return switch (self.backend) {
-            .unified => |*backend| backend.getLength(),
+            .rope => |*backend| backend.getLength(),
             .static => |*backend| backend.getLength(),
         };
     }
 
     pub fn getByteSize(self: *const Self) u32 {
         return switch (self.backend) {
-            .unified => |*backend| backend.getByteSize(),
+            .rope => |*backend| backend.getByteSize(),
             .static => |*backend| backend.getByteSize(),
         };
     }
 
     pub fn getLineCount(self: *const Self) u32 {
         const line_count = switch (self.backend) {
-            .unified => |*backend| backend.getLineCount(),
+            .rope => |*backend| backend.getLineCount(),
             .static => |*backend| backend.getLineCount(),
         };
         assert(line_count >= 1);
@@ -344,14 +344,14 @@ pub const TextBuffer = struct {
         const line_count = self.getLineCount();
         assert(row < line_count);
         return switch (self.backend) {
-            .unified => |*backend| backend.lineWidthAt(row),
+            .rope => |*backend| backend.lineWidthAt(row),
             .static => |*backend| backend.lineWidthAt(row),
         };
     }
 
     pub fn maxLineWidth(self: *const Self) u32 {
         return switch (self.backend) {
-            .unified => |*backend| backend.maxLineWidth(),
+            .rope => |*backend| backend.maxLineWidth(),
             .static => |*backend| backend.maxLineWidth(),
         };
     }
@@ -361,7 +361,7 @@ pub const TextBuffer = struct {
         assert(line_count >= 1);
         assert(line_count <= Limits.max_lines);
         switch (self.backend) {
-            .unified => |*backend| backend.clear(),
+            .rope => |*backend| backend.clear(),
             .static => |*backend| backend.clear(),
         }
         self.markAllViewsDirty();
@@ -383,7 +383,7 @@ pub const TextBuffer = struct {
         self.mem_registry.clear();
 
         switch (self.backend) {
-            .unified => |*backend| backend.reset(),
+            .rope => |*backend| backend.reset(),
             .static => |*backend| backend.reset(),
         }
 
@@ -430,7 +430,7 @@ pub const TextBuffer = struct {
     fn appendInternal(self: *Self, mem_id: u8, text: []const u8) TextBufferError!void {
         _ = text;
         switch (self.backend) {
-            .unified => |*backend| try backend.appendFromMemId(&self.mem_registry, mem_id),
+            .rope => |*backend| try backend.appendFromMemId(&self.mem_registry, mem_id),
             .static => |*backend| try backend.appendFromMemId(&self.mem_registry, mem_id),
         }
         self.markAllViewsDirty();
@@ -441,7 +441,7 @@ pub const TextBuffer = struct {
         assert(text_len <= Limits.max_bytes);
         assert(self.mem_registry.get(mem_id) != null);
         switch (self.backend) {
-            .unified => |*backend| try backend.setTextFromMemId(&self.mem_registry, mem_id),
+            .rope => |*backend| try backend.setTextFromMemId(&self.mem_registry, mem_id),
             .static => |*backend| try backend.setTextFromMemId(&self.mem_registry, mem_id),
         }
         self.markAllViewsDirty();
@@ -456,7 +456,7 @@ pub const TextBuffer = struct {
         prepend_linestart: bool,
     ) TextBufferError!SegmentsResult {
         return switch (self.backend) {
-            .unified => |*backend| backend.textToSegments(alloc, &self.mem_registry, text, mem_id, byte_offset, prepend_linestart),
+            .rope => |*backend| backend.textToSegments(alloc, &self.mem_registry, text, mem_id, byte_offset, prepend_linestart),
             .static => TextBufferError.Unsupported,
         };
     }
@@ -495,7 +495,7 @@ pub const TextBuffer = struct {
         assert(line_count <= Limits.max_lines);
         assert(out_len <= Limits.max_bytes);
         return switch (self.backend) {
-            .unified => |*backend| backend.getPlainTextIntoBuffer(&self.mem_registry, out_buffer),
+            .rope => |*backend| backend.getPlainTextIntoBuffer(&self.mem_registry, out_buffer),
             .static => |*backend| backend.getPlainTextIntoBuffer(&self.mem_registry, out_buffer),
         };
     }
@@ -508,7 +508,7 @@ pub const TextBuffer = struct {
         assert(start_offset <= end_offset);
         assert(out_len <= Limits.max_bytes);
         return switch (self.backend) {
-            .unified => |*backend| backend.getTextRange(&self.mem_registry, start_offset, end_offset, out_buffer),
+            .rope => |*backend| backend.getTextRange(&self.mem_registry, start_offset, end_offset, out_buffer),
             .static => |*backend| backend.getTextRange(&self.mem_registry, start_offset, end_offset, out_buffer),
         };
     }
@@ -530,7 +530,7 @@ pub const TextBuffer = struct {
         assert(line_count <= Limits.max_lines);
         assert(out_len <= Limits.max_bytes);
         return switch (self.backend) {
-            .unified => |*backend| backend.getTextRangeByCoords(&self.mem_registry, start_row, start_col, end_row, end_col, out_buffer),
+            .rope => |*backend| backend.getTextRangeByCoords(&self.mem_registry, start_row, start_col, end_row, end_col, out_buffer),
             .static => |*backend| backend.getTextRangeByCoords(&self.mem_registry, start_row, start_col, end_row, end_col, out_buffer),
         };
     }
@@ -579,7 +579,7 @@ pub const TextBuffer = struct {
         _ = self.mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
 
         switch (self.backend) {
-            .unified => |*backend| {
+            .rope => |*backend| {
                 const chunk = self.createChunk(mem_id, byte_start, byte_end);
                 const had_content = backend.rope.count() > 1;
 
@@ -600,14 +600,14 @@ pub const TextBuffer = struct {
 
     pub fn getArenaAllocatedBytes(self: *const Self) usize {
         return switch (self.backend) {
-            .unified => |*backend| backend.getArenaAllocatedBytes(),
+            .rope => |*backend| backend.getArenaAllocatedBytes(),
             .static => |*backend| backend.getArenaAllocatedBytes(),
         };
     }
 
     pub fn debugLogRope(self: *const Self) void {
         switch (self.backend) {
-            .unified => |*backend| backend.debugLogRope(),
+            .rope => |*backend| backend.debugLogRope(),
             .static => logger.debug("Static backend has no rope to dump", .{}),
         }
     }
@@ -619,14 +619,14 @@ pub const TextBuffer = struct {
         line_end_callback: *const fn (ctx: *anyopaque, line_info: LineInfo) void,
     ) void {
         switch (self.backend) {
-            .unified => |*backend| backend.walkLinesAndSegments(ctx, segment_callback, line_end_callback),
+            .rope => |*backend| backend.walkLinesAndSegments(ctx, segment_callback, line_end_callback),
             .static => |*backend| backend.walkLinesAndSegments(ctx, segment_callback, line_end_callback),
         }
     }
 
     fn coordsToOffset(self: *const Self, row: u32, col: u32) ?u32 {
         return switch (self.backend) {
-            .unified => |*backend| iter_mod.coordsToOffset(@constCast(&backend.rope), row, col),
+            .rope => |*backend| iter_mod.coordsToOffset(@constCast(&backend.rope), row, col),
             .static => |*backend| blk: {
                 const line_count = backend.getLineCount();
                 if (row >= line_count) break :blk null;
@@ -725,7 +725,7 @@ pub const TextBuffer = struct {
         }
 
         switch (self.backend) {
-            .unified => |*backend| {
+            .rope => |*backend| {
                 const total_weight = backend.rope.totalWeight();
                 const clamped_end = if (char_end > total_weight) total_weight else char_end;
                 if (char_start >= clamped_end) return;
@@ -901,7 +901,7 @@ pub const TextBuffer = struct {
         self.clearAllHighlights();
 
         switch (self.backend) {
-            .unified => |*backend| {
+            .rope => |*backend| {
                 _ = backend.arena.reset(.retain_capacity);
                 backend.rope = UnifiedRope.init(backend.arena_allocator) catch return TextBufferError.OutOfMemory;
             },
@@ -939,7 +939,7 @@ pub const TextBuffer = struct {
 
     pub fn rope(self: *Self) *UnifiedRope {
         return switch (self.backend) {
-            .unified => |*backend| &backend.rope,
+            .rope => |*backend| &backend.rope,
             .static => @panic("Static backend has no rope"),
         };
     }

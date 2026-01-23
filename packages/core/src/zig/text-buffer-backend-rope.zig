@@ -20,7 +20,7 @@ pub const SegmentsResult = struct {
     allocator: Allocator,
 };
 
-pub const UnifiedBackend = struct {
+pub const RopeBackend = struct {
     const Self = @This();
 
     arena_allocator: Allocator,

@@ -111,7 +111,7 @@ fn benchSetText(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .unified);
+                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
                 defer tb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -161,7 +161,7 @@ fn benchSetText(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .unified);
+                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
                 defer tb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -208,7 +208,7 @@ fn benchWrap(
     var final_view_mem: usize = 0;
 
     for (0..iterations) |i| {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .unified);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
         defer tb.deinit();
 
         try tb.setText(text);
@@ -269,7 +269,7 @@ fn benchMeasureForDimensionsLayout(
     const newline_stride: usize = 20;
 
     for (0..iterations) |i| {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .unified);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
         defer tb.deinit();
 
         try tb.setText(text);

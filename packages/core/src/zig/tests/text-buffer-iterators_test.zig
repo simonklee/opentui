@@ -357,7 +357,7 @@ test "getGraphemeWidthAt - ASCII text" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -376,7 +376,7 @@ test "getGraphemeWidthAt - emoji and wide characters" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("a😀b");
@@ -392,7 +392,7 @@ test "getGraphemeWidthAt - multiple chunks" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -410,7 +410,7 @@ test "getGraphemeWidthAt - empty line" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("");
@@ -423,7 +423,7 @@ test "getGraphemeWidthAt - at chunk boundary" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("abcdef");
@@ -436,7 +436,7 @@ test "getGraphemeWidthAt - after break segment" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("abc\ndef");
@@ -451,7 +451,7 @@ test "getPrevGraphemeWidth - ASCII text" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -469,7 +469,7 @@ test "getPrevGraphemeWidth - emoji and wide characters" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("a😀b");
@@ -485,7 +485,7 @@ test "getPrevGraphemeWidth - at chunk boundary" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("abcdef");
@@ -500,7 +500,7 @@ test "getPrevGraphemeWidth - emoji at chunk boundary" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("a😀b");
@@ -513,7 +513,7 @@ test "getPrevGraphemeWidth - multiple chunks" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello 😀");
@@ -529,7 +529,7 @@ test "getPrevGraphemeWidth - empty line" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("");
@@ -542,7 +542,7 @@ test "getPrevGraphemeWidth - col beyond line width" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("abc");
@@ -555,7 +555,7 @@ test "getPrevGraphemeWidth - multiline" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("abc\n😀xyz");
@@ -572,7 +572,7 @@ test "getGraphemeWidthAt - CJK characters (Chinese)" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("a世界b");
@@ -589,7 +589,7 @@ test "getGraphemeWidthAt - various emoji including star" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("🌟🎉");
@@ -604,7 +604,7 @@ test "getGraphemeWidthAt - tab characters" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
     tb.setTabWidth(4);
 
@@ -623,7 +623,7 @@ test "getGraphemeWidthAt - tab with different tab_width" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("x\ty");
@@ -640,7 +640,7 @@ test "getGraphemeWidthAt - middle of wide character" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("世");
@@ -655,7 +655,7 @@ test "getGraphemeWidthAt - invalid row" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("test");
@@ -668,7 +668,7 @@ test "getPrevGraphemeWidth - CJK characters" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("a世界b");
@@ -685,7 +685,7 @@ test "getPrevGraphemeWidth - star emoji" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("x🌟y");
@@ -700,7 +700,7 @@ test "getPrevGraphemeWidth - tabs" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
     tb.setTabWidth(4);
 
@@ -716,7 +716,7 @@ test "getPrevGraphemeWidth - invalid row" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("test");
@@ -729,7 +729,7 @@ test "getGraphemeWidthAt and getPrevGraphemeWidth - mixed content" {
     defer gp.deinitGlobalPool();
 
 
-    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
     tb.setTabWidth(4);
 

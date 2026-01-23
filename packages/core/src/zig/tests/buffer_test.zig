@@ -151,7 +151,7 @@ test "OptimizedBuffer - drawTextBuffer repeatedly should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -265,7 +265,7 @@ test "OptimizedBuffer - large text buffer with wrapping repeated render" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -366,7 +366,7 @@ test "OptimizedBuffer - drawTextBuffer without clear should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -398,7 +398,7 @@ test "OptimizedBuffer - many small graphemes without clear" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -430,7 +430,7 @@ test "OptimizedBuffer - stress test with many graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -474,7 +474,7 @@ test "OptimizedBuffer - pool slot exhaustion test" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -515,7 +515,7 @@ test "OptimizedBuffer - many unique graphemes with small pool" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -571,7 +571,7 @@ test "OptimizedBuffer - continuous rendering without buffer recreation" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -597,7 +597,7 @@ test "OptimizedBuffer - multiple buffers rendering same TextBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -644,7 +644,7 @@ test "OptimizedBuffer - continuous render without clear with small pool" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -676,7 +676,7 @@ test "OptimizedBuffer - graphemes with scissor clipping and small pool" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -942,7 +942,7 @@ test "OptimizedBuffer - repeated drawTextBuffer without clear should not leak" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -974,7 +974,7 @@ test "OptimizedBuffer - renderer two-buffer swap pattern should not leak" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1023,7 +1023,7 @@ test "OptimizedBuffer - sustained rendering should not leak" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1055,7 +1055,7 @@ test "OptimizedBuffer - rendering with changing content should not leak" {
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1102,17 +1102,17 @@ test "OptimizedBuffer - multiple TextBuffers rendering simultaneously should not
     });
     defer local_pool.deinit();
 
-    var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb1 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb1.deinit();
     var view1 = try TextBufferView.init(std.testing.allocator, tb1);
     defer view1.deinit();
 
-    var tb2 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb2 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb2.deinit();
     var view2 = try TextBufferView.init(std.testing.allocator, tb2);
     defer view2.deinit();
 
-    var tb3 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb3 = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb3.deinit();
     var view3 = try TextBufferView.init(std.testing.allocator, tb3);
     defer view3.deinit();
@@ -1186,7 +1186,7 @@ test "OptimizedBuffer - drawTextBuffer with graphemes then clear removes all poo
     });
     defer local_pool.deinit();
 
-    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, &local_pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1272,7 +1272,7 @@ test "OptimizedBuffer - drawTextBuffer with negative y coordinate should not pan
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);

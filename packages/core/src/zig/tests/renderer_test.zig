@@ -63,7 +63,7 @@ test "renderer - simple text rendering to currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -104,7 +104,7 @@ test "renderer - multi-line text rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -144,7 +144,7 @@ test "renderer - emoji (wide grapheme) rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hi 👋 there");
@@ -200,7 +200,7 @@ test "renderer - CJK characters rendering" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello 世界");
@@ -252,7 +252,7 @@ test "renderer - mixed ASCII, emoji, and CJK" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("A 😀 世");
@@ -349,7 +349,7 @@ test "renderer - empty text buffer renders correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("");
@@ -375,7 +375,7 @@ test "renderer - multiple renders update currentRenderBuffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -415,7 +415,7 @@ test "renderer - 1000 frame render loop with setStyledText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     const style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -499,7 +499,7 @@ test "renderer - grapheme pool refcounting with frame buffer fast path" {
     });
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, limited_pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, limited_pool, .unicode, .rope);
     defer tb.deinit();
 
     const style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -720,7 +720,7 @@ test "renderer - explicit_cursor_positioning emits cursor move after wide graphe
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("👋X");
@@ -754,7 +754,7 @@ test "renderer - explicit_cursor_positioning produces more cursor moves" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
     try tb.setText("👋🎉🚀");
 
@@ -827,7 +827,7 @@ test "renderer - explicit_cursor_positioning with CJK characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .unified);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("世X");

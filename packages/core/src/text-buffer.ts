@@ -19,7 +19,7 @@ export interface TextBufferCreateOptions {
   editable?: boolean
 }
 
-export class TextBuffer {
+export class UnifiedTextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
   private _editable: boolean
@@ -39,30 +39,30 @@ export class TextBuffer {
   }
 
   /**
-   * Create a TextBuffer.
+   * Create a UnifiedTextBuffer.
    * @param widthMethod - Width calculation method ("wcwidth" or "unicode")
    * @param options - Optional configuration
    * @param options.editable - When false, creates static read-only buffer (default: true for full editing support)
    */
-  static create(widthMethod: WidthMethod, options?: TextBufferCreateOptions): TextBuffer {
+  static create(widthMethod: WidthMethod, options?: TextBufferCreateOptions): UnifiedTextBuffer {
     const lib = resolveRenderLib()
     const editable = options?.editable ?? true
     const ptr = lib.createTextBuffer(widthMethod, editable)
-    return new TextBuffer(lib, ptr, editable)
+    return new UnifiedTextBuffer(lib, ptr, editable)
   }
 
   /** Throws an error if called on a non-editable buffer */
   private requireEditable(operation: string): void {
     if (!this._editable) {
-      throw new Error(`TextBuffer.${operation} requires editable: true`)
+      throw new Error(`UnifiedTextBuffer.${operation} requires editable: true`)
     }
   }
 
   // Fail loud and clear
   // Instead of trying to return values that could work or not,
-  // this at least will show a stack trace to know where the call to a destroyed TextBuffer was made
+  // this at least will show a stack trace to know where the call to a destroyed UnifiedTextBuffer was made
   private guard(): void {
-    if (this._destroyed) throw new Error("TextBuffer is destroyed")
+    if (this._destroyed) throw new Error("UnifiedTextBuffer is destroyed")
   }
 
   public setText(text: string): void {

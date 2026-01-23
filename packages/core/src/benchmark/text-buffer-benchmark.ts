@@ -12,7 +12,7 @@ import { CodeRenderable } from "../renderables/Code"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { StyledText } from "../lib/styled-text"
-import { TextBuffer, type TextChunk } from "../text-buffer"
+import { UnifiedTextBuffer, type TextChunk } from "../text-buffer"
 
 interface BenchmarkResult {
   name: string
@@ -84,13 +84,13 @@ async function benchmarkTextBufferSetText(
   content: string,
   iterations: number,
 ): Promise<BenchmarkResult> {
-  let buffer: TextBuffer | null = null
+  let buffer: UnifiedTextBuffer | null = null
 
   return runBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = TextBuffer.create(widthMethod, { editable })
+      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
     },
     async () => {
       buffer!.setText(content)
@@ -111,13 +111,13 @@ async function benchmarkTextBufferSetStyledText(
   content: StyledText,
   iterations: number,
 ): Promise<BenchmarkResult> {
-  let buffer: TextBuffer | null = null
+  let buffer: UnifiedTextBuffer | null = null
 
   return runBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = TextBuffer.create(widthMethod, { editable })
+      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
     },
     async () => {
       buffer!.setStyledText(content)
@@ -138,13 +138,13 @@ async function benchmarkTextBufferContentUpdate(
   contents: string[],
   iterations: number,
 ): Promise<BenchmarkResult> {
-  let buffer: TextBuffer | null = null
+  let buffer: UnifiedTextBuffer | null = null
 
   return runBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = TextBuffer.create(widthMethod, { editable })
+      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
     },
     async () => {
       for (const content of contents) {

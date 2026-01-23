@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test"
-import { TextBuffer } from "../text-buffer"
+import { UnifiedTextBuffer } from "../text-buffer"
 import { TextBufferView } from "../text-buffer-view"
 import { stringToStyledText } from "../lib/styled-text"
 
@@ -36,8 +36,8 @@ describe("Word wrap algorithmic complexity", () => {
     const smallText = "x".repeat(smallSize)
     const largeText = "x".repeat(largeSize)
 
-    const smallBuffer = TextBuffer.create("wcwidth")
-    const largeBuffer = TextBuffer.create("wcwidth")
+    const smallBuffer = UnifiedTextBuffer.create("wcwidth")
+    const largeBuffer = UnifiedTextBuffer.create("wcwidth")
 
     smallBuffer.setStyledText(stringToStyledText(smallText))
     largeBuffer.setStyledText(stringToStyledText(largeText))
@@ -84,8 +84,8 @@ describe("Word wrap algorithmic complexity", () => {
     const smallText = makeText(smallSize)
     const largeText = makeText(largeSize)
 
-    const smallBuffer = TextBuffer.create("wcwidth")
-    const largeBuffer = TextBuffer.create("wcwidth")
+    const smallBuffer = UnifiedTextBuffer.create("wcwidth")
+    const largeBuffer = UnifiedTextBuffer.create("wcwidth")
 
     smallBuffer.setStyledText(stringToStyledText(smallText))
     largeBuffer.setStyledText(stringToStyledText(largeText))
@@ -128,8 +128,8 @@ describe("Word wrap algorithmic complexity", () => {
     const smallText = "x".repeat(smallSize)
     const largeText = "x".repeat(largeSize)
 
-    const smallBuffer = TextBuffer.create("wcwidth")
-    const largeBuffer = TextBuffer.create("wcwidth")
+    const smallBuffer = UnifiedTextBuffer.create("wcwidth")
+    const largeBuffer = UnifiedTextBuffer.create("wcwidth")
 
     smallBuffer.setStyledText(stringToStyledText(smallText))
     largeBuffer.setStyledText(stringToStyledText(largeText))
@@ -168,7 +168,7 @@ describe("Word wrap algorithmic complexity", () => {
   it.skip("should scale linearly when wrap width changes", () => {
     const text = "x".repeat(50000)
 
-    const buffer = TextBuffer.create("wcwidth")
+    const buffer = UnifiedTextBuffer.create("wcwidth")
     buffer.setStyledText(stringToStyledText(text))
 
     const view = TextBufferView.create(buffer)

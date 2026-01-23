@@ -1,4 +1,4 @@
-import type { TextBuffer } from "./text-buffer"
+import type { UnifiedTextBuffer } from "./text-buffer"
 import { RGBA } from "./lib"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"

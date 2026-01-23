@@ -580,7 +580,7 @@ export fn createTextBuffer(widthMethod: u8, editable: bool) ?*text_buffer.TextBu
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const kind: text_buffer.TextBuffer.BackendKind = if (editable) .unified else .static;
+    const kind: text_buffer.TextBuffer.BackendKind = if (editable) .rope else .static;
     const tb = text_buffer.TextBuffer.init(globalAllocator, pool, wMethod, kind) catch {
         return null;
     };
