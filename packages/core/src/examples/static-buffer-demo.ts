@@ -137,15 +137,15 @@ function setTextOnBoth(text: string): void {
 function getMetrics(): { static: BufferMetrics; unified: BufferMetrics } {
   return {
     static: {
-      kind: staticBuffer?.bufferKind ?? "unknown",
+      kind: staticBuffer ? "static (editable: false)" : "unknown",
       lineCount: staticBuffer?.getLineCount() ?? 0,
-      byteSize: staticBuffer?.byteSize ?? 0,
+      textBytes: staticBuffer?.byteSize ?? 0,
       length: staticBuffer?.length ?? 0,
     },
     unified: {
-      kind: unifiedBuffer?.bufferKind ?? "unknown",
+      kind: unifiedBuffer ? "unified (editable: true)" : "unknown",
       lineCount: unifiedBuffer?.getLineCount() ?? 0,
-      byteSize: unifiedBuffer?.byteSize ?? 0,
+      textBytes: unifiedBuffer?.byteSize ?? 0,
       length: unifiedBuffer?.length ?? 0,
     },
   }
@@ -154,7 +154,7 @@ function getMetrics(): { static: BufferMetrics; unified: BufferMetrics } {
 interface BufferMetrics {
   kind: string
   lineCount: number
-  byteSize: number
+  textBytes: number
   length: number
 }
 
@@ -164,18 +164,18 @@ function updateMetricsDisplay(): void {
   const metrics = getMetrics()
 
   const parityOk =
-    metrics.static.lineCount === metrics.unified.lineCount && metrics.static.byteSize === metrics.unified.byteSize
+    metrics.static.lineCount === metrics.unified.lineCount && metrics.static.textBytes === metrics.unified.textBytes
 
   metricsText.content = t`${bold(cyan("Buffer Metrics"))} ${fg("#666")(`(update #${updateCounter})`)}
 
 ${bold("Static Buffer")} ${fg("#888")(`(${metrics.static.kind})`)}
   Lines: ${green(metrics.static.lineCount.toString())}
-  Bytes: ${yellow(metrics.static.byteSize.toString())}
+  Text bytes: ${yellow(metrics.static.textBytes.toString())}
   Chars: ${blue(metrics.static.length.toString())}
 
 ${bold("Unified Buffer")} ${fg("#888")(`(${metrics.unified.kind})`)}
   Lines: ${green(metrics.unified.lineCount.toString())}
-  Bytes: ${yellow(metrics.unified.byteSize.toString())}
+  Text bytes: ${yellow(metrics.unified.textBytes.toString())}
   Chars: ${blue(metrics.unified.length.toString())}
 
 ${parityOk ? green(bold("Parity: OK")) : red(bold("Parity: MISMATCH"))}`

@@ -7,6 +7,7 @@ const utf8 = @import("utf8.zig");
 const tb = @import("text-buffer.zig");
 const highlight_mod = @import("text-buffer-highlights.zig");
 const shared = @import("text-buffer-shared.zig");
+const handle = @import("text-buffer-handle.zig");
 const assert = std.debug.assert;
 
 const Segment = seg_mod.Segment;
@@ -108,6 +109,7 @@ pub const StaticTextBufferDraft = struct {
     //   resets to defaults (matching UnifiedTextBuffer behavior).
 
     // Shared infrastructure from UnifiedTextBuffer.
+    header: handle.TextBufferHeader,
     mem_registry: tb.MemRegistry,
     default_fg: ?tb.RGBA,
     default_bg: ?tb.RGBA,
@@ -232,6 +234,7 @@ pub const StaticTextBufferDraft = struct {
         try line_seg_end.append(global_allocator, 0);
 
         self.* = .{
+            .header = .{ .kind = .static },
             .mem_registry = mem_registry,
             .default_fg = null,
             .default_bg = null,
@@ -680,6 +683,18 @@ pub const StaticTextBufferDraft = struct {
         try self.setTextInternal(mem_id, text);
     }
 
+    pub fn append(self: *Self, text: []const u8) tb.TextBufferError!void {
+        _ = self;
+        _ = text;
+        return;
+    }
+
+    pub fn appendFromMemId(self: *Self, mem_id: u8) tb.TextBufferError!void {
+        _ = self;
+        _ = mem_id;
+        return;
+    }
+
     fn setTextInternal(self: *Self, mem_id: u8, text: []const u8) tb.TextBufferError!void {
         // Single-pass rebuild:
         // - produce segments + line index + aggregates in one scan
@@ -866,6 +881,18 @@ pub const StaticTextBufferDraft = struct {
         assert(owned == true or owned == false);
         assert(@intFromPtr(self) != 0);
         return try self.mem_registry.register(data, owned);
+    }
+
+    pub fn replaceMemBuffer(self: *Self, mem_id: u8, data: []const u8, owned: bool) tb.TextBufferError!void {
+        const data_len: u32 = @intCast(data.len);
+        assert(data_len <= Limits.max_bytes);
+        assert(owned == true or owned == false);
+        assert(@intFromPtr(self) != 0);
+        try self.mem_registry.replace(mem_id, data, owned);
+    }
+
+    pub fn clearMemRegistry(self: *Self) void {
+        self.mem_registry.clear();
     }
 
     // ---------------------------------------------------------------------
@@ -1061,8 +1088,8 @@ pub const StaticTextBufferDraft = struct {
         line_idx: usize,
         col_start: u32,
         col_end: u32,
-        style_id: u16,
-        priority: u16,
+        style_id: u32,
+        priority: u8,
         hl_ref: u16,
     ) tb.TextBufferError!void {
         // Plan: append Highlight to line_highlights and mark line spans dirty.
@@ -1071,8 +1098,6 @@ pub const StaticTextBufferDraft = struct {
         assert(line_idx_u32 < line_count);
         assert(col_start <= col_end);
         assert(col_end <= self.line_widths.items[line_idx]);
-        assert(style_id <= std.math.maxInt(u16));
-        assert(priority <= std.math.maxInt(u16));
         assert(hl_ref <= std.math.maxInt(u16));
         if (line_idx_u32 >= line_count) return tb.TextBufferError.InvalidIndex;
         if (col_start >= col_end) return;
@@ -1080,8 +1105,8 @@ pub const StaticTextBufferDraft = struct {
         const hl = tb.Highlight{
             .col_start = col_start,
             .col_end = col_end,
-            .style_id = @intCast(style_id),
-            .priority = @intCast(priority),
+            .style_id = style_id,
+            .priority = priority,
             .hl_ref = hl_ref,
         };
 
@@ -1094,16 +1119,14 @@ pub const StaticTextBufferDraft = struct {
         start_col: u32,
         end_row: u32,
         end_col: u32,
-        style_id: u16,
-        priority: u16,
+        style_id: u32,
+        priority: u8,
         hl_ref: u16,
     ) tb.TextBufferError!void {
         const line_count: u32 = @intCast(self.line_widths.items.len);
         assert(start_row < line_count);
         assert(end_row < line_count);
         if (start_row == end_row) assert(start_col <= end_col);
-        assert(style_id <= std.math.maxInt(u16));
-        assert(priority <= std.math.maxInt(u16));
         assert(hl_ref <= std.math.maxInt(u16));
         if (start_row >= line_count or end_row >= line_count) return tb.TextBufferError.InvalidIndex;
         const start_offset = self.line_starts.items[@intCast(start_row)] + start_col;
@@ -1115,8 +1138,8 @@ pub const StaticTextBufferDraft = struct {
         self: *Self,
         start_offset: u32,
         end_offset: u32,
-        style_id: u16,
-        priority: u16,
+        style_id: u32,
+        priority: u8,
         hl_ref: u16,
     ) tb.TextBufferError!void {
         // Plan: walk lines using line_starts/line_widths and split into per-line
@@ -1128,8 +1151,6 @@ pub const StaticTextBufferDraft = struct {
         const total_weight: u32 = self.total_width + (line_count - 1);
         assert(start_offset <= end_offset);
         assert(end_offset <= total_weight);
-        assert(style_id <= std.math.maxInt(u16));
-        assert(priority <= std.math.maxInt(u16));
         assert(hl_ref <= std.math.maxInt(u16));
         if (start_offset >= end_offset or line_count == 0) return;
 
@@ -1221,7 +1242,7 @@ pub const StaticTextBufferDraft = struct {
         hl_ref: u16,
     ) tb.TextBufferError!void {
         const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
-        return self.addHighlightByCharRange(start, end, @intCast(style_id), @intCast(priority), hl_ref);
+        return self.addHighlightByCharRange(start, end, style_id, priority, hl_ref);
     }
 
     fn startHighlightsTransactionForStyledText(ctx_ptr: *anyopaque) void {

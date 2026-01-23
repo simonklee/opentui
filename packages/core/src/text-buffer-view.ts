@@ -1,35 +1,24 @@
 import { RGBA } from "./lib/RGBA"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig"
 import { type Pointer } from "bun:ffi"
-import type { TextBuffer, TextBufferKind } from "./text-buffer"
+import type { TextBuffer } from "./text-buffer"
 
 export class TextBufferView {
   private lib: RenderLib
   private viewPtr: Pointer
   private textBuffer: TextBuffer
-  private _viewKind: TextBufferKind
   private _destroyed: boolean = false
 
-  constructor(lib: RenderLib, ptr: Pointer, textBuffer: TextBuffer, viewKind: TextBufferKind) {
+  constructor(lib: RenderLib, ptr: Pointer, textBuffer: TextBuffer) {
     this.lib = lib
     this.viewPtr = ptr
     this.textBuffer = textBuffer
-    this._viewKind = viewKind
   }
 
   static create(textBuffer: TextBuffer): TextBufferView {
     const lib = resolveRenderLib()
-    const bufferKind = textBuffer.bufferKind
-
-    // Select the appropriate FFI constructor based on buffer type
-    let viewPtr: Pointer
-    if (bufferKind === "static") {
-      viewPtr = lib.createStaticTextBufferView(textBuffer.ptr)
-    } else {
-      viewPtr = lib.createTextBufferView(textBuffer.ptr)
-    }
-
-    return new TextBufferView(lib, viewPtr, textBuffer, bufferKind)
+    const viewPtr = lib.createTextBufferView(textBuffer.ptr)
+    return new TextBufferView(lib, viewPtr, textBuffer)
   }
 
   // Fail loud and clear
@@ -195,10 +184,6 @@ export class TextBufferView {
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
-    if (this._viewKind === "static") {
-      this.lib.destroyStaticTextBufferView(this.viewPtr)
-    } else {
-      this.lib.destroyTextBufferView(this.viewPtr)
-    }
+    this.lib.destroyTextBufferView(this.viewPtr)
   }
 }

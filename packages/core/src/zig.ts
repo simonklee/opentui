@@ -6,7 +6,6 @@ export type { LineInfo }
 
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
-import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
 import {
   StyledChunkStruct,
@@ -423,7 +422,7 @@ function getOpenTUILib(libPath?: string) {
 
     // TextBuffer functions
     createTextBuffer: {
-      args: ["u8"],
+      args: ["u8", "bool"],
       returns: "ptr",
     },
     destroyTextBuffer: {
@@ -566,23 +565,6 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
 
-    // StaticTextBuffer functions
-    createStaticTextBuffer: {
-      args: ["u8"],
-      returns: "ptr",
-    },
-    destroyStaticTextBuffer: {
-      args: ["ptr"],
-      returns: "void",
-    },
-    createStaticTextBufferView: {
-      args: ["ptr"],
-      returns: "ptr",
-    },
-    destroyStaticTextBufferView: {
-      args: ["ptr"],
-      returns: "void",
-    },
     textBufferViewSetSelection: {
       args: ["ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
@@ -1445,7 +1427,7 @@ export interface RenderLib {
   writeOut: (renderer: Pointer, data: string | Uint8Array) => void
 
   // TextBuffer methods
-  createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
+  createTextBuffer: (widthMethod: WidthMethod, editable: boolean) => Pointer
   destroyTextBuffer: (buffer: Pointer) => void
   textBufferGetLength: (buffer: Pointer) => number
   textBufferGetByteSize: (buffer: Pointer) => number
@@ -1535,12 +1517,6 @@ export interface RenderLib {
     height: number,
   ) => { lineCount: number; maxWidth: number } | null
   textBufferViewGetVirtualLineCount: (view: Pointer) => number
-
-  // StaticTextBuffer methods
-  createStaticTextBuffer: (widthMethod: WidthMethod) => Pointer
-  destroyStaticTextBuffer: (buffer: Pointer) => void
-  createStaticTextBufferView: (textBuffer: Pointer) => Pointer
-  destroyStaticTextBufferView: (view: Pointer) => void
 
   readonly encoder: TextEncoder
   readonly decoder: TextDecoder
@@ -2384,14 +2360,14 @@ class FFIRenderLib implements RenderLib {
   }
 
   // TextBuffer methods
-  public createTextBuffer(widthMethod: WidthMethod): TextBuffer {
+  public createTextBuffer(widthMethod: WidthMethod, editable: boolean): Pointer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode)
+    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode, editable)
     if (!bufferPtr) {
-      throw new Error(`Failed to create TextBuffer`)
+      throw new Error("Failed to create TextBuffer")
     }
 
-    return new TextBuffer(this, bufferPtr)
+    return bufferPtr
   }
 
   public destroyTextBuffer(buffer: Pointer): void {
@@ -2593,32 +2569,6 @@ class FFIRenderLib implements RenderLib {
 
   public destroyTextBufferView(view: Pointer): void {
     this.opentui.symbols.destroyTextBufferView(view)
-  }
-
-  // StaticTextBuffer methods
-  public createStaticTextBuffer(widthMethod: WidthMethod): Pointer {
-    const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createStaticTextBuffer(widthMethodCode)
-    if (!bufferPtr) {
-      throw new Error("Failed to create StaticTextBuffer")
-    }
-    return bufferPtr
-  }
-
-  public destroyStaticTextBuffer(buffer: Pointer): void {
-    this.opentui.symbols.destroyStaticTextBuffer(buffer)
-  }
-
-  public createStaticTextBufferView(textBuffer: Pointer): Pointer {
-    const viewPtr = this.opentui.symbols.createStaticTextBufferView(textBuffer)
-    if (!viewPtr) {
-      throw new Error("Failed to create StaticTextBufferView")
-    }
-    return viewPtr
-  }
-
-  public destroyStaticTextBufferView(view: Pointer): void {
-    this.opentui.symbols.destroyStaticTextBufferView(view)
   }
 
   public textBufferViewSetSelection(

@@ -1100,11 +1100,12 @@ pub const OptimizedBuffer = struct {
     /// Draw a TextBufferView to this OptimizedBuffer with selection support and optional syntax highlighting
     pub fn drawTextBuffer(
         self: *OptimizedBuffer,
-        text_buffer_view: *TextBufferView,
+        text_buffer_view: anytype,
         x: i32,
         y: i32,
     ) !void {
-        try self.drawTextBufferInternal(TextBufferView, text_buffer_view, x, y);
+        const ViewType = @TypeOf(text_buffer_view.*);
+        try self.drawTextBufferInternal(ViewType, text_buffer_view, x, y);
     }
 
     /// Internal implementation that accepts either TextBufferView or EditorView

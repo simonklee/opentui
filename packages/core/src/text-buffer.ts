@@ -14,18 +14,15 @@ export interface TextChunk {
   link?: { url: string }
 }
 
-/** Internal tag for buffer type selection */
-export type TextBufferKind = "static" | "unified"
-
 export interface TextBufferCreateOptions {
-  /** When true, creates a full rope-backed buffer with edit capabilities (default: false) */
+  /** When true, creates a full rope-backed buffer with edit capabilities (default: true) */
   editable?: boolean
 }
 
 export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
-  private _kind: TextBufferKind
+  private _editable: boolean
   private _length: number = 0
   private _byteSize: number = 0
   private _lineInfo?: LineInfo
@@ -35,10 +32,10 @@ export class TextBuffer {
   private _memId?: number
   private _appendedChunks: Uint8Array[] = []
 
-  constructor(lib: RenderLib, ptr: Pointer, kind: TextBufferKind = "unified") {
+  constructor(lib: RenderLib, ptr: Pointer, editable: boolean) {
     this.lib = lib
     this.bufferPtr = ptr
-    this._kind = kind
+    this._editable = editable
   }
 
   /**
@@ -50,31 +47,13 @@ export class TextBuffer {
   static create(widthMethod: WidthMethod, options?: TextBufferCreateOptions): TextBuffer {
     const lib = resolveRenderLib()
     const editable = options?.editable ?? true
-
-    if (editable) {
-      // Editable buffer (default) uses the full UnifiedTextBuffer with rope backend
-      const ptr = lib.createTextBuffer(widthMethod).ptr
-      return new TextBuffer(lib, ptr, "unified")
-    } else {
-      // Static buffer - uses StaticTextBuffer for read-only display
-      const ptr = lib.createStaticTextBuffer(widthMethod)
-      return new TextBuffer(lib, ptr, "static")
-    }
+    const ptr = lib.createTextBuffer(widthMethod, editable)
+    return new TextBuffer(lib, ptr, editable)
   }
 
-  /** Returns the buffer kind: "static" for read-only, "unified" for editable */
-  public get bufferKind(): TextBufferKind {
-    return this._kind
-  }
-
-  /** Returns true if this is a static (read-only) buffer */
-  public isStatic(): boolean {
-    return this._kind === "static"
-  }
-
-  /** Throws an error if called on a static buffer */
+  /** Throws an error if called on a non-editable buffer */
   private requireEditable(operation: string): void {
-    if (this._kind === "static") {
+    if (!this._editable) {
       throw new Error(`TextBuffer.${operation} requires editable: true`)
     }
   }
@@ -117,7 +96,6 @@ export class TextBuffer {
 
   public loadFile(path: string): void {
     this.guard()
-    this.requireEditable("loadFile")
     const success = this.lib.textBufferLoadFile(this.bufferPtr, path)
     if (!success) {
       throw new Error(`Failed to load file: ${path}`)
@@ -217,7 +195,6 @@ export class TextBuffer {
    */
   public addHighlightByCharRange(highlight: Highlight): void {
     this.guard()
-    this.requireEditable("addHighlightByCharRange")
     this.lib.textBufferAddHighlightByCharRange(this.bufferPtr, highlight)
   }
 
@@ -228,25 +205,21 @@ export class TextBuffer {
    */
   public addHighlight(lineIdx: number, highlight: Highlight): void {
     this.guard()
-    this.requireEditable("addHighlight")
     this.lib.textBufferAddHighlight(this.bufferPtr, lineIdx, highlight)
   }
 
   public removeHighlightsByRef(hlRef: number): void {
     this.guard()
-    this.requireEditable("removeHighlightsByRef")
     this.lib.textBufferRemoveHighlightsByRef(this.bufferPtr, hlRef)
   }
 
   public clearLineHighlights(lineIdx: number): void {
     this.guard()
-    this.requireEditable("clearLineHighlights")
     this.lib.textBufferClearLineHighlights(this.bufferPtr, lineIdx)
   }
 
   public clearAllHighlights(): void {
     this.guard()
-    this.requireEditable("clearAllHighlights")
     this.lib.textBufferClearAllHighlights(this.bufferPtr)
   }
 
@@ -308,10 +281,6 @@ export class TextBuffer {
   public destroy(): void {
     if (this._destroyed) return
     this._destroyed = true
-    if (this._kind === "static") {
-      this.lib.destroyStaticTextBuffer(this.bufferPtr)
-    } else {
-      this.lib.destroyTextBuffer(this.bufferPtr)
-    }
+    this.lib.destroyTextBuffer(this.bufferPtr)
   }
 }

@@ -7,6 +7,7 @@ const highlight_mod = @import("text-buffer-highlights.zig");
 const shared = @import("text-buffer-shared.zig");
 const ss = @import("syntax-style.zig");
 const gp = @import("grapheme.zig");
+const handle = @import("text-buffer-handle.zig");
 
 const utf8 = @import("utf8.zig");
 
@@ -37,6 +38,7 @@ pub const StyledChunk = shared.StyledChunk;
 pub const UnifiedTextBuffer = struct {
     const Self = @This();
 
+    header: handle.TextBufferHeader,
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
     default_bg: ?RGBA,
@@ -88,6 +90,7 @@ pub const UnifiedTextBuffer = struct {
         errdefer highlights.deinit();
 
         self.* = .{
+            .header = .{ .kind = .unified },
             .mem_registry = mem_registry,
             .default_fg = null,
             .default_bg = null,
@@ -433,6 +436,14 @@ pub const UnifiedTextBuffer = struct {
     /// Register a memory buffer
     pub fn registerMemBuffer(self: *Self, data: []const u8, owned: bool) TextBufferError!u8 {
         return try self.mem_registry.register(data, owned);
+    }
+
+    pub fn replaceMemBuffer(self: *Self, mem_id: u8, data: []const u8, owned: bool) TextBufferError!void {
+        try self.mem_registry.replace(mem_id, data, owned);
+    }
+
+    pub fn clearMemRegistry(self: *Self) void {
+        self.mem_registry.clear();
     }
 
     pub fn getMemBuffer(self: *const Self, mem_id: u8) ?[]const u8 {

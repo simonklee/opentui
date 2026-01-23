@@ -12,7 +12,7 @@ import { CodeRenderable } from "../renderables/Code"
 import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { StyledText } from "../lib/styled-text"
-import type { TextChunk } from "../text-buffer"
+import { TextBuffer, type TextChunk } from "../text-buffer"
 
 interface BenchmarkResult {
   name: string
@@ -76,6 +76,89 @@ function generateCodeContent(lines: number): string {
     result.push(code[i % code.length])
   }
   return result.join("\n")
+}
+
+async function benchmarkTextBufferSetText(
+  widthMethod: "wcwidth" | "unicode",
+  editable: boolean,
+  content: string,
+  iterations: number,
+): Promise<BenchmarkResult> {
+  let buffer: TextBuffer | null = null
+
+  return runBenchmark(
+    editable ? "UnifiedBuffer" : "StaticBuffer",
+    iterations,
+    async () => {
+      buffer = TextBuffer.create(widthMethod, { editable })
+    },
+    async () => {
+      buffer!.setText(content)
+      buffer!.getLineCount()
+    },
+    async () => {
+      if (buffer) {
+        buffer.destroy()
+        buffer = null
+      }
+    },
+  )
+}
+
+async function benchmarkTextBufferSetStyledText(
+  widthMethod: "wcwidth" | "unicode",
+  editable: boolean,
+  content: StyledText,
+  iterations: number,
+): Promise<BenchmarkResult> {
+  let buffer: TextBuffer | null = null
+
+  return runBenchmark(
+    editable ? "UnifiedBuffer" : "StaticBuffer",
+    iterations,
+    async () => {
+      buffer = TextBuffer.create(widthMethod, { editable })
+    },
+    async () => {
+      buffer!.setStyledText(content)
+      buffer!.getLineCount()
+    },
+    async () => {
+      if (buffer) {
+        buffer.destroy()
+        buffer = null
+      }
+    },
+  )
+}
+
+async function benchmarkTextBufferContentUpdate(
+  widthMethod: "wcwidth" | "unicode",
+  editable: boolean,
+  contents: string[],
+  iterations: number,
+): Promise<BenchmarkResult> {
+  let buffer: TextBuffer | null = null
+
+  return runBenchmark(
+    editable ? "UnifiedBuffer" : "StaticBuffer",
+    iterations,
+    async () => {
+      buffer = TextBuffer.create(widthMethod, { editable })
+    },
+    async () => {
+      for (const content of contents) {
+        buffer!.setText(content)
+      }
+      buffer!.getLineCount()
+    },
+    async () => {
+      if (buffer) {
+        buffer.destroy()
+        buffer = null
+      }
+    },
+  )
 }
 
 async function runBenchmark(
@@ -303,16 +386,114 @@ function printSuite(suite: BenchmarkSuite) {
   console.log(`  Speedup: ${suite.speedup.toFixed(2)}x ${suite.speedup > 1 ? "(static faster)" : "(unified faster)"}`)
 }
 
+function printSummary(label: string, results: BenchmarkSuite[]) {
+  if (results.length === 0) return
+  const avgSpeedup = results.reduce((sum, r) => sum + r.speedup, 0) / results.length
+  console.log(`${label} average speedup: ${avgSpeedup.toFixed(2)}x`)
+  console.log(`${label} best speedup: ${Math.max(...results.map((r) => r.speedup)).toFixed(2)}x`)
+  console.log(`${label} worst speedup: ${Math.min(...results.map((r) => r.speedup)).toFixed(2)}x`)
+}
+
 async function main() {
   console.log("=== Text Buffer Benchmark ===")
-  console.log("Comparing StaticTextBuffer vs UnifiedTextBuffer performance\n")
+  console.log("Comparing StaticTextBuffer vs UnifiedTextBuffer performance")
+  console.log("Buffer-only benches isolate TextBuffer ops; renderable benches include layout/render.\n")
+
+  const widthMethod: "wcwidth" | "unicode" = "wcwidth"
+  const bufferResults: BenchmarkSuite[] = []
+  const renderableResults: BenchmarkSuite[] = []
+
+  // Buffer-only benchmarks
+  {
+    const content = generateContent(10, 60)
+    const iterations = 200
+
+    console.log("Running: TextBuffer - Small Content (10 lines)...")
+    const staticResult = await benchmarkTextBufferSetText(widthMethod, false, content, iterations)
+    const unifiedResult = await benchmarkTextBufferSetText(widthMethod, true, content, iterations)
+
+    bufferResults.push({
+      scenario: "TextBuffer - Small Content (10 lines)",
+      staticBuffer: staticResult,
+      unifiedBuffer: unifiedResult,
+      speedup: unifiedResult.averageTimeMs / staticResult.averageTimeMs,
+    })
+  }
+
+  {
+    const content = generateContent(100, 60)
+    const iterations = 100
+
+    console.log("Running: TextBuffer - Medium Content (100 lines)...")
+    const staticResult = await benchmarkTextBufferSetText(widthMethod, false, content, iterations)
+    const unifiedResult = await benchmarkTextBufferSetText(widthMethod, true, content, iterations)
+
+    bufferResults.push({
+      scenario: "TextBuffer - Medium Content (100 lines)",
+      staticBuffer: staticResult,
+      unifiedBuffer: unifiedResult,
+      speedup: unifiedResult.averageTimeMs / staticResult.averageTimeMs,
+    })
+  }
+
+  {
+    const content = generateContent(1000, 60)
+    const iterations = 50
+
+    console.log("Running: TextBuffer - Large Content (1000 lines)...")
+    const staticResult = await benchmarkTextBufferSetText(widthMethod, false, content, iterations)
+    const unifiedResult = await benchmarkTextBufferSetText(widthMethod, true, content, iterations)
+
+    bufferResults.push({
+      scenario: "TextBuffer - Large Content (1000 lines)",
+      staticBuffer: staticResult,
+      unifiedBuffer: unifiedResult,
+      speedup: unifiedResult.averageTimeMs / staticResult.averageTimeMs,
+    })
+  }
+
+  {
+    const content = generateStyledContent(100, 60)
+    const iterations = 100
+
+    console.log("Running: TextBuffer - Styled Content (100 lines)...")
+    const staticResult = await benchmarkTextBufferSetStyledText(widthMethod, false, content, iterations)
+    const unifiedResult = await benchmarkTextBufferSetStyledText(widthMethod, true, content, iterations)
+
+    bufferResults.push({
+      scenario: "TextBuffer - Styled Content (100 lines)",
+      staticBuffer: staticResult,
+      unifiedBuffer: unifiedResult,
+      speedup: unifiedResult.averageTimeMs / staticResult.averageTimeMs,
+    })
+  }
+
+  {
+    const contents = [
+      generateContent(50, 60),
+      generateContent(100, 60),
+      generateContent(75, 60),
+      generateContent(150, 60),
+      generateContent(25, 60),
+    ]
+    const iterations = 50
+
+    console.log("Running: TextBuffer - Content Updates (5 updates per iteration)...")
+    const staticResult = await benchmarkTextBufferContentUpdate(widthMethod, false, contents, iterations)
+    const unifiedResult = await benchmarkTextBufferContentUpdate(widthMethod, true, contents, iterations)
+
+    bufferResults.push({
+      scenario: "TextBuffer - Content Updates (5 updates)",
+      staticBuffer: staticResult,
+      unifiedBuffer: unifiedResult,
+      speedup: unifiedResult.averageTimeMs / staticResult.averageTimeMs,
+    })
+  }
 
   const { renderer, renderOnce } = await createTestRenderer({
     width: 80,
     height: 24,
   })
-
-  const results: BenchmarkSuite[] = []
 
   try {
     // Benchmark 1: Small text content (10 lines)
@@ -324,7 +505,7 @@ async function main() {
       const staticResult = await benchmarkTextRenderable(renderer, renderOnce, false, content, iterations)
       const unifiedResult = await benchmarkTextRenderable(renderer, renderOnce, true, content, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "TextRenderable - Small Content (10 lines)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -341,7 +522,7 @@ async function main() {
       const staticResult = await benchmarkTextRenderable(renderer, renderOnce, false, content, iterations)
       const unifiedResult = await benchmarkTextRenderable(renderer, renderOnce, true, content, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "TextRenderable - Medium Content (100 lines)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -358,7 +539,7 @@ async function main() {
       const staticResult = await benchmarkTextRenderable(renderer, renderOnce, false, content, iterations)
       const unifiedResult = await benchmarkTextRenderable(renderer, renderOnce, true, content, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "TextRenderable - Large Content (1000 lines)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -375,7 +556,7 @@ async function main() {
       const staticResult = await benchmarkTextRenderable(renderer, renderOnce, false, content, iterations)
       const unifiedResult = await benchmarkTextRenderable(renderer, renderOnce, true, content, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "TextRenderable - Styled Content (100 lines)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -398,7 +579,7 @@ async function main() {
       const staticResult = await benchmarkTextContentUpdate(renderer, renderOnce, false, contents, iterations)
       const unifiedResult = await benchmarkTextContentUpdate(renderer, renderOnce, true, contents, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "TextRenderable - Content Updates (5 updates)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -415,7 +596,7 @@ async function main() {
       const staticResult = await benchmarkCodeRenderable(renderer, renderOnce, false, content, iterations)
       const unifiedResult = await benchmarkCodeRenderable(renderer, renderOnce, true, content, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "CodeRenderable - Small Content (10 lines)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -432,7 +613,7 @@ async function main() {
       const staticResult = await benchmarkCodeRenderable(renderer, renderOnce, false, content, iterations)
       const unifiedResult = await benchmarkCodeRenderable(renderer, renderOnce, true, content, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "CodeRenderable - Medium Content (100 lines)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -449,7 +630,7 @@ async function main() {
       const staticResult = await benchmarkCodeRenderable(renderer, renderOnce, false, content, iterations)
       const unifiedResult = await benchmarkCodeRenderable(renderer, renderOnce, true, content, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "CodeRenderable - Large Content (500 lines)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -472,7 +653,7 @@ async function main() {
       const staticResult = await benchmarkCodeContentUpdate(renderer, renderOnce, false, contents, iterations)
       const unifiedResult = await benchmarkCodeContentUpdate(renderer, renderOnce, true, contents, iterations)
 
-      results.push({
+      renderableResults.push({
         scenario: "CodeRenderable - Content Updates (5 updates)",
         staticBuffer: staticResult,
         unifiedBuffer: unifiedResult,
@@ -482,16 +663,23 @@ async function main() {
 
     // Print results
     console.log("\n\n========== RESULTS ==========")
-    for (const suite of results) {
-      printSuite(suite)
+    if (bufferResults.length > 0) {
+      console.log("\nBuffer-only benchmarks:")
+      for (const suite of bufferResults) {
+        printSuite(suite)
+      }
+    }
+    if (renderableResults.length > 0) {
+      console.log("\nRenderable benchmarks:")
+      for (const suite of renderableResults) {
+        printSuite(suite)
+      }
     }
 
     // Summary
     console.log("\n\n========== SUMMARY ==========")
-    const avgSpeedup = results.reduce((sum, r) => sum + r.speedup, 0) / results.length
-    console.log(`Average speedup: ${avgSpeedup.toFixed(2)}x`)
-    console.log(`Best speedup: ${Math.max(...results.map((r) => r.speedup)).toFixed(2)}x`)
-    console.log(`Worst speedup: ${Math.min(...results.map((r) => r.speedup)).toFixed(2)}x`)
+    printSummary("Buffer-only", bufferResults)
+    printSummary("Renderable", renderableResults)
   } finally {
     renderer.destroy()
   }

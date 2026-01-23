@@ -6,6 +6,7 @@ const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const gp = @import("grapheme.zig");
 const utf8 = @import("utf8.zig");
+const handle = @import("text-buffer-handle.zig");
 
 const logger = @import("logger.zig");
 
@@ -135,7 +136,9 @@ pub fn TextBufferViewType(comptime BufferType: type) type {
     return struct {
         const Self = @This();
         const Buffer = BufferType;
+        const view_kind: handle.TextBufferViewKind = if (BufferType == stb.StaticTextBuffer) .static else .unified;
 
+        header: handle.TextBufferViewHeader,
         text_buffer: *Buffer,
         original_text_buffer: *Buffer,
         view_id: u32,
@@ -192,6 +195,7 @@ pub fn TextBufferViewType(comptime BufferType: type) type {
             const ellipsis_chunk = text_buffer.createChunk(ellipsis_mem_id, 0, 3);
 
             self.* = .{
+                .header = .{ .kind = view_kind },
                 .text_buffer = text_buffer,
                 .original_text_buffer = text_buffer,
                 .view_id = view_id,
