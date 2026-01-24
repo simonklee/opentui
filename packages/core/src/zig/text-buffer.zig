@@ -40,64 +40,6 @@ pub const StyledChunk = extern struct {
     attributes: u32,
 };
 
-const ViewRegistry = struct {
-    view_dirty_flags: std.ArrayListUnmanaged(bool) = .{},
-    next_view_id: u32 = 0,
-    free_view_ids: std.ArrayListUnmanaged(u32) = .{},
-    /// Monotonic counter that increments on every content change. Views use this
-    /// to detect stale caches even after clearViewDirty() runs.
-    content_epoch: u64 = 0,
-
-    pub fn deinit(self: *ViewRegistry, allocator: Allocator) void {
-        self.view_dirty_flags.deinit(allocator);
-        self.free_view_ids.deinit(allocator);
-    }
-
-    pub fn registerView(self: *ViewRegistry, allocator: Allocator) TextBufferError!u32 {
-        if (self.free_view_ids.items.len > 0) {
-            const id = self.free_view_ids.items[self.free_view_ids.items.len - 1];
-            _ = self.free_view_ids.pop();
-            self.view_dirty_flags.items[id] = true;
-            return id;
-        }
-
-        const id = self.next_view_id;
-        self.next_view_id += 1;
-        try self.view_dirty_flags.append(allocator, true);
-        return id;
-    }
-
-    pub fn unregisterView(self: *ViewRegistry, allocator: Allocator, view_id: u32) void {
-        if (view_id < self.view_dirty_flags.items.len) {
-            self.free_view_ids.append(allocator, view_id) catch {};
-        }
-    }
-
-    pub fn isViewDirty(self: *const ViewRegistry, view_id: u32) bool {
-        if (view_id < self.view_dirty_flags.items.len) {
-            return self.view_dirty_flags.items[view_id];
-        }
-        return false;
-    }
-
-    pub fn clearViewDirty(self: *ViewRegistry, view_id: u32) void {
-        if (view_id < self.view_dirty_flags.items.len) {
-            self.view_dirty_flags.items[view_id] = false;
-        }
-    }
-
-    pub fn getContentEpoch(self: *const ViewRegistry) u64 {
-        return self.content_epoch;
-    }
-
-    pub fn markAllViewsDirty(self: *ViewRegistry) void {
-        self.content_epoch +%= 1;
-        for (self.view_dirty_flags.items) |*flag| {
-            flag.* = true;
-        }
-    }
-};
-
 const HighlightRegistry = struct {
     allocator: Allocator,
     line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)) = .{},
@@ -342,7 +284,12 @@ pub const UnifiedTextBuffer = struct {
     mem_registry: MemRegistry,
     default_values: Defaults,
     highlights: HighlightRegistry,
-    view_registry: ViewRegistry,
+    view_dirty_flags: std.ArrayListUnmanaged(bool),
+    next_view_id: u32,
+    free_view_ids: std.ArrayListUnmanaged(u32),
+    /// Monotonic counter that increments on every content change. Views use this
+    /// to detect stale caches even after clearViewDirty() runs.
+    content_epoch: u64,
     syntax_style: ?*const SyntaxStyle,
     styled_text_mem_id: ?u8,
     styled_buffer: ?[]u8,
@@ -372,9 +319,6 @@ pub const UnifiedTextBuffer = struct {
         var mem_registry = MemRegistry.init(global_allocator);
         errdefer mem_registry.deinit();
 
-        var view_registry = ViewRegistry{};
-        errdefer view_registry.deinit(global_allocator);
-
         var highlights = HighlightRegistry.init(global_allocator);
         errdefer highlights.deinit();
 
@@ -395,7 +339,10 @@ pub const UnifiedTextBuffer = struct {
             .mem_registry = mem_registry,
             .default_values = .{ .fg = null, .bg = null, .attributes = null },
             .highlights = highlights,
-            .view_registry = view_registry,
+            .view_dirty_flags = .{},
+            .next_view_id = 0,
+            .free_view_ids = .{},
+            .content_epoch = 0,
             .syntax_style = null,
             .styled_text_mem_id = null,
             .styled_buffer = null,
@@ -414,7 +361,8 @@ pub const UnifiedTextBuffer = struct {
             (@constCast(style)).offDestroy(@ptrCast(self), onSyntaxStyleDestroyed);
         }
 
-        self.view_registry.deinit(self.global_allocator);
+        self.view_dirty_flags.deinit(self.global_allocator);
+        self.free_view_ids.deinit(self.global_allocator);
         self.highlights.deinit();
 
         if (self.styled_buffer) |buf| {
@@ -557,48 +505,68 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn registerView(self: *Self) TextBufferError!u32 {
-        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        const view_count: u32 = @intCast(self.view_dirty_flags.items.len);
         assert(view_count <= Limits.max_views);
-        assert(self.view_registry.next_view_id <= Limits.max_views);
-        return self.view_registry.registerView(self.global_allocator);
+        assert(self.next_view_id <= Limits.max_views);
+
+        if (self.free_view_ids.items.len > 0) {
+            const id = self.free_view_ids.items[self.free_view_ids.items.len - 1];
+            _ = self.free_view_ids.pop();
+            self.view_dirty_flags.items[id] = true;
+            return id;
+        }
+
+        const id = self.next_view_id;
+        self.next_view_id += 1;
+        try self.view_dirty_flags.append(self.global_allocator, true);
+        return id;
     }
 
     pub fn unregisterView(self: *Self, view_id: u32) void {
-        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        const view_count: u32 = @intCast(self.view_dirty_flags.items.len);
         assert(view_count <= Limits.max_views);
-        self.view_registry.unregisterView(self.global_allocator, view_id);
+        if (view_id < self.view_dirty_flags.items.len) {
+            self.free_view_ids.append(self.global_allocator, view_id) catch {};
+        }
     }
 
     pub fn isViewDirty(self: *const Self, view_id: u32) bool {
-        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        const view_count: u32 = @intCast(self.view_dirty_flags.items.len);
         assert(view_count <= Limits.max_views);
-        return self.view_registry.isViewDirty(view_id);
+        if (view_id < self.view_dirty_flags.items.len) {
+            return self.view_dirty_flags.items[view_id];
+        }
+        return false;
     }
 
     pub fn clearViewDirty(self: *Self, view_id: u32) void {
-        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        const view_count: u32 = @intCast(self.view_dirty_flags.items.len);
         assert(view_count <= Limits.max_views);
-        self.view_registry.clearViewDirty(view_id);
+        if (view_id < self.view_dirty_flags.items.len) {
+            self.view_dirty_flags.items[view_id] = false;
+        }
     }
 
     pub fn getContentEpoch(self: *const Self) u64 {
-        const epoch = self.view_registry.getContentEpoch();
-        assert(epoch < std.math.maxInt(u64));
-        assert(epoch >= 0);
-        return epoch;
+        assert(self.content_epoch < std.math.maxInt(u64));
+        assert(self.content_epoch >= 0);
+        return self.content_epoch;
     }
 
     fn markAllViewsDirty(self: *Self) void {
-        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        const view_count: u32 = @intCast(self.view_dirty_flags.items.len);
         assert(view_count <= Limits.max_views);
-        assert(self.view_registry.next_view_id <= Limits.max_views);
-        self.view_registry.markAllViewsDirty();
+        assert(self.next_view_id <= Limits.max_views);
+        self.content_epoch +%= 1;
+        for (self.view_dirty_flags.items) |*flag| {
+            flag.* = true;
+        }
     }
 
     pub fn markViewsDirty(self: *Self) void {
-        const view_count: u32 = @intCast(self.view_registry.view_dirty_flags.items.len);
+        const view_count: u32 = @intCast(self.view_dirty_flags.items.len);
         assert(view_count <= Limits.max_views);
-        assert(self.view_registry.next_view_id <= Limits.max_views);
+        assert(self.next_view_id <= Limits.max_views);
         self.markAllViewsDirty();
     }
 

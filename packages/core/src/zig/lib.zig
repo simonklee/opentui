@@ -689,59 +689,59 @@ export fn textBufferGetPlainText(tb: *text_buffer.UnifiedTextBuffer, outPtr: [*]
 }
 
 // TextBufferView functions (Array-based for backward compatibility)
-export fn createTextBufferView(tb: *text_buffer.UnifiedTextBuffer) ?*text_buffer_view.TextBufferView {
-    const view = text_buffer_view.TextBufferView.init(globalAllocator, tb) catch {
+export fn createTextBufferView(tb: *text_buffer.UnifiedTextBuffer) ?*text_buffer_view.UnifiedTextBufferView {
+    const view = text_buffer_view.UnifiedTextBufferView.init(globalAllocator, tb) catch {
         return null;
     };
     return view;
 }
 
-export fn destroyTextBufferView(view: *text_buffer_view.TextBufferView) void {
+export fn destroyTextBufferView(view: *text_buffer_view.UnifiedTextBufferView) void {
     view.deinit();
 }
 
-export fn textBufferViewSetSelection(view: *text_buffer_view.TextBufferView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+export fn textBufferViewSetSelection(view: *text_buffer_view.UnifiedTextBufferView, start: u32, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     view.setSelection(start, end, bg, fg);
 }
 
-export fn textBufferViewResetSelection(view: *text_buffer_view.TextBufferView) void {
+export fn textBufferViewResetSelection(view: *text_buffer_view.UnifiedTextBufferView) void {
     view.resetSelection();
 }
 
-export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.TextBufferView) u64 {
+export fn textBufferViewGetSelectionInfo(view: *text_buffer_view.UnifiedTextBufferView) u64 {
     return view.packSelectionInfo();
 }
 
-export fn textBufferViewSetLocalSelection(view: *text_buffer_view.TextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+export fn textBufferViewSetLocalSelection(view: *text_buffer_view.UnifiedTextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     return view.setLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
-export fn textBufferViewUpdateSelection(view: *text_buffer_view.TextBufferView, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
+export fn textBufferViewUpdateSelection(view: *text_buffer_view.UnifiedTextBufferView, end: u32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) void {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     view.updateSelection(end, bg, fg);
 }
 
-export fn textBufferViewUpdateLocalSelection(view: *text_buffer_view.TextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
+export fn textBufferViewUpdateLocalSelection(view: *text_buffer_view.UnifiedTextBufferView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?[*]const f32, fgColor: ?[*]const f32) bool {
     const bg = if (bgColor) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
     const fg = if (fgColor) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
     return view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bg, fg);
 }
 
-export fn textBufferViewResetLocalSelection(view: *text_buffer_view.TextBufferView) void {
+export fn textBufferViewResetLocalSelection(view: *text_buffer_view.UnifiedTextBufferView) void {
     view.resetLocalSelection();
 }
 
-export fn textBufferViewSetWrapWidth(view: *text_buffer_view.TextBufferView, width: u32) void {
+export fn textBufferViewSetWrapWidth(view: *text_buffer_view.UnifiedTextBufferView, width: u32) void {
     const wrap_width = if (width == 0) null else width;
     view.setWrapWidth(wrap_width);
 }
 
-export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferView, mode: u8) void {
+export fn textBufferViewSetWrapMode(view: *text_buffer_view.UnifiedTextBufferView, mode: u8) void {
     const wrapMode: text_buffer.WrapMode = switch (mode) {
         0 => .none,
         1 => .char,
@@ -751,11 +751,11 @@ export fn textBufferViewSetWrapMode(view: *text_buffer_view.TextBufferView, mode
     view.setWrapMode(wrapMode);
 }
 
-export fn textBufferViewSetViewportSize(view: *text_buffer_view.TextBufferView, width: u32, height: u32) void {
+export fn textBufferViewSetViewportSize(view: *text_buffer_view.UnifiedTextBufferView, width: u32, height: u32) void {
     view.setViewportSize(width, height);
 }
 
-export fn textBufferViewSetViewport(view: *text_buffer_view.TextBufferView, x: u32, y: u32, width: u32, height: u32) void {
+export fn textBufferViewSetViewport(view: *text_buffer_view.UnifiedTextBufferView, x: u32, y: u32, width: u32, height: u32) void {
     const viewport = text_buffer_view.Viewport{
         .x = x,
         .y = y,
@@ -765,11 +765,11 @@ export fn textBufferViewSetViewport(view: *text_buffer_view.TextBufferView, x: u
     view.setViewport(viewport);
 }
 
-export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.TextBufferView) u32 {
+export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.UnifiedTextBufferView) u32 {
     return view.getVirtualLineCount();
 }
 
-export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.TextBufferView, outPtr: *ExternalLineInfo) void {
+export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getCachedLineInfo();
 
     outPtr.* = .{
@@ -785,7 +785,7 @@ export fn textBufferViewGetLineInfoDirect(view: *text_buffer_view.TextBufferView
     };
 }
 
-export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.TextBufferView, outPtr: *ExternalLineInfo) void {
+export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.UnifiedTextBufferView, outPtr: *ExternalLineInfo) void {
     const line_info = view.getLogicalLineInfo();
 
     outPtr.* = .{
@@ -801,26 +801,26 @@ export fn textBufferViewGetLogicalLineInfoDirect(view: *text_buffer_view.TextBuf
     };
 }
 
-export fn textBufferViewGetSelectedText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferViewGetSelectedText(view: *text_buffer_view.UnifiedTextBufferView, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return view.getSelectedTextIntoBuffer(outBuffer);
 }
 
-export fn textBufferViewGetPlainText(view: *text_buffer_view.TextBufferView, outPtr: [*]u8, maxLen: usize) usize {
+export fn textBufferViewGetPlainText(view: *text_buffer_view.UnifiedTextBufferView, outPtr: [*]u8, maxLen: usize) usize {
     const outBuffer = outPtr[0..maxLen];
     return view.getPlainTextIntoBuffer(outBuffer);
 }
 
-export fn textBufferViewSetTabIndicator(view: *text_buffer_view.TextBufferView, indicator: u32) void {
+export fn textBufferViewSetTabIndicator(view: *text_buffer_view.UnifiedTextBufferView, indicator: u32) void {
     view.setTabIndicator(indicator);
 }
 
-export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.TextBufferView, color: [*]const f32) void {
+export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedTextBufferView, color: [*]const f32) void {
     const rgba = utils.f32PtrToRGBA(color);
     view.setTabIndicatorColor(rgba);
 }
 
-export fn textBufferViewSetTruncate(view: *text_buffer_view.TextBufferView, truncate: bool) void {
+export fn textBufferViewSetTruncate(view: *text_buffer_view.UnifiedTextBufferView, truncate: bool) void {
     view.setTruncate(truncate);
 }
 
@@ -829,7 +829,7 @@ pub const ExternalMeasureResult = extern struct {
     max_width: u32,
 };
 
-export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.TextBufferView, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
+export fn textBufferViewMeasureForDimensions(view: *text_buffer_view.UnifiedTextBufferView, width: u32, height: u32, outPtr: *ExternalMeasureResult) bool {
     const result = view.measureForDimensions(width, height) catch return false;
     outPtr.* = .{
         .line_count = result.line_count,
@@ -1114,7 +1114,7 @@ export fn editorViewGetLineInfoDirect(view: *editor_view.EditorView, outPtr: *Ex
     };
 }
 
-export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffer_view.TextBufferView {
+export fn editorViewGetTextBufferView(view: *editor_view.EditorView) *text_buffer_view.UnifiedTextBufferView {
     return view.getTextBufferView();
 }
 
@@ -1320,7 +1320,7 @@ export fn bufferDrawEditorView(
 
 export fn bufferDrawTextBufferView(
     bufferPtr: *buffer.OptimizedBuffer,
-    viewPtr: *text_buffer_view.TextBufferView,
+    viewPtr: *text_buffer_view.UnifiedTextBufferView,
     x: i32,
     y: i32,
 ) void {

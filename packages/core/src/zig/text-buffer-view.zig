@@ -107,12 +107,13 @@ pub const LocalSelection = struct {
     isActive: bool,
 };
 
-pub const TextBufferView = struct {
-    const Self = @This();
-    const Buffer = UnifiedTextBuffer;
+pub const TextBufferView = UnifiedTextBufferView;
 
-    text_buffer: *Buffer,
-    original_text_buffer: *Buffer,
+pub const UnifiedTextBufferView = struct {
+    const Self = @This();
+
+    text_buffer: *UnifiedTextBuffer,
+    original_text_buffer: *UnifiedTextBuffer,
     view_id: u32,
     selection: ?TextSelection,
     selection_anchor_offset: ?u32,
@@ -146,13 +147,13 @@ pub const TextBufferView = struct {
     cached_measure_wrap_mode: WrapMode,
     cached_measure_result: ?MeasureResult,
     cached_measure_epoch: u64,
-    cached_measure_buffer: ?*Buffer,
+    cached_measure_buffer: ?*UnifiedTextBuffer,
 
     truncation_applied: bool,
     truncation_epoch: u64,
     truncation_viewport: ?Viewport,
 
-    pub fn init(global_allocator: Allocator, text_buffer: *Buffer) TextBufferViewError!*Self {
+    pub fn init(global_allocator: Allocator, text_buffer: *UnifiedTextBuffer) TextBufferViewError!*Self {
         const self = global_allocator.create(Self) catch return TextBufferViewError.OutOfMemory;
         errdefer global_allocator.destroy(self);
 
@@ -517,11 +518,11 @@ pub const TextBufferView = struct {
         return self.selection;
     }
 
-    pub fn getTextBuffer(self: *const Self) *Buffer {
+    pub fn getTextBuffer(self: *const Self) *UnifiedTextBuffer {
         return self.text_buffer;
     }
 
-    pub fn switchToBuffer(self: *Self, buffer: *Buffer) void {
+    pub fn switchToBuffer(self: *Self, buffer: *UnifiedTextBuffer) void {
         self.text_buffer = buffer;
         self.virtual_lines_dirty = true;
     }
@@ -973,7 +974,7 @@ pub const TextBufferView = struct {
 
     /// Generic virtual line calculation that writes to provided output structures
     fn calculateVirtualLinesGeneric(
-        text_buffer: *Buffer,
+        text_buffer: *UnifiedTextBuffer,
         wrap_mode: WrapMode,
         wrap_width: ?u32,
         allocator: Allocator,
@@ -982,7 +983,7 @@ pub const TextBufferView = struct {
         if (wrap_mode == .none or wrap_width == null) {
             // No wrapping - create 1:1 mapping to real lines
             const Context = struct {
-                text_buffer: *Buffer,
+                text_buffer: *UnifiedTextBuffer,
                 allocator: Allocator,
                 output: VirtualLineOutput,
                 current_vline: ?VirtualLine = null,
@@ -1035,7 +1036,7 @@ pub const TextBufferView = struct {
             const wrap_w = wrap_width.?;
 
             const WrapContext = struct {
-                text_buffer: *Buffer,
+                text_buffer: *UnifiedTextBuffer,
                 allocator: Allocator,
                 output: VirtualLineOutput,
                 wrap_mode: WrapMode,
