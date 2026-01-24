@@ -8,7 +8,7 @@ const utf8 = @import("utf8.zig");
 
 const logger = @import("logger.zig");
 
-const TextBuffer = tb.TextBuffer;
+const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const RGBA = tb.RGBA;
 const TextSelection = tb.TextSelection;
 pub const WrapMode = tb.WrapMode;
@@ -109,7 +109,7 @@ pub const LocalSelection = struct {
 
 pub const TextBufferView = struct {
     const Self = @This();
-    const Buffer = TextBuffer;
+    const Buffer = UnifiedTextBuffer;
 
     text_buffer: *Buffer,
     original_text_buffer: *Buffer,

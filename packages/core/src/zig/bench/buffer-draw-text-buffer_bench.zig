@@ -6,7 +6,7 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
 const OptimizedBuffer = buffer.OptimizedBuffer;
-const TextBuffer = text_buffer.TextBuffer;
+const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
 const WrapMode = text_buffer.WrapMode;
 const BenchResult = bench_utils.BenchResult;
@@ -57,8 +57,8 @@ fn setupTextBuffer(
     pool: *gp.GraphemePool,
     text: []const u8,
     wrap_width: ?u32,
-) !struct { *TextBuffer, *TextBufferView } {
-    const tb = try TextBuffer.init(allocator, pool, .unicode, .rope);
+) !struct { *UnifiedTextBuffer, *TextBufferView } {
+    const tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
     errdefer tb.deinit();
 
     try tb.setText(text);

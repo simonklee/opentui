@@ -2,7 +2,7 @@ const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const gp = @import("../grapheme.zig");
 
-const StaticTextBuffer = text_buffer.TextBuffer;
+const StaticTextBuffer = text_buffer.UnifiedTextBuffer;
 
 // =============================================================================
 // StaticTextBuffer Parity Tests

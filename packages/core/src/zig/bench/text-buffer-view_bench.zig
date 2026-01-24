@@ -4,8 +4,8 @@ const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
-const UnifiedTextBuffer = text_buffer.TextBuffer;
-const StaticTextBuffer = text_buffer.TextBuffer;
+const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
+const StaticTextBuffer = text_buffer.UnifiedTextBuffer;
 const UnifiedTextBufferView = text_buffer_view.TextBufferView;
 const StaticTextBufferView = text_buffer_view.TextBufferView;
 const WrapMode = text_buffer.WrapMode;

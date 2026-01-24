@@ -11,7 +11,7 @@ const logger = @import("logger.zig");
 
 const EditBuffer = eb.EditBuffer;
 
-const TextBuffer = tb.TextBuffer;
+const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const TextBufferView = tbv.TextBufferView;
 const VirtualLine = tbv.VirtualLine;
 
@@ -41,7 +41,7 @@ pub const EditorView = struct {
     selection_follow_cursor: bool, // Keep viewport synced during selection
     cursor_changed_listener: event_emitter.EventEmitter(eb.EditBufferEvent).Listener,
 
-    placeholder_buffer: ?*TextBuffer,
+    placeholder_buffer: ?*UnifiedTextBuffer,
     placeholder_syntax_style: ?*ss.SyntaxStyle,
     placeholder_active: bool,
 
@@ -287,7 +287,7 @@ pub const EditorView = struct {
         return self.text_buffer_view.getVirtualLineSpans(vline_idx);
     }
 
-    pub fn getTextBuffer(self: *const EditorView) *TextBuffer {
+    pub fn getTextBuffer(self: *const EditorView) *UnifiedTextBuffer {
         return self.text_buffer_view.text_buffer;
     }
 
@@ -741,7 +741,7 @@ pub const EditorView = struct {
         }
 
         if (self.placeholder_buffer == null) {
-            self.placeholder_buffer = try TextBuffer.init(
+            self.placeholder_buffer = try UnifiedTextBuffer.init(
                 self.global_allocator,
                 self.edit_buffer.tb.pool,
                 self.edit_buffer.tb.width_method,

@@ -168,7 +168,7 @@ const HighlightRegistry = struct {
         self.highlight_batch_depth += 1;
     }
 
-    pub fn endTransaction(self: *HighlightRegistry, buffer: *const TextBuffer) void {
+    pub fn endTransaction(self: *HighlightRegistry, buffer: *const UnifiedTextBuffer) void {
         if (self.highlight_batch_depth == 0) return;
         self.highlight_batch_depth -= 1;
         if (self.highlight_batch_depth == 0) {
@@ -180,7 +180,7 @@ const HighlightRegistry = struct {
         }
     }
 
-    pub fn addHighlight(self: *HighlightRegistry, buffer: *const TextBuffer, line_idx: usize, hl: Highlight) TextBufferError!void {
+    pub fn addHighlight(self: *HighlightRegistry, buffer: *const UnifiedTextBuffer, line_idx: usize, hl: Highlight) TextBufferError!void {
         try self.ensureLineStorage(line_idx);
         try self.line_highlights.items[line_idx].append(self.allocator, hl);
 
@@ -198,7 +198,7 @@ const HighlightRegistry = struct {
         return &[_]Highlight{};
     }
 
-    pub fn getLineSpans(self: *HighlightRegistry, buffer: *const TextBuffer, line_idx: usize) []const StyleSpan {
+    pub fn getLineSpans(self: *HighlightRegistry, buffer: *const UnifiedTextBuffer, line_idx: usize) []const StyleSpan {
         if (line_idx < self.line_spans.items.len) {
             if (self.dirty_span_lines.contains(line_idx) and self.highlight_batch_depth == 0) {
                 self.rebuildLineSpans(buffer, line_idx) catch {};
@@ -217,7 +217,7 @@ const HighlightRegistry = struct {
         return count;
     }
 
-    pub fn removeHighlightsByRef(self: *HighlightRegistry, buffer: *const TextBuffer, hl_ref: u16) void {
+    pub fn removeHighlightsByRef(self: *HighlightRegistry, buffer: *const UnifiedTextBuffer, hl_ref: u16) void {
         for (self.line_highlights.items, 0..) |*hl_list, line_idx| {
             var i: usize = 0;
             var changed = false;
@@ -243,7 +243,7 @@ const HighlightRegistry = struct {
         self.dirty_span_lines.put(line_idx, {}) catch {};
     }
 
-    fn rebuildLineSpans(self: *HighlightRegistry, buffer: *const TextBuffer, line_idx: usize) TextBufferError!void {
+    fn rebuildLineSpans(self: *HighlightRegistry, buffer: *const UnifiedTextBuffer, line_idx: usize) TextBufferError!void {
         if (line_idx >= self.line_spans.items.len) {
             return TextBufferError.InvalidIndex;
         }
@@ -325,7 +325,7 @@ const HighlightRegistry = struct {
     }
 };
 
-pub const TextBuffer = struct {
+pub const UnifiedTextBuffer = struct {
     const Self = @This();
 
     pub const BackendKind = enum { rope, static };

@@ -4,7 +4,7 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
 
-const TextBuffer = text_buffer.TextBuffer;
+const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
 const RGBA = text_buffer.RGBA;
 
@@ -12,7 +12,7 @@ test "Selection - basic selection without wrap" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -35,7 +35,7 @@ test "Selection - with wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -63,7 +63,7 @@ test "Selection - no selection returns all bits set" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -79,7 +79,7 @@ test "Selection - with newline characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -104,7 +104,7 @@ test "Selection - across empty lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -129,7 +129,7 @@ test "Selection - ending in empty line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -150,7 +150,7 @@ test "Selection - spanning multiple lines completely" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -171,7 +171,7 @@ test "Selection - including multiple line breaks" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -194,7 +194,7 @@ test "Selection - at line boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -217,7 +217,7 @@ test "Selection - empty text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -235,7 +235,7 @@ test "Selection - single character" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -263,7 +263,7 @@ test "Selection - zero-width selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -281,7 +281,7 @@ test "Selection - beyond text bounds" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -304,7 +304,7 @@ test "Selection - clear selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -325,7 +325,7 @@ test "Selection - at wrap boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -351,7 +351,7 @@ test "Selection - spanning multiple wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -378,7 +378,7 @@ test "Selection - changes when wrap width changes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -410,7 +410,7 @@ test "Selection - with newlines and wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -434,7 +434,7 @@ test "Selection - getSelectedText simple" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -454,7 +454,7 @@ test "Selection - getSelectedText with newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -476,7 +476,7 @@ test "Selection - spanning multiple lines with getSelectedText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -498,7 +498,7 @@ test "Selection - with graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -520,7 +520,7 @@ test "Selection - wide emoji at boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -544,7 +544,7 @@ test "Selection - wide emoji BEFORE selection start should be excluded" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -570,7 +570,7 @@ test "Selection - start at second cell of width=2 grapheme should snap backward 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -591,7 +591,7 @@ test "Selection - end at first cell of width=2 grapheme should snap forward to i
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -612,7 +612,7 @@ test "Selection - both boundaries at cells of width=2 graphemes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -633,7 +633,7 @@ test "Selection - updateSelection extends existing selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -669,7 +669,7 @@ test "Selection - updateSelection with no existing selection does nothing" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -692,7 +692,7 @@ test "Selection - updateSelection can shrink selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -721,7 +721,7 @@ test "Selection - updateLocalSelection extends focus position" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -758,7 +758,7 @@ test "Selection - updateLocalSelection with no existing selection falls back to 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -781,7 +781,7 @@ test "Selection - updateLocalSelection can shrink selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -811,7 +811,7 @@ test "Selection - updateLocalSelection across multiple lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -839,7 +839,7 @@ test "Selection - updateLocalSelection backward selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -871,7 +871,7 @@ test "Selection - updateLocalSelection with wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -907,7 +907,7 @@ test "Selection - updateLocalSelection with same focus position maintains select
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -931,7 +931,7 @@ test "Selection - updateLocalSelection preserves anchor correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);

@@ -9,7 +9,7 @@ const utf8 = @import("utf8.zig");
 const event_emitter = @import("event-emitter.zig");
 const event_bus = @import("event-bus.zig");
 
-const TextBuffer = tb.TextBuffer;
+const UnifiedTextBuffer = tb.UnifiedTextBuffer;
 const TextChunk = seg_mod.TextChunk;
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
@@ -42,7 +42,7 @@ const AddBuffer = struct {
     cap: usize,
     allocator: Allocator,
 
-    fn init(allocator: Allocator, text_buffer: *TextBuffer, initial_cap: usize) !AddBuffer {
+    fn init(allocator: Allocator, text_buffer: *UnifiedTextBuffer, initial_cap: usize) !AddBuffer {
         const mem = try allocator.alloc(u8, initial_cap);
         const mem_id = try text_buffer.registerMemBuffer(mem, true);
 
@@ -55,7 +55,7 @@ const AddBuffer = struct {
         };
     }
 
-    fn ensureCapacity(self: *AddBuffer, text_buffer: *TextBuffer, need: usize) !void {
+    fn ensureCapacity(self: *AddBuffer, text_buffer: *UnifiedTextBuffer, need: usize) !void {
         if (self.len + need <= self.cap) return;
 
         // TODO: Create a new buffer, register the new buffer and use the new mem_id for subsequent inserts
@@ -83,7 +83,7 @@ const AddBuffer = struct {
 
 pub const EditBuffer = struct {
     id: u16,
-    tb: *TextBuffer,
+    tb: *UnifiedTextBuffer,
     add_buffer: AddBuffer,
     cursors: std.ArrayListUnmanaged(Cursor),
     allocator: Allocator,
@@ -98,7 +98,7 @@ pub const EditBuffer = struct {
         const self = try allocator.create(EditBuffer);
         errdefer allocator.destroy(self);
 
-        const text_buffer = try TextBuffer.init(allocator, pool, width_method, .rope);
+        const text_buffer = try UnifiedTextBuffer.init(allocator, pool, width_method, .rope);
         errdefer text_buffer.deinit();
 
         const add_buffer = try AddBuffer.init(allocator, text_buffer, 65536);
@@ -147,7 +147,7 @@ pub const EditBuffer = struct {
         event_bus.emit(full_name, &id_bytes);
     }
 
-    pub fn getTextBuffer(self: *EditBuffer) *TextBuffer {
+    pub fn getTextBuffer(self: *EditBuffer) *UnifiedTextBuffer {
         return self.tb;
     }
 
