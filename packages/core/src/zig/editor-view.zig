@@ -12,7 +12,7 @@ const logger = @import("logger.zig");
 const EditBuffer = eb.EditBuffer;
 
 const UnifiedTextBuffer = tb.UnifiedTextBuffer;
-const TextBufferView = tbv.TextBufferView;
+const UnifiedTextBufferView = tbv.UnifiedTextBufferView;
 const VirtualLine = tbv.VirtualLine;
 
 pub const EditorViewError = error{
@@ -34,7 +34,7 @@ pub const VisualCursor = struct {
 /// EditorView wraps a TextBufferView and manages viewport state for efficient rendering
 /// It also holds a reference to an EditBuffer for cursor/editing operations
 pub const EditorView = struct {
-    text_buffer_view: *TextBufferView,
+    text_buffer_view: *UnifiedTextBufferView,
     edit_buffer: *EditBuffer, // Reference to the EditBuffer (not owned)
     scroll_margin: f32, // Fraction of viewport height (0.0-0.5) to keep cursor away from edges
     desired_visual_col: ?u32, // Preserved visual column for visual up/down navigation
@@ -66,7 +66,7 @@ pub const EditorView = struct {
         errdefer global_allocator.destroy(self);
 
         const text_buffer = edit_buffer.getTextBuffer();
-        const text_buffer_view = TextBufferView.init(global_allocator, text_buffer) catch return EditorViewError.OutOfMemory;
+        const text_buffer_view = UnifiedTextBufferView.init(global_allocator, text_buffer) catch return EditorViewError.OutOfMemory;
         errdefer text_buffer_view.deinit();
 
         self.* = .{
@@ -275,7 +275,7 @@ pub const EditorView = struct {
         return line_info;
     }
 
-    pub fn getTextBufferView(self: *EditorView) *TextBufferView {
+    pub fn getTextBufferView(self: *EditorView) *UnifiedTextBufferView {
         return self.text_buffer_view;
     }
 
