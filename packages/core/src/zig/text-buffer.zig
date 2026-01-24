@@ -4,8 +4,6 @@ const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const mem_registry_mod = @import("mem-registry.zig");
-const highlight_mod = @import("text-buffer-highlights.zig");
-const shared = @import("text-buffer-shared.zig");
 const ss = @import("syntax-style.zig");
 const gp = @import("grapheme.zig");
 const rope_backend = @import("text-buffer-backend-rope.zig");
@@ -13,6 +11,7 @@ const static_backend = @import("text-buffer-backend-static.zig");
 
 const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
+const utils = @import("utils.zig");
 const Limits = static_backend.StaticBackend.Limits;
 
 const Segment = seg_mod.Segment;
@@ -33,7 +32,298 @@ pub const SegmentsResult = rope_backend.SegmentsResult;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
 
-pub const StyledChunk = shared.StyledChunk;
+pub const StyledChunk = extern struct {
+    text_ptr: [*]const u8,
+    text_len: usize,
+    fg_ptr: ?[*]const f32,
+    bg_ptr: ?[*]const f32,
+    attributes: u32,
+};
+
+const ViewRegistry = struct {
+    view_dirty_flags: std.ArrayListUnmanaged(bool) = .{},
+    next_view_id: u32 = 0,
+    free_view_ids: std.ArrayListUnmanaged(u32) = .{},
+    /// Monotonic counter that increments on every content change. Views use this
+    /// to detect stale caches even after clearViewDirty() runs.
+    content_epoch: u64 = 0,
+
+    pub fn deinit(self: *ViewRegistry, allocator: Allocator) void {
+        self.view_dirty_flags.deinit(allocator);
+        self.free_view_ids.deinit(allocator);
+    }
+
+    pub fn registerView(self: *ViewRegistry, allocator: Allocator) TextBufferError!u32 {
+        if (self.free_view_ids.items.len > 0) {
+            const id = self.free_view_ids.items[self.free_view_ids.items.len - 1];
+            _ = self.free_view_ids.pop();
+            self.view_dirty_flags.items[id] = true;
+            return id;
+        }
+
+        const id = self.next_view_id;
+        self.next_view_id += 1;
+        try self.view_dirty_flags.append(allocator, true);
+        return id;
+    }
+
+    pub fn unregisterView(self: *ViewRegistry, allocator: Allocator, view_id: u32) void {
+        if (view_id < self.view_dirty_flags.items.len) {
+            self.free_view_ids.append(allocator, view_id) catch {};
+        }
+    }
+
+    pub fn isViewDirty(self: *const ViewRegistry, view_id: u32) bool {
+        if (view_id < self.view_dirty_flags.items.len) {
+            return self.view_dirty_flags.items[view_id];
+        }
+        return false;
+    }
+
+    pub fn clearViewDirty(self: *ViewRegistry, view_id: u32) void {
+        if (view_id < self.view_dirty_flags.items.len) {
+            self.view_dirty_flags.items[view_id] = false;
+        }
+    }
+
+    pub fn getContentEpoch(self: *const ViewRegistry) u64 {
+        return self.content_epoch;
+    }
+
+    pub fn markAllViewsDirty(self: *ViewRegistry) void {
+        self.content_epoch +%= 1;
+        for (self.view_dirty_flags.items) |*flag| {
+            flag.* = true;
+        }
+    }
+};
+
+const HighlightRegistry = struct {
+    allocator: Allocator,
+    line_highlights: std.ArrayListUnmanaged(std.ArrayListUnmanaged(Highlight)) = .{},
+    line_spans: std.ArrayListUnmanaged(std.ArrayListUnmanaged(StyleSpan)) = .{},
+    highlight_batch_depth: u32 = 0,
+    dirty_span_lines: std.AutoHashMap(usize, void),
+
+    pub fn init(allocator: Allocator) HighlightRegistry {
+        return .{
+            .allocator = allocator,
+            .line_highlights = .{},
+            .line_spans = .{},
+            .highlight_batch_depth = 0,
+            .dirty_span_lines = std.AutoHashMap(usize, void).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *HighlightRegistry) void {
+        self.clearRetainingCapacity();
+        self.line_highlights.deinit(self.allocator);
+        self.line_spans.deinit(self.allocator);
+        self.dirty_span_lines.deinit();
+    }
+
+    pub fn clearRetainingCapacity(self: *HighlightRegistry) void {
+        for (self.line_highlights.items) |*hl_list| {
+            hl_list.deinit(self.allocator);
+        }
+        self.line_highlights.clearRetainingCapacity();
+
+        for (self.line_spans.items) |*span_list| {
+            span_list.deinit(self.allocator);
+        }
+        self.line_spans.clearRetainingCapacity();
+
+        self.dirty_span_lines.clearRetainingCapacity();
+        self.highlight_batch_depth = 0;
+    }
+
+    pub fn clearAllHighlights(self: *HighlightRegistry) void {
+        for (self.line_highlights.items) |*hl_list| {
+            hl_list.clearRetainingCapacity();
+        }
+        for (self.line_spans.items) |*span_list| {
+            span_list.clearRetainingCapacity();
+        }
+    }
+
+    pub fn clearLineHighlights(self: *HighlightRegistry, line_idx: usize) void {
+        if (line_idx < self.line_highlights.items.len) {
+            self.line_highlights.items[line_idx].clearRetainingCapacity();
+        }
+        if (line_idx < self.line_spans.items.len) {
+            self.line_spans.items[line_idx].clearRetainingCapacity();
+        }
+    }
+
+    pub fn ensureLineStorage(self: *HighlightRegistry, line_idx: usize) TextBufferError!void {
+        while (self.line_highlights.items.len <= line_idx) {
+            try self.line_highlights.append(self.allocator, .{});
+        }
+        while (self.line_spans.items.len <= line_idx) {
+            try self.line_spans.append(self.allocator, .{});
+        }
+    }
+
+    pub fn startTransaction(self: *HighlightRegistry) void {
+        self.highlight_batch_depth += 1;
+    }
+
+    pub fn endTransaction(self: *HighlightRegistry, buffer: *const TextBuffer) void {
+        if (self.highlight_batch_depth == 0) return;
+        self.highlight_batch_depth -= 1;
+        if (self.highlight_batch_depth == 0) {
+            var it = self.dirty_span_lines.keyIterator();
+            while (it.next()) |line_idx| {
+                self.rebuildLineSpans(buffer, line_idx.*) catch {};
+            }
+            self.dirty_span_lines.clearRetainingCapacity();
+        }
+    }
+
+    pub fn addHighlight(self: *HighlightRegistry, buffer: *const TextBuffer, line_idx: usize, hl: Highlight) TextBufferError!void {
+        try self.ensureLineStorage(line_idx);
+        try self.line_highlights.items[line_idx].append(self.allocator, hl);
+
+        if (self.highlight_batch_depth == 0) {
+            try self.rebuildLineSpans(buffer, line_idx);
+        } else {
+            self.markLineSpansDirty(line_idx);
+        }
+    }
+
+    pub fn getLineHighlights(self: *const HighlightRegistry, line_idx: usize) []const Highlight {
+        if (line_idx < self.line_highlights.items.len) {
+            return self.line_highlights.items[line_idx].items;
+        }
+        return &[_]Highlight{};
+    }
+
+    pub fn getLineSpans(self: *HighlightRegistry, buffer: *const TextBuffer, line_idx: usize) []const StyleSpan {
+        if (line_idx < self.line_spans.items.len) {
+            if (self.dirty_span_lines.contains(line_idx) and self.highlight_batch_depth == 0) {
+                self.rebuildLineSpans(buffer, line_idx) catch {};
+                _ = self.dirty_span_lines.remove(line_idx);
+            }
+            return self.line_spans.items[line_idx].items;
+        }
+        return &[_]StyleSpan{};
+    }
+
+    pub fn getHighlightCount(self: *const HighlightRegistry) u32 {
+        var count: u32 = 0;
+        for (self.line_highlights.items) |hl_list| {
+            count += @intCast(hl_list.items.len);
+        }
+        return count;
+    }
+
+    pub fn removeHighlightsByRef(self: *HighlightRegistry, buffer: *const TextBuffer, hl_ref: u16) void {
+        for (self.line_highlights.items, 0..) |*hl_list, line_idx| {
+            var i: usize = 0;
+            var changed = false;
+            while (i < hl_list.items.len) {
+                if (hl_list.items[i].hl_ref == hl_ref) {
+                    _ = hl_list.orderedRemove(i);
+                    changed = true;
+                    continue;
+                }
+                i += 1;
+            }
+            if (changed) {
+                if (self.highlight_batch_depth == 0) {
+                    self.rebuildLineSpans(buffer, line_idx) catch {};
+                } else {
+                    self.markLineSpansDirty(line_idx);
+                }
+            }
+        }
+    }
+
+    fn markLineSpansDirty(self: *HighlightRegistry, line_idx: usize) void {
+        self.dirty_span_lines.put(line_idx, {}) catch {};
+    }
+
+    fn rebuildLineSpans(self: *HighlightRegistry, buffer: *const TextBuffer, line_idx: usize) TextBufferError!void {
+        if (line_idx >= self.line_spans.items.len) {
+            return TextBufferError.InvalidIndex;
+        }
+
+        self.line_spans.items[line_idx].clearRetainingCapacity();
+
+        if (line_idx >= self.line_highlights.items.len or self.line_highlights.items[line_idx].items.len == 0) {
+            return;
+        }
+
+        const highlights = self.line_highlights.items[line_idx].items;
+
+        const Event = struct {
+            col: u32,
+            is_start: bool,
+            hl_idx: usize,
+        };
+
+        var events: std.ArrayListUnmanaged(Event) = .{};
+        defer events.deinit(self.allocator);
+
+        for (highlights, 0..) |hl, idx| {
+            try events.append(self.allocator, .{ .col = hl.col_start, .is_start = true, .hl_idx = idx });
+            try events.append(self.allocator, .{ .col = hl.col_end, .is_start = false, .hl_idx = idx });
+        }
+
+        const sortFn = struct {
+            fn lessThan(_: void, a: Event, b: Event) bool {
+                if (a.col != b.col) return a.col < b.col;
+                if (a.is_start != b.is_start) return !a.is_start;
+                return a.hl_idx < b.hl_idx;
+            }
+        }.lessThan;
+        std.mem.sort(Event, events.items, {}, sortFn);
+
+        var active = std.AutoHashMap(usize, void).init(self.allocator);
+        defer active.deinit();
+
+        var current_col: u32 = 0;
+
+        for (events.items) |event| {
+            var current_priority: i16 = -1;
+            var current_style: u32 = 0;
+            var it = active.keyIterator();
+            while (it.next()) |hl_idx| {
+                const hl = highlights[hl_idx.*];
+                if (hl.priority > current_priority) {
+                    current_priority = @intCast(hl.priority);
+                    current_style = hl.style_id;
+                }
+            }
+
+            if (event.col > current_col) {
+                try self.line_spans.items[line_idx].append(self.allocator, StyleSpan{
+                    .col = current_col,
+                    .style_id = current_style,
+                    .next_col = event.col,
+                });
+                current_col = event.col;
+            }
+
+            if (event.is_start) {
+                try active.put(event.hl_idx, {});
+            } else {
+                _ = active.remove(event.hl_idx);
+            }
+        }
+
+        if (events.items.len > 0 and active.count() == 0) {
+            const line_width = buffer.lineWidthAt(@intCast(line_idx));
+            if (current_col < line_width) {
+                try self.line_spans.items[line_idx].append(self.allocator, StyleSpan{
+                    .col = current_col,
+                    .style_id = 0,
+                    .next_col = line_width,
+                });
+            }
+        }
+    }
+};
 
 pub const TextBuffer = struct {
     const Self = @This();
@@ -51,8 +341,8 @@ pub const TextBuffer = struct {
 
     mem_registry: MemRegistry,
     default_values: Defaults,
-    highlights: highlight_mod.HighlightRegistry,
-    view_registry: shared.ViewRegistry,
+    highlights: HighlightRegistry,
+    view_registry: ViewRegistry,
     syntax_style: ?*const SyntaxStyle,
     styled_text_mem_id: ?u8,
     styled_buffer: ?[]u8,
@@ -82,10 +372,10 @@ pub const TextBuffer = struct {
         var mem_registry = MemRegistry.init(global_allocator);
         errdefer mem_registry.deinit();
 
-        var view_registry = shared.ViewRegistry{};
+        var view_registry = ViewRegistry{};
         errdefer view_registry.deinit(global_allocator);
 
-        var highlights = highlight_mod.HighlightRegistry.init(global_allocator);
+        var highlights = HighlightRegistry.init(global_allocator);
         errdefer highlights.deinit();
 
         var backend: Backend = switch (kind) {
@@ -567,7 +857,25 @@ pub const TextBuffer = struct {
     ) TextChunk {
         assert(self.mem_registry.get(mem_id) != null);
         assert(byte_start <= byte_end);
-        return shared.createChunk(&self.mem_registry, self.tab_width, self.width_method, mem_id, byte_start, byte_end);
+        const mem_buf = self.mem_registry.get(mem_id).?;
+        const chunk_bytes = mem_buf[byte_start..byte_end];
+        const is_ascii = utf8.isAsciiOnly(chunk_bytes);
+
+        var flags: u8 = 0;
+        if (chunk_bytes.len > 0 and is_ascii) {
+            flags |= TextChunk.Flags.ASCII_ONLY;
+        }
+
+        const chunk_width: u16 =
+            @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
+
+        return TextChunk{
+            .mem_id = mem_id,
+            .byte_start = byte_start,
+            .byte_end = byte_end,
+            .width = chunk_width,
+            .flags = flags,
+        };
     }
 
     pub fn addLine(
@@ -637,11 +945,6 @@ pub const TextBuffer = struct {
         };
     }
 
-    fn lineWidthForHighlights(ctx_ptr: *anyopaque, line_idx: usize) u32 {
-        const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
-        return self.lineWidthAt(@intCast(line_idx));
-    }
-
     pub fn startHighlightsTransaction(self: *Self) void {
         const span_count: u32 = @intCast(self.highlights.line_spans.items.len);
         assert(self.highlights.highlight_batch_depth < std.math.maxInt(u32));
@@ -653,7 +956,7 @@ pub const TextBuffer = struct {
         const span_count: u32 = @intCast(self.highlights.line_spans.items.len);
         assert(self.highlights.highlight_batch_depth <= std.math.maxInt(u32));
         assert(span_count <= Limits.max_lines);
-        self.highlights.endTransaction(self, lineWidthForHighlights);
+        self.highlights.endTransaction(self);
     }
 
     pub fn addHighlight(
@@ -689,7 +992,7 @@ pub const TextBuffer = struct {
             .hl_ref = hl_ref,
         };
 
-        try self.highlights.addHighlight(self, lineWidthForHighlights, line_idx, hl);
+        try self.highlights.addHighlight(self, line_idx, hl);
     }
 
     pub fn addHighlightByCoords(
@@ -805,7 +1108,7 @@ pub const TextBuffer = struct {
         const hl_count: u32 = @intCast(self.highlights.line_highlights.items.len);
         assert(hl_ref >= 0);
         assert(hl_count <= Limits.max_lines);
-        self.highlights.removeHighlightsByRef(self, lineWidthForHighlights, hl_ref);
+        self.highlights.removeHighlightsByRef(self, hl_ref);
     }
 
     pub fn clearLineHighlights(self: *Self, line_idx: usize) void {
@@ -843,39 +1146,74 @@ pub const TextBuffer = struct {
     pub fn getLineSpans(self: *Self, line_idx: usize) []const StyleSpan {
         const span_count: u32 = @intCast(self.highlights.line_spans.items.len);
         assert(span_count <= Limits.max_lines);
-        return self.highlights.getLineSpans(self, lineWidthForHighlights, line_idx);
+        return self.highlights.getLineSpans(self, line_idx);
     }
 
-    fn setTextInternalForStyledText(ctx_ptr: *anyopaque, mem_id: u8, text: []const u8) TextBufferError!void {
-        const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
-        return self.setTextInternal(mem_id, text);
+    fn totalStyledTextLength(chunks: []const StyledChunk) usize {
+        var total_len: usize = 0;
+        for (chunks) |chunk| {
+            total_len += chunk.text_len;
+        }
+        return total_len;
     }
 
-    fn measureTextForStyledText(ctx_ptr: *anyopaque, text: []const u8) u32 {
-        const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
-        return self.measureText(text);
-    }
+    fn applyStyledText(self: *Self, chunks: []const StyledChunk, total_len: usize) TextBufferError!void {
+        if (total_len == 0) {
+            return;
+        }
 
-    fn addHighlightByCharRangeForStyledText(
-        ctx_ptr: *anyopaque,
-        start: u32,
-        end: u32,
-        style_id: u32,
-        priority: u8,
-        hl_ref: u16,
-    ) TextBufferError!void {
-        const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
-        return self.addHighlightByCharRange(start, end, style_id, priority, hl_ref);
-    }
+        if (total_len > self.styled_capacity or self.styled_buffer == null) {
+            if (self.styled_buffer) |old_buf| {
+                self.global_allocator.free(old_buf);
+            }
+            const new_buf = self.global_allocator.alloc(u8, total_len) catch return TextBufferError.OutOfMemory;
+            self.styled_buffer = new_buf;
+            self.styled_capacity = total_len;
+        }
 
-    fn startHighlightsTransactionForStyledText(ctx_ptr: *anyopaque) void {
-        const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
-        self.startHighlightsTransaction();
-    }
+        const full_text = self.styled_buffer.?[0..total_len];
 
-    fn endHighlightsTransactionForStyledText(ctx_ptr: *anyopaque) void {
-        const self = @as(*Self, @ptrCast(@alignCast(ctx_ptr)));
-        self.endHighlightsTransaction();
+        var offset: usize = 0;
+        for (chunks) |chunk| {
+            if (chunk.text_len > 0) {
+                const chunk_text = chunk.text_ptr[0..chunk.text_len];
+                @memcpy(full_text[offset .. offset + chunk.text_len], chunk_text);
+                offset += chunk.text_len;
+            }
+        }
+
+        if (self.styled_text_mem_id) |mem_id| {
+            try self.mem_registry.replace(mem_id, full_text, false);
+        } else {
+            const mem_id = try self.mem_registry.register(full_text, false);
+            self.styled_text_mem_id = mem_id;
+        }
+
+        try self.setTextInternal(self.styled_text_mem_id.?, full_text);
+
+        if (self.syntax_style) |style| {
+            self.startHighlightsTransaction();
+            defer self.endHighlightsTransaction();
+
+            var char_pos: u32 = 0;
+            for (chunks, 0..) |chunk, i| {
+                const chunk_text = chunk.text_ptr[0..chunk.text_len];
+                const chunk_len = self.measureText(chunk_text);
+
+                if (chunk_len > 0) {
+                    const fg = if (chunk.fg_ptr) |fgPtr| utils.f32PtrToRGBA(fgPtr) else null;
+                    const bg = if (chunk.bg_ptr) |bgPtr| utils.f32PtrToRGBA(bgPtr) else null;
+
+                    var style_name_buf: [64]u8 = undefined;
+                    const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
+                    const style_id = (@constCast(style)).registerStyle(style_name, fg, bg, chunk.attributes) catch continue;
+
+                    self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, 0) catch {};
+                }
+
+                char_pos += chunk_len;
+            }
+        }
     }
 
     pub fn setStyledText(self: *Self, chunks: []const StyledChunk) TextBufferError!void {
@@ -890,7 +1228,7 @@ pub const TextBuffer = struct {
             return;
         }
 
-        const total_len = shared.totalStyledTextLength(chunks);
+        const total_len = totalStyledTextLength(chunks);
         if (total_len == 0) {
             self.clear();
             self.clearAllHighlights();
@@ -910,31 +1248,15 @@ pub const TextBuffer = struct {
             },
         }
 
-        const params = shared.StyledTextParams{
-            .global_allocator = self.global_allocator,
-            .mem_registry = &self.mem_registry,
-            .styled_text_mem_id = &self.styled_text_mem_id,
-            .styled_buffer = &self.styled_buffer,
-            .styled_capacity = &self.styled_capacity,
-            .syntax_style = self.syntax_style,
-            .setTextInternal = setTextInternalForStyledText,
-            .setTextCtx = self,
-            .measureText = measureTextForStyledText,
-            .measureCtx = self,
-            .addHighlightByCharRange = addHighlightByCharRangeForStyledText,
-            .highlightCtx = self,
-            .startHighlightsTransaction = startHighlightsTransactionForStyledText,
-            .endHighlightsTransaction = endHighlightsTransactionForStyledText,
-        };
-
-        try shared.applyStyledText(params, chunks, total_len);
+        try self.applyStyledText(chunks, total_len);
     }
 
     pub fn measureText(self: *const Self, text: []const u8) u32 {
         const text_len: u32 = @intCast(text.len);
         assert(text_len <= Limits.max_bytes);
         assert(@as(u32, self.tab_width) <= Limits.max_tab_width);
-        return shared.measureText(self.width_method, self.tab_width, text);
+        const is_ascii = utf8.isAsciiOnly(text);
+        return utf8.calculateTextWidth(text, self.tab_width, is_ascii, self.width_method);
     }
 
     pub fn rope(self: *Self) *UnifiedRope {

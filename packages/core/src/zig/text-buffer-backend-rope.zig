@@ -3,7 +3,6 @@ const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const mem_registry_mod = @import("mem-registry.zig");
-const shared = @import("text-buffer-shared.zig");
 const utf8 = @import("utf8.zig");
 const logger = @import("logger.zig");
 
@@ -243,7 +242,25 @@ pub const RopeBackend = struct {
         byte_start: u32,
         byte_end: u32,
     ) TextChunk {
-        return shared.createChunk(mem_registry, self.tab_width, self.width_method, mem_id, byte_start, byte_end);
+        const mem_buf = mem_registry.get(mem_id).?;
+        const chunk_bytes = mem_buf[byte_start..byte_end];
+        const is_ascii = utf8.isAsciiOnly(chunk_bytes);
+
+        var flags: u8 = 0;
+        if (chunk_bytes.len > 0 and is_ascii) {
+            flags |= TextChunk.Flags.ASCII_ONLY;
+        }
+
+        const chunk_width: u16 =
+            @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
+
+        return TextChunk{
+            .mem_id = mem_id,
+            .byte_start = byte_start,
+            .byte_end = byte_end,
+            .width = chunk_width,
+            .flags = flags,
+        };
     }
 
     pub fn textToSegments(

@@ -3,7 +3,6 @@ const Allocator = std.mem.Allocator;
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
 const mem_registry_mod = @import("mem-registry.zig");
-const shared = @import("text-buffer-shared.zig");
 const utf8 = @import("utf8.zig");
 const assert = std.debug.assert;
 
@@ -371,7 +370,80 @@ pub const StaticBackend = struct {
     fn createChunk(self: *const Self, mem_registry: *const MemRegistry, mem_id: u8, byte_start: u32, byte_end: u32) TextChunk {
         assert(mem_registry.get(mem_id) != null);
         assert(byte_start <= byte_end);
-        return shared.createChunk(mem_registry, self.tab_width, self.width_method, mem_id, byte_start, byte_end);
+        const mem_buf = mem_registry.get(mem_id).?;
+        const chunk_bytes = mem_buf[byte_start..byte_end];
+        const is_ascii = utf8.isAsciiOnly(chunk_bytes);
+
+        var flags: u8 = 0;
+        if (chunk_bytes.len > 0 and is_ascii) {
+            flags |= TextChunk.Flags.ASCII_ONLY;
+        }
+
+        const chunk_width: u16 =
+            @intCast(@min(65535, utf8.calculateTextWidth(chunk_bytes, self.tab_width, is_ascii, self.width_method)));
+
+        return TextChunk{
+            .mem_id = mem_id,
+            .byte_start = byte_start,
+            .byte_end = byte_end,
+            .width = chunk_width,
+            .flags = flags,
+        };
+    }
+
+    const ExtractChunkResult = struct {
+        has_content: bool,
+        new_offset: u32,
+    };
+
+    fn extractChunkBetweenOffsets(
+        chunk: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        tab_width: u8,
+        start_offset: u32,
+        end_offset: u32,
+        chunk_start_offset: u32,
+        out_buffer: []u8,
+        out_index: *usize,
+    ) ExtractChunkResult {
+        const chunk_end_offset = chunk_start_offset + chunk.width;
+
+        if (chunk_end_offset <= start_offset or chunk_start_offset >= end_offset) {
+            return .{ .has_content = false, .new_offset = chunk_end_offset };
+        }
+
+        const chunk_bytes = chunk.getBytes(mem_registry);
+        const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
+
+        const local_start_col: u32 = if (start_offset > chunk_start_offset) start_offset - chunk_start_offset else 0;
+        const local_end_col: u32 = @min(end_offset - chunk_start_offset, chunk.width);
+
+        var byte_start: u32 = 0;
+        var byte_end: u32 = @intCast(chunk_bytes.len);
+
+        if (local_start_col > 0) {
+            const start_result =
+                utf8.findPosByWidth(chunk_bytes, local_start_col, tab_width, is_ascii_only, false, .unicode);
+            byte_start = start_result.byte_offset;
+        }
+
+        if (local_end_col < chunk.width) {
+            const end_result =
+                utf8.findPosByWidth(chunk_bytes, local_end_col, tab_width, is_ascii_only, true, .unicode);
+            byte_end = end_result.byte_offset;
+        }
+
+        if (byte_start < byte_end and byte_start < chunk_bytes.len) {
+            const actual_end = @min(byte_end, @as(u32, @intCast(chunk_bytes.len)));
+            const selected_bytes = chunk_bytes[byte_start..actual_end];
+            const copy_len = @min(selected_bytes.len, out_buffer.len - out_index.*);
+            if (copy_len > 0) {
+                @memcpy(out_buffer[out_index.* .. out_index.* + copy_len], selected_bytes[0..copy_len]);
+                out_index.* += copy_len;
+            }
+        }
+
+        return .{ .has_content = true, .new_offset = chunk_end_offset };
     }
 
     fn rebuildLineIndex(self: *Self) void {
@@ -535,7 +607,7 @@ pub const StaticBackend = struct {
             while (seg_idx < seg_end) : (seg_idx += 1) {
                 const seg = &self.segments.items[@intCast(seg_idx)];
                 if (seg.asText()) |chunk| {
-                    const result = shared.extractChunkBetweenOffsets(
+                    const result = extractChunkBetweenOffsets(
                         chunk,
                         mem_registry,
                         self.tab_width,
