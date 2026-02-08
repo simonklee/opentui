@@ -1,10 +1,14 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
+const static_backend_mod = @import("../text-buffer-backend-static.zig");
+const mem_registry_mod = @import("../mem-registry.zig");
 const gp = @import("../grapheme.zig");
 
 const StaticTextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
+const StaticBackend = static_backend_mod.StaticBackend;
+const MemRegistry = mem_registry_mod.MemRegistry;
 
 fn expectRangeParity(rope_tb: *text_buffer.UnifiedTextBuffer, static_tb: *text_buffer.UnifiedTextBuffer, start: u32, end: u32) !void {
     var rope_out: [256]u8 = undefined;
@@ -432,6 +436,30 @@ test "backend parity - mixed CRLF LF tabs CJK and emoji" {
 
     try std.testing.expectEqual(rope_sel_len, static_sel_len);
     try std.testing.expectEqualStrings(rope_sel[0..rope_sel_len], static_sel[0..static_sel_len]);
+}
+
+test "StaticBackend - reuses line-break scratch allocation across repeated setTextFromMemId" {
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    const allocator = failing_allocator.allocator();
+
+    var backend = try StaticBackend.init(allocator, .unicode);
+    defer backend.deinit(allocator);
+
+    var mem_registry = MemRegistry.init(allocator);
+    defer mem_registry.deinit();
+
+    const text =
+        "line 01\nline 02\nline 03\nline 04\nline 05\nline 06\nline 07\nline 08\nline 09\nline 10\n" ++
+        "line 11\nline 12\nline 13\nline 14\nline 15\nline 16\nline 17\nline 18\nline 19\nline 20\n";
+    const mem_id = try mem_registry.register(text, false);
+
+    try backend.setTextFromMemId(&mem_registry, mem_id);
+    const alloc_after_first_set = failing_allocator.alloc_index;
+
+    try backend.setTextFromMemId(&mem_registry, mem_id);
+    const alloc_after_second_set = failing_allocator.alloc_index;
+
+    try std.testing.expectEqual(alloc_after_first_set, alloc_after_second_set);
 }
 
 test "StaticTextBuffer - setText OOM preserves previous content and index invariants" {

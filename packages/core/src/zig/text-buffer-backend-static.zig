@@ -49,6 +49,8 @@ pub const StaticBackend = struct {
     line_seg_start: std.ArrayListUnmanaged(u32),
     line_seg_end: std.ArrayListUnmanaged(u32),
 
+    line_break_scratch: utf8.LineBreakResult,
+
     max_line_width: u32,
     total_width: u32,
     total_bytes: u32,
@@ -71,6 +73,8 @@ pub const StaticBackend = struct {
         errdefer line_seg_start.deinit(global_allocator);
         var line_seg_end: std.ArrayListUnmanaged(u32) = .{};
         errdefer line_seg_end.deinit(global_allocator);
+        var line_break_scratch = utf8.LineBreakResult.init(global_allocator);
+        errdefer line_break_scratch.deinit();
 
         try line_starts.append(global_allocator, 0);
         try line_widths.append(global_allocator, 0);
@@ -88,6 +92,7 @@ pub const StaticBackend = struct {
             .line_widths = line_widths,
             .line_seg_start = line_seg_start,
             .line_seg_end = line_seg_end,
+            .line_break_scratch = line_break_scratch,
             .max_line_width = 0,
             .total_width = 0,
             .total_bytes = 0,
@@ -103,6 +108,7 @@ pub const StaticBackend = struct {
         self.line_widths.deinit(self.global_allocator);
         self.line_seg_start.deinit(self.global_allocator);
         self.line_seg_end.deinit(self.global_allocator);
+        self.line_break_scratch.deinit();
         self.arena.deinit();
         self.global_allocator.destroy(self.arena);
     }
@@ -197,11 +203,60 @@ pub const StaticBackend = struct {
         self.line_widths.clearRetainingCapacity();
         self.line_seg_start.clearRetainingCapacity();
         self.line_seg_end.clearRetainingCapacity();
+        self.line_break_scratch.reset();
 
         self.line_starts.appendAssumeCapacity(0);
         self.line_widths.appendAssumeCapacity(0);
         self.line_seg_start.appendAssumeCapacity(0);
         self.line_seg_end.appendAssumeCapacity(0);
+
+        self.max_line_width = 0;
+        self.total_width = 0;
+        self.total_bytes = 0;
+    }
+
+    const SetTextPreparation = struct {
+        text_len: u32,
+        break_count: u32,
+        required_line_slots: u32,
+        required_segment_slots: u32,
+    };
+
+    fn prepareSetText(self: *Self, text: []const u8) TextBufferError!SetTextPreparation {
+        const text_len: u32 = @intCast(text.len);
+        assert(text_len <= Limits.max_bytes);
+
+        self.line_break_scratch.reset();
+        try utf8.findLineBreaks(text, &self.line_break_scratch);
+
+        const break_count_usize = self.line_break_scratch.breaks.items.len;
+        if (break_count_usize >= std.math.maxInt(u32)) return TextBufferError.OutOfMemory;
+        const break_count: u32 = @intCast(break_count_usize);
+        const required_line_slots: u32 = break_count + 1;
+        const required_segment_slots_u64: u64 = 2 + (@as(u64, break_count) * 3);
+        if (required_line_slots > Limits.max_lines) return TextBufferError.OutOfMemory;
+        if (required_segment_slots_u64 > Limits.max_segments) return TextBufferError.OutOfMemory;
+        const required_segment_slots: u32 = @intCast(required_segment_slots_u64);
+
+        try self.segments.ensureTotalCapacity(self.global_allocator, required_segment_slots);
+        try self.ensureLineIndexCapacity(required_line_slots);
+
+        return .{
+            .text_len = text_len,
+            .break_count = break_count,
+            .required_line_slots = required_line_slots,
+            .required_segment_slots = required_segment_slots,
+        };
+    }
+
+    fn beginSetTextCommit(self: *Self) void {
+        _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
+
+        self.segments.clearRetainingCapacity();
+        self.line_starts.clearRetainingCapacity();
+        self.line_widths.clearRetainingCapacity();
+        self.line_seg_start.clearRetainingCapacity();
+        self.line_seg_end.clearRetainingCapacity();
 
         self.max_line_width = 0;
         self.total_width = 0;
@@ -287,7 +342,6 @@ pub const StaticBackend = struct {
         assert(mem_id <= @as(u8, @intCast(Limits.max_mem_buffers)));
         assert(mem_registry.get(mem_id) != null);
         const text = mem_registry.get(mem_id) orelse return TextBufferError.InvalidMemId;
-        _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
         try self.setTextInternal(mem_registry, mem_id, text);
     }
 
@@ -299,36 +353,15 @@ pub const StaticBackend = struct {
     }
 
     fn setTextInternal(self: *Self, mem_registry: *const MemRegistry, mem_id: u8, text: []const u8) TextBufferError!void {
-        const text_len: u32 = @intCast(text.len);
-        assert(text_len <= Limits.max_bytes);
         assert(mem_id <= @as(u8, @intCast(Limits.max_mem_buffers)));
         assert(mem_registry.get(mem_id) != null);
 
-        var break_result = utf8.LineBreakResult.init(self.global_allocator);
-        defer break_result.deinit();
-        try utf8.findLineBreaks(text, &break_result);
+        const prep = try self.prepareSetText(text);
+        assert(prep.required_segment_slots <= Limits.max_segments);
+        assert(prep.required_line_slots <= Limits.max_lines);
+        assert(prep.break_count <= prep.required_line_slots);
 
-        const break_count_usize = break_result.breaks.items.len;
-        if (break_count_usize >= std.math.maxInt(u32)) return TextBufferError.OutOfMemory;
-        const break_count: u32 = @intCast(break_count_usize);
-        const required_line_slots: u32 = break_count + 1;
-        const required_segment_slots_u64: u64 = 2 + (@as(u64, break_count) * 3);
-        if (required_line_slots > Limits.max_lines) return TextBufferError.OutOfMemory;
-        if (required_segment_slots_u64 > Limits.max_segments) return TextBufferError.OutOfMemory;
-        const required_segment_slots: u32 = @intCast(required_segment_slots_u64);
-
-        try self.segments.ensureTotalCapacity(self.global_allocator, required_segment_slots);
-        try self.ensureLineIndexCapacity(required_line_slots);
-
-        self.segments.clearRetainingCapacity();
-        self.line_starts.clearRetainingCapacity();
-        self.line_widths.clearRetainingCapacity();
-        self.line_seg_start.clearRetainingCapacity();
-        self.line_seg_end.clearRetainingCapacity();
-
-        self.max_line_width = 0;
-        self.total_width = 0;
-        self.total_bytes = 0;
+        self.beginSetTextCommit();
 
         var seg_count: u32 = 0;
         var line_start_offset: u32 = 0;
@@ -341,7 +374,7 @@ pub const StaticBackend = struct {
         var local_start: u32 = 0;
         var built_lines: u32 = 0;
 
-        for (break_result.breaks.items) |line_break| {
+        for (self.line_break_scratch.breaks.items) |line_break| {
             const break_pos: u32 = @intCast(line_break.pos);
             const local_end: u32 = switch (line_break.kind) {
                 .CRLF => break_pos - 1,
@@ -379,8 +412,8 @@ pub const StaticBackend = struct {
             local_start = break_pos + 1;
         }
 
-        if (local_start < text_len) {
-            const chunk = self.createChunk(mem_registry, mem_id, local_start, text_len);
+        if (local_start < prep.text_len) {
+            const chunk = self.createChunk(mem_registry, mem_id, local_start, prep.text_len);
             self.segments.appendAssumeCapacity(Segment{ .text = chunk });
             seg_count += 1;
             const chunk_width: u32 = chunk.width;
@@ -714,6 +747,7 @@ pub const StaticBackend = struct {
         total += self.line_widths.capacity * @sizeOf(u32);
         total += self.line_seg_start.capacity * @sizeOf(u32);
         total += self.line_seg_end.capacity * @sizeOf(u32);
+        total += self.line_break_scratch.breaks.capacity * @sizeOf(utf8.LineBreak);
         return total;
     }
 };
