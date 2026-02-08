@@ -17,6 +17,39 @@ fn expectRangeParity(rope_tb: *text_buffer.UnifiedTextBuffer, static_tb: *text_b
     try std.testing.expectEqualStrings(rope_out[0..rope_len], static_out[0..static_len]);
 }
 
+fn expectStaticBackendInvariants(tb: *text_buffer.UnifiedTextBuffer) !void {
+    switch (tb.backend) {
+        .static => |*backend| {
+            const line_count = backend.line_widths.items.len;
+            const seg_count = backend.segments.items.len;
+
+            try std.testing.expect(line_count >= 1);
+            try std.testing.expectEqual(line_count, backend.line_starts.items.len);
+            try std.testing.expectEqual(line_count, backend.line_seg_start.items.len);
+            try std.testing.expectEqual(line_count, backend.line_seg_end.items.len);
+            try std.testing.expect(backend.max_line_width <= backend.total_width);
+
+            var prev_start: u32 = 0;
+            for (backend.line_starts.items, 0..) |line_start, idx| {
+                if (idx > 0) {
+                    try std.testing.expect(line_start >= prev_start);
+                }
+                prev_start = line_start;
+
+                const seg_start = backend.line_seg_start.items[idx];
+                const seg_end = backend.line_seg_end.items[idx];
+                try std.testing.expect(seg_start <= seg_end);
+                try std.testing.expect(seg_end <= seg_count);
+            }
+
+            if (seg_count > 0) {
+                try std.testing.expect(backend.segments.items[0].isLineStart());
+            }
+        },
+        .rope => unreachable,
+    }
+}
+
 // =============================================================================
 // StaticTextBuffer Parity Tests
 // =============================================================================
@@ -399,4 +432,62 @@ test "backend parity - mixed CRLF LF tabs CJK and emoji" {
 
     try std.testing.expectEqual(rope_sel_len, static_sel_len);
     try std.testing.expectEqualStrings(rope_sel[0..rope_sel_len], static_sel[0..static_sel_len]);
+}
+
+test "StaticTextBuffer - setText OOM preserves previous content and index invariants" {
+    const initial_text = "stable\ncontent\nfor baseline";
+    const target_text = "line 1\nline 2 with tab\tA\nline 3\nline 4\nline 5 with emoji 🌍\nline 6";
+
+    const allocation_window = blk: {
+        var counting_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+        const allocator = counting_allocator.allocator();
+
+        const pool = gp.initGlobalPool(allocator);
+        defer gp.deinitGlobalPool();
+
+        var sb_count = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
+        defer sb_count.deinit();
+
+        try sb_count.setText(initial_text);
+        const before_target = counting_allocator.alloc_index;
+        try sb_count.setText(target_text);
+        const after_target = counting_allocator.alloc_index;
+
+        try std.testing.expect(after_target > before_target);
+        break :blk .{ .before = before_target, .after = after_target };
+    };
+
+    var failing_allocator = std.testing.FailingAllocator.init(std.testing.allocator, .{
+        .fail_index = allocation_window.after - 1,
+    });
+
+    {
+        const allocator = failing_allocator.allocator();
+        const pool = gp.initGlobalPool(allocator);
+        defer gp.deinitGlobalPool();
+
+        var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
+        defer sb.deinit();
+
+        try sb.setText(initial_text);
+
+        var before_buf: [128]u8 = undefined;
+        const before_len = sb.getPlainTextIntoBuffer(&before_buf);
+
+        try std.testing.expectError(text_buffer.TextBufferError.OutOfMemory, sb.setText(target_text));
+        try std.testing.expect(failing_allocator.has_induced_failure);
+
+        try expectStaticBackendInvariants(sb);
+
+        var after_buf: [128]u8 = undefined;
+        const after_len = sb.getPlainTextIntoBuffer(&after_buf);
+        try std.testing.expectEqual(before_len, after_len);
+        try std.testing.expectEqualStrings(before_buf[0..before_len], after_buf[0..after_len]);
+
+        var range_buf: [64]u8 = undefined;
+        const range_len = sb.getTextRange(0, 6, &range_buf);
+        try std.testing.expectEqualStrings("stable", range_buf[0..range_len]);
+    }
+
+    try std.testing.expectEqual(failing_allocator.allocated_bytes, failing_allocator.freed_bytes);
 }

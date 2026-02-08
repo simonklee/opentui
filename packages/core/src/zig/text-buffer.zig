@@ -881,6 +881,13 @@ pub const UnifiedTextBuffer = struct {
         };
     }
 
+    pub fn getAllocatedBytes(self: *const Self) usize {
+        return switch (self.backend) {
+            .rope => |*backend| backend.getAllocatedBytes(),
+            .static => |*backend| backend.getAllocatedBytes(),
+        };
+    }
+
     pub fn debugLogRope(self: *const Self) void {
         switch (self.backend) {
             .rope => |*backend| backend.debugLogRope(),

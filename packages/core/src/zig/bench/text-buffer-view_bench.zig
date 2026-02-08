@@ -119,7 +119,7 @@ fn benchSetText(
                 stats.record(timer.read());
 
                 if (i == iterations - 1 and show_mem) {
-                    final_mem = tb.getArenaAllocatedBytes();
+                    final_mem = tb.getAllocatedBytes();
                 }
             }
 
@@ -169,7 +169,7 @@ fn benchSetText(
                 stats.record(timer.read());
 
                 if (i == iterations - 1 and show_mem) {
-                    final_mem = tb.getArenaAllocatedBytes();
+                    final_mem = tb.getAllocatedBytes();
                 }
             }
 
@@ -225,7 +225,7 @@ fn benchWrap(
         _ = count;
 
         if (i == iterations - 1 and show_mem) {
-            final_tb_mem = tb.getArenaAllocatedBytes();
+            final_tb_mem = tb.getAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
         }
     }
@@ -303,7 +303,7 @@ fn benchMeasureForDimensionsLayout(
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
-            final_tb_mem = tb.getArenaAllocatedBytes();
+            final_tb_mem = tb.getAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
         }
     }
@@ -354,7 +354,7 @@ fn benchSetTextStatic(
                 stats.record(timer.read());
 
                 if (i == iterations - 1 and show_mem) {
-                    final_mem = sb.getArenaAllocatedBytes();
+                    final_mem = sb.getAllocatedBytes();
                 }
             }
 
@@ -404,7 +404,7 @@ fn benchSetTextStatic(
                 stats.record(timer.read());
 
                 if (i == iterations - 1 and show_mem) {
-                    final_mem = sb.getArenaAllocatedBytes();
+                    final_mem = sb.getAllocatedBytes();
                 }
             }
 
@@ -461,7 +461,7 @@ fn benchWrapStatic(
         _ = count;
 
         if (i == iterations - 1 and show_mem) {
-            final_tb_mem = sb.getArenaAllocatedBytes();
+            final_tb_mem = sb.getAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
         }
     }
@@ -521,7 +521,7 @@ fn benchMeasureForDimensionsLayoutStatic(
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
-            final_tb_mem = sb.getArenaAllocatedBytes();
+            final_tb_mem = sb.getAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
         }
     }

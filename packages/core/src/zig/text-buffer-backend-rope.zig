@@ -374,6 +374,10 @@ pub const RopeBackend = struct {
         return self.arena.queryCapacity();
     }
 
+    pub fn getAllocatedBytes(self: *const Self) usize {
+        return self.getArenaAllocatedBytes();
+    }
+
     pub fn debugLogRope(self: *const Self) void {
         logger.debug("=== TextBuffer Rope Debug ===", .{});
         logger.debug("Line count: {}", .{self.getLineCount()});
