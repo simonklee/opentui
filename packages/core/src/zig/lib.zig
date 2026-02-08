@@ -756,13 +756,12 @@ export fn textBufferViewSetViewportSize(view: *text_buffer_view.UnifiedTextBuffe
 }
 
 export fn textBufferViewSetViewport(view: *text_buffer_view.UnifiedTextBufferView, x: u32, y: u32, width: u32, height: u32) void {
-    const viewport = text_buffer_view.Viewport{
+    view.setViewport(text_buffer_view.Viewport{
         .x = x,
         .y = y,
         .width = width,
         .height = height,
-    };
-    view.setViewport(viewport);
+    });
 }
 
 export fn textBufferViewGetVirtualLineCount(view: *text_buffer_view.UnifiedTextBufferView) u32 {
@@ -816,8 +815,7 @@ export fn textBufferViewSetTabIndicator(view: *text_buffer_view.UnifiedTextBuffe
 }
 
 export fn textBufferViewSetTabIndicatorColor(view: *text_buffer_view.UnifiedTextBufferView, color: [*]const f32) void {
-    const rgba = utils.f32PtrToRGBA(color);
-    view.setTabIndicatorColor(rgba);
+    view.setTabIndicatorColor(utils.f32PtrToRGBA(color));
 }
 
 export fn textBufferViewSetTruncate(view: *text_buffer_view.UnifiedTextBufferView, truncate: bool) void {
@@ -1366,6 +1364,7 @@ export fn textBufferAddHighlightByCharRange(
     hl_ptr: [*]const ExternalHighlight,
 ) void {
     const hl = hl_ptr[0];
+    // For char-range highlights, start/end in the struct are unused (passed as char_start/char_end)
     tb.addHighlightByCharRange(hl.start, hl.end, hl.style_id, hl.priority, hl.hl_ref) catch {};
 }
 
