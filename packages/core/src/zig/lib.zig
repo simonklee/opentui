@@ -737,8 +737,7 @@ export fn textBufferViewResetLocalSelection(view: *text_buffer_view.UnifiedTextB
 }
 
 export fn textBufferViewSetWrapWidth(view: *text_buffer_view.UnifiedTextBufferView, width: u32) void {
-    const wrap_width = if (width == 0) null else width;
-    view.setWrapWidth(wrap_width);
+    view.setWrapWidth(if (width == 0) null else width);
 }
 
 export fn textBufferViewSetWrapMode(view: *text_buffer_view.UnifiedTextBufferView, mode: u8) void {
