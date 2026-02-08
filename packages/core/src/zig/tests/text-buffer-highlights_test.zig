@@ -3,7 +3,7 @@ const text_buffer = @import("../text-buffer.zig");
 const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
 
-const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
 const RGBA = text_buffer.RGBA;
 const Highlight = text_buffer.Highlight;
 
@@ -11,7 +11,7 @@ test "TextBuffer coords - addHighlightByCoords" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello\nWorld");
@@ -28,7 +28,7 @@ test "TextBuffer coords - addHighlightByCoords multi-line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello\nWorld");
@@ -48,7 +48,7 @@ test "TextBuffer highlights - add single highlight to line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -66,7 +66,7 @@ test "TextBuffer highlights - add multiple highlights to same line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -84,7 +84,7 @@ test "TextBuffer highlights - add highlights to multiple lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -102,7 +102,7 @@ test "TextBuffer highlights - remove highlights by reference" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2");
@@ -125,7 +125,7 @@ test "TextBuffer highlights - clear line highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2");
@@ -143,7 +143,7 @@ test "TextBuffer highlights - clear all highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Line 1\nLine 2\nLine 3");
@@ -163,7 +163,7 @@ test "TextBuffer highlights - get highlights from non-existent line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Line 1");
@@ -177,7 +177,7 @@ test "TextBuffer highlights - overlapping highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -193,7 +193,7 @@ test "TextBuffer highlights - reset clears highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -209,7 +209,7 @@ test "TextBuffer highlights - setSyntaxStyle and getSyntaxStyle" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -228,7 +228,7 @@ test "TextBuffer highlights - integration with SyntaxStyle" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     var syntax_style = try ss.SyntaxStyle.init(std.testing.allocator);
@@ -258,7 +258,7 @@ test "TextBuffer highlights - style spans computed correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("0123456789");
@@ -284,7 +284,7 @@ test "TextBuffer highlights - priority handling in spans" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("0123456789");
@@ -311,7 +311,7 @@ test "TextBuffer char range highlights - single line highlight" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -329,7 +329,7 @@ test "TextBuffer char range highlights - multi-line highlight" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     // "Hello" = 5 chars (0-4, newlines not counted in offsets)
@@ -360,7 +360,7 @@ test "TextBuffer char range highlights - spanning three lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Line1\nLine2\nLine3");
@@ -386,7 +386,7 @@ test "TextBuffer char range highlights - exact line boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("AAAA\nBBBB\nCCCC");
@@ -408,7 +408,7 @@ test "TextBuffer char range highlights - empty range" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -424,7 +424,7 @@ test "TextBuffer char range highlights - invalid range" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -440,7 +440,7 @@ test "TextBuffer char range highlights - out of bounds range" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello");
@@ -457,7 +457,7 @@ test "TextBuffer char range highlights - multiple non-overlapping ranges" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("function hello() { return 42; }");
@@ -477,7 +477,7 @@ test "TextBuffer char range highlights - with reference ID for removal" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Line1\nLine2\nLine3");
@@ -497,7 +497,7 @@ test "TextBuffer char range highlights - priority handling" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("0123456789");
@@ -522,7 +522,7 @@ test "TextBuffer char range highlights - unicode text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello 世界 🌟");
@@ -538,7 +538,7 @@ test "TextBuffer char range highlights - preserved after setText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("Hello World");
@@ -560,7 +560,7 @@ test "TextBuffer char range highlights - multi-width chars before highlight" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("前后端分离 @git-committer");
@@ -576,7 +576,7 @@ test "TextBuffer char range highlights - multi-width chars between highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("abc前后端def");
@@ -592,7 +592,7 @@ test "TextBuffer char range highlights - emoji grapheme clusters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
     defer tb.deinit();
 
     try tb.setText("前🌟test");
