@@ -115,7 +115,7 @@ const examples: Example[] = [
   },
   {
     name: "Static Buffer Demo",
-    description: "Compare StaticTextBuffer vs UnifiedTextBuffer - side-by-side view with metrics",
+    description: "Compare StaticTextBuffer vs TextBuffer - side-by-side view with metrics",
     run: staticBufferDemo.run,
     destroy: staticBufferDemo.destroy,
   },

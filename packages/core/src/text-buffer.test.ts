@@ -1,13 +1,13 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
-import { UnifiedTextBuffer } from "./text-buffer"
+import { TextBuffer } from "./text-buffer"
 import { StyledText, stringToStyledText } from "./lib/styled-text"
 import { RGBA } from "./lib/RGBA"
 
-describe("UnifiedTextBuffer", () => {
-  let buffer: UnifiedTextBuffer
+describe("TextBuffer", () => {
+  let buffer: TextBuffer
 
   beforeEach(() => {
-    buffer = UnifiedTextBuffer.create("wcwidth")
+    buffer = TextBuffer.create("wcwidth")
   })
 
   afterEach(() => {
@@ -16,8 +16,8 @@ describe("UnifiedTextBuffer", () => {
 
   describe("editable guard", () => {
     it("should throw on append for static buffer", () => {
-      const staticBuffer = UnifiedTextBuffer.create("wcwidth", { editable: false })
-      expect(() => staticBuffer.append(" World")).toThrow("UnifiedTextBuffer.append requires editable: true")
+      const staticBuffer = TextBuffer.create("wcwidth", { editable: false })
+      expect(() => staticBuffer.append(" World")).toThrow("TextBuffer.append requires editable: true")
       staticBuffer.destroy()
     })
   })

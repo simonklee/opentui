@@ -1,6 +1,6 @@
 import { Renderable, type RenderableOptions } from "../Renderable"
 import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } from "../lib/selection"
-import { UnifiedTextBuffer, type TextChunk } from "../text-buffer"
+import { TextBuffer, type TextChunk } from "../text-buffer"
 import { TextBufferView } from "../text-buffer-view"
 import { RGBA, parseColor } from "../lib/RGBA"
 import { type RenderContext, type LineInfoProvider } from "../types"
@@ -39,7 +39,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   protected _scrollY: number = 0
   protected _truncate: boolean = false
 
-  protected textBuffer: UnifiedTextBuffer
+  protected textBuffer: TextBuffer
   protected textBufferView: TextBufferView
 
   protected _defaultOptions = {
@@ -73,7 +73,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     this._truncate = options.truncate ?? this._defaultOptions.truncate
 
     const editable = options.editable ?? this._defaultOptions.editable
-    this.textBuffer = UnifiedTextBuffer.create(this._ctx.widthMethod, { editable })
+    this.textBuffer = TextBuffer.create(this._ctx.widthMethod, { editable })
     this.textBufferView = TextBufferView.create(this.textBuffer)
 
     const style = SyntaxStyle.create()

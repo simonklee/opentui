@@ -1,5 +1,5 @@
 import type { TextRenderable } from "../renderables/Text"
-import type { UnifiedTextBuffer, TextChunk } from "../text-buffer"
+import type { TextBuffer, TextChunk } from "../text-buffer"
 import { createTextAttributes } from "../utils"
 import { parseColor, type ColorInput } from "./RGBA"
 

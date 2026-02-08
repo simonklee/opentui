@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Benchmark comparing StaticTextBuffer vs UnifiedTextBuffer performance
+ * Benchmark comparing StaticTextBuffer vs TextBuffer performance
  * for Text and Code renderables.
  *
  * Run: bun src/benchmark/text-buffer-benchmark.ts
@@ -13,7 +13,7 @@ import { SyntaxStyle } from "../syntax-style"
 import { RGBA } from "../lib/RGBA"
 import { StyledText } from "../lib/styled-text"
 import { TextBufferView } from "../text-buffer-view"
-import { UnifiedTextBuffer, type TextChunk } from "../text-buffer"
+import { TextBuffer, type TextChunk } from "../text-buffer"
 
 interface BenchmarkResult {
   name: string
@@ -203,13 +203,13 @@ async function benchmarkTextBufferSetText(
   content: string,
   iterations: number,
 ): Promise<BenchmarkResult> {
-  let buffer: UnifiedTextBuffer | null = null
+  let buffer: TextBuffer | null = null
 
   return runBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
+      buffer = TextBuffer.create(widthMethod, { editable })
     },
     async () => {
       buffer!.setText(content)
@@ -230,13 +230,13 @@ async function benchmarkTextBufferSetStyledText(
   content: StyledText,
   iterations: number,
 ): Promise<BenchmarkResult> {
-  let buffer: UnifiedTextBuffer | null = null
+  let buffer: TextBuffer | null = null
 
   return runBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
+      buffer = TextBuffer.create(widthMethod, { editable })
     },
     async () => {
       buffer!.setStyledText(content)
@@ -257,13 +257,13 @@ async function benchmarkTextBufferContentUpdate(
   contents: string[],
   iterations: number,
 ): Promise<BenchmarkResult> {
-  let buffer: UnifiedTextBuffer | null = null
+  let buffer: TextBuffer | null = null
 
   return runBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
+      buffer = TextBuffer.create(widthMethod, { editable })
     },
     async () => {
       for (const content of contents) {
@@ -287,14 +287,14 @@ async function benchmarkTextBufferViewWrap(
   wrapWidth: number,
   iterations: number,
 ): Promise<BenchmarkResult> {
-  let buffer: UnifiedTextBuffer | null = null
+  let buffer: TextBuffer | null = null
   let view: TextBufferView | null = null
 
   return runBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
+      buffer = TextBuffer.create(widthMethod, { editable })
       buffer.setText(content)
       view = TextBufferView.create(buffer)
       view.setWrapMode("word")
@@ -322,13 +322,13 @@ async function benchmarkTextBufferSetTextMemory(
   content: string,
   iterations: number,
 ): Promise<MemoryResult> {
-  let buffer: UnifiedTextBuffer | null = null
+  let buffer: TextBuffer | null = null
 
   return runMemoryBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
+      buffer = TextBuffer.create(widthMethod, { editable })
     },
     async () => {
       buffer!.setText(content)
@@ -349,13 +349,13 @@ async function benchmarkTextBufferSetStyledTextMemory(
   content: StyledText,
   iterations: number,
 ): Promise<MemoryResult> {
-  let buffer: UnifiedTextBuffer | null = null
+  let buffer: TextBuffer | null = null
 
   return runMemoryBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
+      buffer = TextBuffer.create(widthMethod, { editable })
     },
     async () => {
       buffer!.setStyledText(content)
@@ -376,13 +376,13 @@ async function benchmarkTextBufferContentUpdateMemory(
   contents: string[],
   iterations: number,
 ): Promise<MemoryResult> {
-  let buffer: UnifiedTextBuffer | null = null
+  let buffer: TextBuffer | null = null
 
   return runMemoryBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
+      buffer = TextBuffer.create(widthMethod, { editable })
     },
     async () => {
       for (const content of contents) {
@@ -406,14 +406,14 @@ async function benchmarkTextBufferViewWrapMemory(
   wrapWidth: number,
   iterations: number,
 ): Promise<MemoryResult> {
-  let buffer: UnifiedTextBuffer | null = null
+  let buffer: TextBuffer | null = null
   let view: TextBufferView | null = null
 
   return runMemoryBenchmark(
     editable ? "UnifiedBuffer" : "StaticBuffer",
     iterations,
     async () => {
-      buffer = UnifiedTextBuffer.create(widthMethod, { editable })
+      buffer = TextBuffer.create(widthMethod, { editable })
       buffer.setText(content)
       view = TextBufferView.create(buffer)
       view.setWrapMode("word")
@@ -778,7 +778,7 @@ async function main(): Promise<void> {
   if (runMemory) modes.push("memory")
 
   console.log("=== Text Buffer Benchmark ===")
-  console.log("Comparing StaticTextBuffer vs UnifiedTextBuffer performance")
+  console.log("Comparing StaticTextBuffer vs TextBuffer performance")
   console.log(`Time source: ${cpuTimeAvailable ? "cpu (process.cpuUsage)" : "wall (performance.now)"}`)
   console.log(`GC: ${gcAvailable ? "available" : "unavailable"}${gcAvailable ? "" : " (memory deltas may be noisy)"}`)
   console.log(`Modes: ${modes.join(" + ") || "none"}`)

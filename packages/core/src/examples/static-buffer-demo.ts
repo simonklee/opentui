@@ -3,7 +3,7 @@
  * Static Buffer Demo
  *
  * Demonstrates the difference between StaticTextBuffer (read-only, flat storage)
- * and UnifiedTextBuffer (editable, rope-backed).
+ * and TextBuffer (editable, rope-backed).
  *
  * Key differences:
  * - Static: Optimized for read-only display (Text, Code renderables)
@@ -28,7 +28,7 @@ import {
   blue,
   type KeyEvent,
 } from ".."
-import { UnifiedTextBuffer } from "../text-buffer"
+import { TextBuffer } from "../text-buffer"
 import { TextBufferView } from "../text-buffer-view"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
@@ -40,8 +40,8 @@ let statusText: TextRenderable | null = null
 let metricsText: TextRenderable | null = null
 
 // Direct buffer references for metrics
-let staticBuffer: UnifiedTextBuffer | null = null
-let unifiedBuffer: UnifiedTextBuffer | null = null
+let staticBuffer: TextBuffer | null = null
+let unifiedBuffer: TextBuffer | null = null
 let staticView: TextBufferView | null = null
 let unifiedView: TextBufferView | null = null
 
@@ -59,7 +59,7 @@ And line 4.`,
 
 This demonstrates the difference between:
 - StaticTextBuffer: Read-only, flat storage
-- UnifiedTextBuffer: Editable, rope-backed
+- TextBuffer: Editable, rope-backed
 
 Both should render identically for display purposes.
 The static buffer is optimized for:
@@ -102,10 +102,10 @@ function clearUpdateInterval(): void {
 
 function createBufferPair(renderer: CliRenderer): void {
   // Create static buffer (default)
-  staticBuffer = UnifiedTextBuffer.create(renderer.widthMethod, { editable: false })
+  staticBuffer = TextBuffer.create(renderer.widthMethod, { editable: false })
 
   // Create unified buffer (editable)
-  unifiedBuffer = UnifiedTextBuffer.create(renderer.widthMethod, { editable: true })
+  unifiedBuffer = TextBuffer.create(renderer.widthMethod, { editable: true })
 
   // Create views for both
   staticView = TextBufferView.create(staticBuffer)
@@ -442,7 +442,7 @@ Random: ${Math.floor(Math.random() * 1000)}`
 
 Both panels show identical content.
 The left uses ${green("StaticTextBuffer")} (read-only, flat storage).
-The right uses ${blue("UnifiedTextBuffer")} (editable, rope-backed).
+The right uses ${blue("TextBuffer")} (editable, rope-backed).
 
 For display purposes, they should be identical.
 Metrics panel shows buffer internals.`
