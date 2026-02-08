@@ -6,10 +6,9 @@ import { stringToStyledText, StyledText } from "../lib/styled-text"
 import { createTestRenderer, type MockMouse, type TestRenderer } from "../testing/test-renderer"
 import { BoxRenderable } from "./Box"
 
-// Buffer type configurations to test
 const bufferTypes: Array<{ editable: boolean; name: string }> = [
-  { editable: true, name: "UnifiedBuffer" },
-  { editable: false, name: "StaticBuffer" },
+  { editable: true, name: "rope" },
+  { editable: false, name: "static" },
 ]
 
 for (const { editable, name } of bufferTypes) {

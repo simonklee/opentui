@@ -9,7 +9,7 @@ const link = @import("../link.zig");
 const ansi = @import("../ansi.zig");
 
 const CliRenderer = renderer.CliRenderer;
-const TextBuffer = text_buffer.UnifiedTextBuffer;
+const TextBuffer = text_buffer.TextBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
