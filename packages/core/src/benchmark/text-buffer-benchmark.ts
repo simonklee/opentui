@@ -757,11 +757,7 @@ function getSpeedup(staticResult: BenchmarkResult, unifiedResult: BenchmarkResul
   return unifiedResult.medianTimeMs / staticResult.medianTimeMs
 }
 
-function buildMemorySuite(
-  scenario: string,
-  staticResult: MemoryResult,
-  unifiedResult: MemoryResult,
-): MemorySuite {
+function buildMemorySuite(scenario: string, staticResult: MemoryResult, unifiedResult: MemoryResult): MemorySuite {
   const staticRss = staticResult.stats.rss.medianBytes
   const unifiedRss = unifiedResult.stats.rss.medianBytes
   return {
