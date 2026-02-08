@@ -4,15 +4,15 @@ const iter_mod = @import("../text-buffer-iterators.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
-const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
-const TextBufferView = text_buffer_view.TextBufferView;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
+const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 const RGBA = text_buffer.RGBA;
 
 test "TextBufferView wrapping - no wrap returns same line count" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -32,7 +32,7 @@ test "TextBufferView wrapping - simple wrap splits line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -54,7 +54,7 @@ test "TextBufferView wrapping - wrap at exact boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -73,7 +73,7 @@ test "TextBufferView wrapping - preserves newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -95,7 +95,7 @@ test "TextBufferView selection - basic selection without wrap" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -118,7 +118,7 @@ test "TextBufferView selection - with wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -146,7 +146,7 @@ test "TextBufferView selection - no selection returns all bits set" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -162,7 +162,7 @@ test "TextBufferView word wrapping - basic word wrap at space" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -181,7 +181,7 @@ test "TextBufferView word wrapping - long word exceeds width" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -200,7 +200,7 @@ test "TextBufferView getSelectedTextIntoBuffer - simple selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -220,7 +220,7 @@ test "TextBufferView getSelectedTextIntoBuffer - with newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -241,7 +241,7 @@ test "TextBufferView getCachedLineInfo - with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -268,7 +268,7 @@ test "TextBufferView virtual line spans - with highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -300,7 +300,7 @@ test "TextBufferView updates after buffer setText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -322,7 +322,7 @@ test "TextBufferView wrapping - multiple wrap lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -341,7 +341,7 @@ test "TextBufferView wrapping - long line with newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -363,7 +363,7 @@ test "TextBufferView wrapping - change wrap width" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -395,7 +395,7 @@ test "TextBufferView wrapping - grapheme at exact boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -414,7 +414,7 @@ test "TextBufferView wrapping - grapheme split across boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -433,7 +433,7 @@ test "TextBufferView wrapping - CJK characters at boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -452,7 +452,7 @@ test "TextBufferView wrapping - mixed width characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -471,7 +471,7 @@ test "TextBufferView wrapping - single wide character exceeds width" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -490,7 +490,7 @@ test "TextBufferView wrapping - multiple consecutive wide characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -509,7 +509,7 @@ test "TextBufferView wrapping - zero width characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -528,7 +528,7 @@ test "TextBufferView word wrapping - multiple words" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -547,7 +547,7 @@ test "TextBufferView word wrapping - hyphenated words" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -566,7 +566,7 @@ test "TextBufferView word wrapping - punctuation boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -585,7 +585,7 @@ test "TextBufferView word wrapping - tab boundary width" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -607,7 +607,7 @@ test "TextBufferView word wrapping - emoji boundary width" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -629,7 +629,7 @@ test "TextBufferView word wrapping - CJK boundary width" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -651,7 +651,7 @@ test "TextBufferView word wrapping - compare char vs word mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -674,7 +674,7 @@ test "TextBufferView word wrapping - empty lines preserved" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -693,7 +693,7 @@ test "TextBufferView word wrapping - slash as boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -712,7 +712,7 @@ test "TextBufferView word wrapping - brackets as boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -731,7 +731,7 @@ test "TextBufferView word wrapping - single character at boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -750,7 +750,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -794,7 +794,7 @@ test "TextBufferView wrapping - very narrow width (1 char)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -813,7 +813,7 @@ test "TextBufferView wrapping - very narrow width (2 chars)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -832,7 +832,7 @@ test "TextBufferView wrapping - switch between char and word mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -857,7 +857,7 @@ test "TextBufferView wrapping - multiple consecutive newlines with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -876,7 +876,7 @@ test "TextBufferView wrapping - only spaces should not create extra lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -895,7 +895,7 @@ test "TextBufferView wrapping - mixed tabs and spaces" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -914,7 +914,7 @@ test "TextBufferView wrapping - unicode emoji with varying widths" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -933,7 +933,7 @@ test "TextBufferView wrapping - getVirtualLines reflects current wrap state" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -963,7 +963,7 @@ test "TextBufferView selection - multi-line selection without wrap" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -981,7 +981,7 @@ test "TextBufferView selection - selection at wrap boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1007,7 +1007,7 @@ test "TextBufferView selection - spanning multiple wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1034,7 +1034,7 @@ test "TextBufferView selection - changes when wrap width changes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1067,7 +1067,7 @@ test "TextBufferView selection - empty selection with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1089,7 +1089,7 @@ test "TextBufferView selection - with newlines and wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1113,7 +1113,7 @@ test "TextBufferView selection - reset clears selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1134,7 +1134,7 @@ test "TextBufferView selection - spanning multiple lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1155,7 +1155,7 @@ test "TextBufferView line info - empty buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1176,7 +1176,7 @@ test "TextBufferView line info - simple text without newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1196,7 +1196,7 @@ test "TextBufferView line info - text ending with newline" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1217,7 +1217,7 @@ test "TextBufferView line info - consecutive newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1236,7 +1236,7 @@ test "TextBufferView line info - only newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1257,7 +1257,7 @@ test "TextBufferView line info - wide characters (Unicode)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1276,7 +1276,7 @@ test "TextBufferView line info - very long lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1296,7 +1296,7 @@ test "TextBufferView line info - buffer with only whitespace" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1317,7 +1317,7 @@ test "TextBufferView line info - single character lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1338,7 +1338,7 @@ test "TextBufferView line info - complex Unicode combining characters" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1359,7 +1359,7 @@ test "TextBufferView line info - extremely long single line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1379,7 +1379,7 @@ test "TextBufferView line info - extremely long line with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1400,7 +1400,7 @@ test "TextBufferView getPlainTextIntoBuffer - simple text without newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1419,7 +1419,7 @@ test "TextBufferView getPlainTextIntoBuffer - text with newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1438,7 +1438,7 @@ test "TextBufferView getPlainTextIntoBuffer - text with only newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1457,7 +1457,7 @@ test "TextBufferView getPlainTextIntoBuffer - empty lines between content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1476,7 +1476,7 @@ test "TextBufferView line info - text starting with newline" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1497,7 +1497,7 @@ test "TextBufferView line info - lines with different widths" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1524,7 +1524,7 @@ test "TextBufferView line info - alternating empty and content lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1545,7 +1545,7 @@ test "TextBufferView line info - thousands of lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1578,7 +1578,7 @@ test "TextBufferView highlights - add single highlight to line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1599,7 +1599,7 @@ test "TextBufferView highlights - add multiple highlights to same line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1620,7 +1620,7 @@ test "TextBufferView highlights - add highlights to multiple lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1641,7 +1641,7 @@ test "TextBufferView highlights - remove highlights by reference" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1667,7 +1667,7 @@ test "TextBufferView highlights - clear line highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1688,7 +1688,7 @@ test "TextBufferView highlights - clear all highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1711,7 +1711,7 @@ test "TextBufferView highlights - overlapping highlights" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1730,7 +1730,7 @@ test "TextBufferView highlights - style spans computed correctly" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1758,7 +1758,7 @@ test "TextBufferView highlights - priority handling in spans" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1785,7 +1785,7 @@ test "TextBufferView char range highlights - single line highlight" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1806,7 +1806,7 @@ test "TextBufferView char range highlights - multi-line highlight" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1833,7 +1833,7 @@ test "TextBufferView char range highlights - spanning three lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1860,7 +1860,7 @@ test "TextBufferView char range highlights - empty range" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1878,7 +1878,7 @@ test "TextBufferView char range highlights - multiple non-overlapping ranges" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1901,7 +1901,7 @@ test "TextBufferView char range highlights - with reference ID for removal" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1925,7 +1925,7 @@ test "TextBufferView highlights - work correctly with wrapped lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1957,7 +1957,7 @@ test "TextBufferView measureForDimensions - does not modify cache" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -1986,7 +1986,7 @@ test "TextBufferView measureForDimensions - cache invalidates after updateVirtua
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2015,7 +2015,7 @@ test "TextBufferView measureForDimensions - width 0 uses intrinsic line widths" 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2033,7 +2033,7 @@ test "TextBufferView measureForDimensions - no wrap matches multi-segment line w
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2058,10 +2058,10 @@ test "TextBufferView measureForDimensions - cache invalidates on switchToBuffer"
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
-    var other_tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var other_tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer other_tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2087,7 +2087,7 @@ test "TextBufferView measureForDimensions - char wrap" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2114,7 +2114,7 @@ test "TextBufferView measureForDimensions - no wrap mode" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2134,7 +2134,7 @@ test "TextBufferView measureForDimensions - word wrap" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2153,7 +2153,7 @@ test "TextBufferView measureForDimensions - empty buffer" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2171,7 +2171,7 @@ test "TextBufferView truncation - basic truncate single line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2195,7 +2195,7 @@ test "TextBufferView truncation - multiline with truncate" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2223,7 +2223,7 @@ test "TextBufferView truncation - with wrapping disabled" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2246,7 +2246,7 @@ test "TextBufferView truncation - toggle truncate on and off" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2275,7 +2275,7 @@ test "TextBufferView truncation - very small viewport" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2297,7 +2297,7 @@ test "TextBufferView truncation - verify ellipsis chunk injection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2330,7 +2330,7 @@ test "TextBufferView truncation - works with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2354,7 +2354,7 @@ test "TextBufferView truncation - verify prefix and suffix content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2386,7 +2386,7 @@ test "TextBufferView measureForDimensions - multiple lines with different widths
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2405,7 +2405,7 @@ test "TextBufferView highlights - multiple highlights on wrapped line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2434,7 +2434,7 @@ test "TextBufferView highlights - with emojis and wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2466,7 +2466,7 @@ test "TextBufferView highlights - with CJK characters and wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2498,7 +2498,7 @@ test "TextBufferView highlights - mixed ASCII and wide chars with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2531,7 +2531,7 @@ test "TextBufferView highlights - emoji at wrap boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2558,7 +2558,7 @@ test "TextBufferView highlights - emojis without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2584,7 +2584,7 @@ test "TextBufferView highlights - CJK without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2610,7 +2610,7 @@ test "TextBufferView highlights - mixed width graphemes without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2639,7 +2639,7 @@ test "TextBufferView highlights - emoji at start without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2662,7 +2662,7 @@ test "TextBufferView highlights - emoji at end without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2685,7 +2685,7 @@ test "TextBufferView highlights - consecutive emojis without wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2708,7 +2708,7 @@ test "TextBufferView accessor methods - getVirtualLines and getLines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2728,7 +2728,7 @@ test "TextBufferView accessor methods - with wrapping" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2749,7 +2749,7 @@ test "TextBufferView virtual lines - match real lines when no wrap" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2769,7 +2769,7 @@ test "TextBufferView virtual lines - updated when wrap width set" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2788,7 +2788,7 @@ test "TextBufferView virtual lines - reset to match real lines when wrap removed
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2813,7 +2813,7 @@ test "TextBufferView virtual lines - multi-line text without wrap" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2838,7 +2838,7 @@ test "TextBufferView line info - line starts and widths consistency" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2865,7 +2865,7 @@ test "TextBufferView line info - line starts monotonically increasing" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2898,7 +2898,7 @@ test "TextBufferView - highlights preserved after wrap width change" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2919,7 +2919,7 @@ test "TextBufferView - get highlights from non-existent line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2935,7 +2935,7 @@ test "TextBufferView - char range highlights out of bounds" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2954,7 +2954,7 @@ test "TextBufferView - char range highlights invalid range" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2972,7 +2972,7 @@ test "TextBufferView - char range highlights exact line boundaries" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -2995,7 +2995,7 @@ test "TextBufferView - char range highlights unicode text" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -3014,7 +3014,7 @@ test "TextBufferView automatic updates - view reflects buffer changes immediatel
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -3038,7 +3038,7 @@ test "TextBufferView automatic updates - multiple views update independently" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view1 = try TextBufferView.init(std.testing.allocator, tb);
@@ -3070,7 +3070,7 @@ test "TextBufferView automatic updates - view destroyed doesn't affect others" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view1 = try TextBufferView.init(std.testing.allocator, tb);
@@ -3092,7 +3092,7 @@ test "TextBufferView automatic updates - with wrapping across buffer changes" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -3125,7 +3125,7 @@ test "TextBufferView automatic updates - reset clears content and marks views di
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -3149,7 +3149,7 @@ test "TextBufferView automatic updates - view updates work with selection" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -3172,7 +3172,7 @@ test "TextBufferView automatic updates - multiple views with different wrap sett
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view_nowrap = try TextBufferView.init(std.testing.allocator, tb);
@@ -3210,7 +3210,7 @@ test "TextBufferView - tab indicator set and get" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -3230,7 +3230,7 @@ test "TextBufferView findVisualLineIndex - finds correct line for wrapped text" 
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -3268,7 +3268,7 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);

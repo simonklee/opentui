@@ -3,8 +3,8 @@ const text_buffer = @import("../text-buffer.zig");
 const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
-const UnifiedTextBuffer = text_buffer.UnifiedTextBuffer;
-const TextBufferView = text_buffer_view.TextBufferView;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
+const TextBufferView = text_buffer_view.UnifiedTextBufferView;
 
 test "word wrap complexity - width changes are O(n)" {
     const pool = gp.initGlobalPool(std.testing.allocator);
@@ -16,7 +16,7 @@ test "word wrap complexity - width changes are O(n)" {
     defer std.testing.allocator.free(text);
     @memset(text, 'x');
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
     try tb.setText(text);
 
@@ -67,7 +67,7 @@ test "word wrap - virtual line count correctness" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -142,7 +142,7 @@ test "benchmark - setText time: UnifiedTextBuffer vs StaticTextBuffer" {
     // Benchmark UnifiedTextBuffer setText
     var unified_times: [iterations]u64 = undefined;
     for (0..iterations) |iter| {
-        var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+        var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
         defer tb.deinit();
 
         var timer = std.time.Timer.start() catch unreachable;
@@ -179,7 +179,7 @@ test "benchmark - setText time: UnifiedTextBuffer vs StaticTextBuffer" {
     try std.testing.expect(ratio < 10.0);
 
     // Also verify content is identical
-    var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
     defer tb.deinit();
     try tb.setText(text);
 
@@ -216,7 +216,7 @@ test "benchmark - wrap time: UnifiedTextBuffer vs StaticTextBuffer" {
     var unified_wrap_times: [iterations]u64 = undefined;
     var unified_line_count: u32 = 0;
     {
-        var tb = try UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+        var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
         defer tb.deinit();
         try tb.setText(text);
 
