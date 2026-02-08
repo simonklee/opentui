@@ -4,7 +4,7 @@ const text_buffer_view = @import("../text-buffer-view.zig");
 const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
 
-const TextBuffer = text_buffer.TextBuffer;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
 const RGBA = text_buffer.RGBA;
 

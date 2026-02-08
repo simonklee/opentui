@@ -169,7 +169,7 @@ fn benchWrapAndRender(
         stats.record(timer.read());
 
         if (i == iterations - 1 and show_mem) {
-            final_tb_mem = tb.getArenaAllocatedBytes();
+            final_tb_mem = tb.getAllocatedBytes();
             final_view_mem = view.getArenaAllocatedBytes();
             final_buf_mem = @sizeOf(OptimizedBuffer) + (buf.width * buf.height * (@sizeOf(u32) + @sizeOf(@TypeOf(buf.buffer.fg[0])) * 2 + @sizeOf(u8)));
         }

@@ -6,7 +6,6 @@ export type { LineInfo }
 
 import { RGBA } from "./lib/RGBA"
 import { OptimizedBuffer } from "./buffer"
-import { TextBuffer } from "./text-buffer"
 import { env, registerEnvVar } from "./lib/env"
 import {
   StyledChunkStruct,
@@ -423,7 +422,7 @@ function getOpenTUILib(libPath?: string) {
 
     // TextBuffer functions
     createTextBuffer: {
-      args: ["u8"],
+      args: ["u8", "bool"],
       returns: "ptr",
     },
     destroyTextBuffer: {
@@ -565,6 +564,7 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "void",
     },
+
     textBufferViewSetSelection: {
       args: ["ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
@@ -1427,7 +1427,7 @@ export interface RenderLib {
   writeOut: (renderer: Pointer, data: string | Uint8Array) => void
 
   // TextBuffer methods
-  createTextBuffer: (widthMethod: WidthMethod) => TextBuffer
+  createTextBuffer: (widthMethod: WidthMethod, editable: boolean) => Pointer
   destroyTextBuffer: (buffer: Pointer) => void
   textBufferGetLength: (buffer: Pointer) => number
   textBufferGetByteSize: (buffer: Pointer) => number
@@ -2360,14 +2360,14 @@ class FFIRenderLib implements RenderLib {
   }
 
   // TextBuffer methods
-  public createTextBuffer(widthMethod: WidthMethod): TextBuffer {
+  public createTextBuffer(widthMethod: WidthMethod, editable: boolean): Pointer {
     const widthMethodCode = widthMethod === "wcwidth" ? 0 : 1
-    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode)
+    const bufferPtr = this.opentui.symbols.createTextBuffer(widthMethodCode, editable)
     if (!bufferPtr) {
-      throw new Error(`Failed to create TextBuffer`)
+      throw new Error("Failed to create TextBuffer")
     }
 
-    return new TextBuffer(this, bufferPtr)
+    return bufferPtr
   }
 
   public destroyTextBuffer(buffer: Pointer): void {

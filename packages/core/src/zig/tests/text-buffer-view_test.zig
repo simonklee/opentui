@@ -774,7 +774,7 @@ test "TextBufferView word wrapping - fragmented rope with word boundary" {
     try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
     try segments.append(std.testing.allocator, Segment{ .text = chunk3 });
 
-    try tb.rope.setSegments(segments.items);
+    try tb.rope().setSegments(segments.items);
 
     view.virtual_lines_dirty = true;
 
@@ -2026,7 +2026,7 @@ test "TextBufferView measureForDimensions - width 0 uses intrinsic line widths" 
 
     const result = try view.measureForDimensions(0, 24);
     try std.testing.expectEqual(tb.getLineCount(), result.line_count);
-    try std.testing.expectEqual(iter_mod.getMaxLineWidth(&tb.rope), result.max_width);
+    try std.testing.expectEqual(iter_mod.getMaxLineWidth(tb.rope()), result.max_width);
 }
 
 test "TextBufferView measureForDimensions - no wrap matches multi-segment line widths" {
@@ -3291,7 +3291,7 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     const chunk2 = tb.createChunk(mem_id, 17, 21);
     try segments.append(std.testing.allocator, Segment{ .text = chunk2 });
 
-    try tb.rope.setSegments(segments.items);
+    try tb.rope().setSegments(segments.items);
     view.virtual_lines_dirty = true;
 
     view.setWrapMode(.word);
@@ -3302,4 +3302,262 @@ test "TextBufferView word wrapping - chunk at exact wrap boundary" {
     try std.testing.expectEqual(@as(usize, 2), vlines.len);
     try std.testing.expectEqual(@as(u32, 12), vlines[0].width);
     try std.testing.expectEqual(@as(u32, 9), vlines[1].width);
+}
+
+// =============================================================================
+// StaticTextBufferView Parity Tests
+// =============================================================================
+// These tests verify that StaticTextBufferView matches UnifiedTextBufferView behavior.
+// Currently StaticTextBuffer is an alias for UnifiedTextBuffer, so these tests
+// establish the baseline behavior. When we implement a dedicated StaticTextBuffer
+// with flat storage, these tests ensure view behavior remains identical.
+
+const StaticTextBuffer = text_buffer.UnifiedTextBuffer;
+const StaticTextBufferView = text_buffer_view.TextBufferView;
+
+test "StaticTextBufferView wrapping - no wrap returns same line count" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("Hello World");
+
+    const no_wrap_count = view.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), no_wrap_count);
+
+    view.setWrapWidth(null);
+    const still_no_wrap = view.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), still_no_wrap);
+}
+
+test "StaticTextBufferView wrapping - simple wrap splits line" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    const no_wrap_count = view.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), no_wrap_count);
+
+    view.setWrapMode(.char);
+    view.setWrapWidth(10);
+    const wrapped_count = view.getVirtualLineCount();
+
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+}
+
+test "StaticTextBufferView wrapping - preserves newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("Short\nAnother short line\nLast");
+
+    const no_wrap_count = view.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 3), no_wrap_count);
+
+    view.setWrapMode(.char);
+    view.setWrapWidth(50);
+    const wrapped_count = view.getVirtualLineCount();
+
+    try std.testing.expectEqual(@as(u32, 3), wrapped_count);
+}
+
+test "StaticTextBufferView selection - basic selection without wrap" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("Hello World");
+
+    _ = view.setLocalSelection(2, 0, 7, 0, null, null);
+
+    const packed_info = view.packSelectionInfo();
+    try std.testing.expect(packed_info != 0xFFFFFFFF_FFFFFFFF);
+
+    const start = @as(u32, @intCast(packed_info >> 32));
+    const end = @as(u32, @intCast(packed_info & 0xFFFFFFFF));
+    try std.testing.expectEqual(@as(u32, 2), start);
+    try std.testing.expectEqual(@as(u32, 7), end);
+}
+
+test "StaticTextBufferView word wrapping - basic word wrap at space" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("Hello World");
+
+    view.setWrapMode(.word);
+    view.setWrapWidth(8);
+    const wrapped_count = view.getVirtualLineCount();
+
+    try std.testing.expectEqual(@as(u32, 2), wrapped_count);
+}
+
+test "StaticTextBufferView getSelectedTextIntoBuffer - simple selection" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("Hello World");
+    view.setSelection(6, 11, null, null);
+
+    var buffer: [100]u8 = undefined;
+    const len = view.getSelectedTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("World", text);
+}
+
+test "StaticTextBufferView line info - empty buffer" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("");
+
+    const line_count = view.getVirtualLineCount();
+    try std.testing.expectEqual(@as(u32, 1), line_count);
+
+    const line_info = view.getCachedLineInfo();
+    try std.testing.expectEqual(@as(usize, 1), line_info.starts.len);
+    try std.testing.expectEqual(@as(u32, 0), line_info.starts[0]);
+    try std.testing.expectEqual(@as(u32, 0), line_info.widths[0]);
+}
+
+test "StaticTextBufferView getCachedLineInfo - with wrapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    view.setWrapMode(.char);
+    view.setWrapWidth(7);
+    const line_count = view.getVirtualLineCount();
+    const line_info = view.getCachedLineInfo();
+
+    try std.testing.expectEqual(@as(usize, line_count), line_info.starts.len);
+    try std.testing.expectEqual(@as(usize, line_count), line_info.widths.len);
+
+    for (line_info.widths, 0..) |width, i| {
+        if (i < line_info.widths.len - 1) {
+            try std.testing.expect(width <= 7);
+        }
+    }
+}
+
+test "StaticTextBufferView updates after buffer setText" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("First text");
+    view.setWrapMode(.char);
+    view.setWrapWidth(5);
+    const count1 = view.getVirtualLineCount();
+
+    try sb.setText("New text that is much longer");
+
+    const count2 = view.getVirtualLineCount();
+
+    try std.testing.expect(count2 > count1);
+}
+
+test "StaticTextBufferView getPlainTextIntoBuffer - text with newlines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("Line 1\nLine 2\nLine 3");
+
+    var buffer: [100]u8 = undefined;
+    const len = view.getPlainTextIntoBuffer(&buffer);
+    const text = buffer[0..len];
+
+    try std.testing.expectEqualStrings("Line 1\nLine 2\nLine 3", text);
+}
+
+test "StaticTextBufferView virtual line spans - with highlights" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
+    defer sb.deinit();
+
+    var view = try StaticTextBufferView.init(std.testing.allocator, sb);
+    defer view.deinit();
+
+    try sb.setText("ABCDEFGHIJKLMNOPQRST");
+
+    try sb.addHighlight(0, 5, 15, 1, 1, 0);
+
+    view.setWrapMode(.char);
+    view.setWrapWidth(10);
+
+    try std.testing.expectEqual(@as(u32, 2), view.getVirtualLineCount());
+
+    const vline0_info = view.getVirtualLineSpans(0);
+    const vline1_info = view.getVirtualLineSpans(1);
+
+    try std.testing.expectEqual(@as(usize, 0), vline0_info.source_line);
+    try std.testing.expectEqual(@as(usize, 0), vline1_info.source_line);
+
+    try std.testing.expectEqual(@as(u32, 0), vline0_info.col_offset);
+    try std.testing.expectEqual(@as(u32, 10), vline1_info.col_offset);
+
+    try std.testing.expect(vline0_info.spans.len > 0);
+    try std.testing.expect(vline1_info.spans.len > 0);
 }

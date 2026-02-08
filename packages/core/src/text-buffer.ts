@@ -14,9 +14,15 @@ export interface TextChunk {
   link?: { url: string }
 }
 
+export interface TextBufferCreateOptions {
+  /** When true, creates a full rope-backed buffer with edit capabilities (default: true) */
+  editable?: boolean
+}
+
 export class TextBuffer {
   private lib: RenderLib
   private bufferPtr: Pointer
+  private _editable: boolean
   private _length: number = 0
   private _byteSize: number = 0
   private _lineInfo?: LineInfo
@@ -26,14 +32,30 @@ export class TextBuffer {
   private _memId?: number
   private _appendedChunks: Uint8Array[] = []
 
-  constructor(lib: RenderLib, ptr: Pointer) {
+  constructor(lib: RenderLib, ptr: Pointer, editable: boolean) {
     this.lib = lib
     this.bufferPtr = ptr
+    this._editable = editable
   }
 
-  static create(widthMethod: WidthMethod): TextBuffer {
+  /**
+   * Create a TextBuffer.
+   * @param widthMethod - Width calculation method ("wcwidth" or "unicode")
+   * @param options - Optional configuration
+   * @param options.editable - When false, creates static read-only buffer (default: true for full editing support)
+   */
+  static create(widthMethod: WidthMethod, options?: TextBufferCreateOptions): TextBuffer {
     const lib = resolveRenderLib()
-    return lib.createTextBuffer(widthMethod)
+    const editable = options?.editable ?? true
+    const ptr = lib.createTextBuffer(widthMethod, editable)
+    return new TextBuffer(lib, ptr, editable)
+  }
+
+  /** Throws an error if called on a non-editable buffer */
+  private requireEditable(operation: string): void {
+    if (!this._editable) {
+      throw new Error(`TextBuffer.${operation} requires editable: true`)
+    }
   }
 
   // Fail loud and clear
@@ -62,6 +84,7 @@ export class TextBuffer {
 
   public append(text: string): void {
     this.guard()
+    this.requireEditable("append")
     const textBytes = this.lib.encoder.encode(text)
     // Keep the bytes alive to prevent garbage collection
     this._appendedChunks.push(textBytes)
