@@ -1116,17 +1116,8 @@ pub const UnifiedTextBufferView = struct {
                             while (wrap_idx < wrap_offsets.len) : (wrap_idx += 1) {
                                 const wrap_break = wrap_offsets[wrap_idx];
 
-                                while (grapheme_idx < graphemes.len) {
-                                    const info = graphemes[grapheme_idx];
-                                    const info_char_offset = @as(i64, info.col_offset) - col_delta;
-                                    if (info_char_offset >= @as(i64, wrap_break.char_offset)) break;
-                                    col_delta += @as(i64, info.width) - 1;
-                                    grapheme_idx += 1;
-                                }
-
-                                var break_col_i64 = @as(i64, wrap_break.char_offset) + col_delta;
-                                if (break_col_i64 < 0) break_col_i64 = 0;
-                                const break_col = @as(u32, @intCast(break_col_i64));
+                                const break_info = iter_mod.charOffsetToColumn(wrap_break.char_offset, graphemes, &grapheme_idx, &col_delta);
+                                const break_col = break_info.col;
 
                                 // Skip breaks that are before our current column position in the chunk
                                 if (break_col < char_offset) continue;
@@ -1134,8 +1125,8 @@ pub const UnifiedTextBufferView = struct {
                                 // width_to_boundary: columns needed to reach and include this break
                                 // break_col is the column where the break character starts (relative to chunk)
                                 // char_offset is our current column position (relative to chunk)
-                                // To include the break character (width 1), we need: break_col - char_offset + 1
-                                const width_to_boundary = break_col - char_offset + 1;
+                                // To include the break character, we need: break_col - char_offset + width
+                                const width_to_boundary = break_col - char_offset + break_info.width;
                                 if (width_to_boundary > remaining_on_line or width_to_boundary > remaining_in_chunk) {
                                     break;
                                 }
