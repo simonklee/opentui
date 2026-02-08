@@ -745,7 +745,6 @@ pub const EditorView = struct {
                 self.global_allocator,
                 self.edit_buffer.tb.pool,
                 self.edit_buffer.tb.width_method,
-                .rope,
             );
             const syntax_style = try ss.SyntaxStyle.init(self.global_allocator);
             self.placeholder_syntax_style = syntax_style;

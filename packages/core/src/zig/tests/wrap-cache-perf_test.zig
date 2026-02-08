@@ -16,7 +16,7 @@ test "word wrap complexity - width changes are O(n)" {
     defer std.testing.allocator.free(text);
     @memset(text, 'x');
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
     try tb.setText(text);
 
@@ -67,7 +67,7 @@ test "word wrap - virtual line count correctness" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
 
     var view = try TextBufferView.init(std.testing.allocator, tb);
@@ -142,7 +142,7 @@ test "benchmark - setText time: UnifiedTextBuffer vs StaticTextBuffer" {
     // Benchmark UnifiedTextBuffer setText
     var unified_times: [iterations]u64 = undefined;
     for (0..iterations) |iter| {
-        var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+        var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
         defer tb.deinit();
 
         var timer = std.time.Timer.start() catch unreachable;
@@ -153,7 +153,7 @@ test "benchmark - setText time: UnifiedTextBuffer vs StaticTextBuffer" {
     // Benchmark StaticTextBuffer setText
     var static_times: [iterations]u64 = undefined;
     for (0..iterations) |iter| {
-        var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .wcwidth, .static);
+        var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
         defer sb.deinit();
 
         var timer = std.time.Timer.start() catch unreachable;
@@ -179,11 +179,11 @@ test "benchmark - setText time: UnifiedTextBuffer vs StaticTextBuffer" {
     try std.testing.expect(ratio < 10.0);
 
     // Also verify content is identical
-    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer tb.deinit();
     try tb.setText(text);
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .wcwidth, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
     defer sb.deinit();
     try sb.setText(text);
 
@@ -216,7 +216,7 @@ test "benchmark - wrap time: UnifiedTextBuffer vs StaticTextBuffer" {
     var unified_wrap_times: [iterations]u64 = undefined;
     var unified_line_count: u32 = 0;
     {
-        var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+        var tb = try TextBuffer.init(std.testing.allocator, pool, .wcwidth);
         defer tb.deinit();
         try tb.setText(text);
 
@@ -240,7 +240,7 @@ test "benchmark - wrap time: UnifiedTextBuffer vs StaticTextBuffer" {
     var static_wrap_times: [iterations]u64 = undefined;
     var static_line_count: u32 = 0;
     {
-        var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .wcwidth, .static);
+        var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
         defer sb.deinit();
         try sb.setText(text);
 

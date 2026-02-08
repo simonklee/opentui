@@ -66,7 +66,7 @@ test "StaticTextBuffer - empty buffer has line count 1" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     // Empty buffer should have exactly 1 empty line (linestart invariant)
@@ -77,7 +77,7 @@ test "StaticTextBuffer - empty buffer has max width 0" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     // Empty buffer should have max line width of 0
@@ -88,7 +88,7 @@ test "StaticTextBuffer - 'a\\n' yields line count 2" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     try sb.setText("a\n");
@@ -101,7 +101,7 @@ test "StaticTextBuffer - 'a\\n' line widths are [1, 0]" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     try sb.setText("a\n");
@@ -115,7 +115,7 @@ test "StaticTextBuffer - textRange returns exact original bytes for multi-line i
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     const text = "Line 1\nLine 2\nLine 3";
@@ -133,7 +133,7 @@ test "StaticTextBuffer - textRange returns exact bytes for Unicode content" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     const text = "Hello 世界\n🌟 Test\nEnd";
@@ -151,7 +151,7 @@ test "StaticTextBuffer - textRange partial extraction" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     const text = "Hello World";
@@ -169,7 +169,7 @@ test "StaticTextBuffer - maxLineWidth with multiple lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     // Different line lengths: 5, 10, 3
@@ -184,7 +184,7 @@ test "StaticTextBuffer - lineWidthAt for various lines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     try sb.setText("AAA\nBBBBB\nCC");
@@ -198,7 +198,7 @@ test "StaticTextBuffer - consecutive newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     try sb.setText("A\n\nB");
@@ -214,7 +214,7 @@ test "StaticTextBuffer - only newlines" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     try sb.setText("\n\n\n");
@@ -230,7 +230,7 @@ test "StaticTextBuffer - view registration works" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     const view_id = try sb.registerView();
@@ -250,7 +250,7 @@ test "StaticTextBuffer - content epoch increments on setText" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     const epoch1 = sb.getContentEpoch();
@@ -267,7 +267,7 @@ test "StaticTextBuffer - getPlainTextIntoBuffer round-trip" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     const text = "First\nSecond\nThird";
@@ -283,7 +283,7 @@ test "StaticTextBuffer - defaults accessor" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     sb.setDefaultFg(.{ 1.0, 0.0, 0.0, 1.0 });
@@ -300,7 +300,7 @@ test "StaticTextBuffer - memRegistry and allocator accessors" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     // Just verify these don't crash
@@ -315,7 +315,7 @@ test "StaticTextBuffer - widthMethod and tabWidth accessors" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var sb = try StaticTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var sb = try StaticTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer sb.deinit();
 
     const wm = sb.widthMethod();
@@ -329,10 +329,10 @@ test "backend parity - tab width change keeps line metrics aligned" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer rope_tb.deinit();
 
-    var static_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .static);
+    var static_tb = try text_buffer.UnifiedTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
     defer static_tb.deinit();
 
     try rope_tb.setText("a\tb\tc");
@@ -352,10 +352,10 @@ test "backend parity - tab width change keeps text range extraction aligned" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth);
     defer rope_tb.deinit();
 
-    var static_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .static);
+    var static_tb = try text_buffer.UnifiedTextBuffer.initWithBackend(std.testing.allocator, pool, .wcwidth, .static);
     defer static_tb.deinit();
 
     try rope_tb.setText("a\tb\tc");
@@ -375,10 +375,10 @@ test "backend parity - mixed CRLF LF tabs CJK and emoji" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
 
-    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode);
     defer rope_tb.deinit();
 
-    var static_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    var static_tb = try text_buffer.UnifiedTextBuffer.initWithBackend(std.testing.allocator, pool, .unicode, .static);
     defer static_tb.deinit();
 
     const input = "A\t世🌍\r\nB\tC\n👩‍🚀\tZ";
@@ -473,7 +473,7 @@ test "StaticTextBuffer - setText OOM preserves previous content and index invari
         const pool = gp.initGlobalPool(allocator);
         defer gp.deinitGlobalPool();
 
-        var sb_count = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
+        var sb_count = try StaticTextBuffer.initWithBackend(allocator, pool, .unicode, .static);
         defer sb_count.deinit();
 
         try sb_count.setText(initial_text);
@@ -494,7 +494,7 @@ test "StaticTextBuffer - setText OOM preserves previous content and index invari
         const pool = gp.initGlobalPool(allocator);
         defer gp.deinitGlobalPool();
 
-        var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
+        var sb = try StaticTextBuffer.initWithBackend(allocator, pool, .unicode, .static);
         defer sb.deinit();
 
         try sb.setText(initial_text);

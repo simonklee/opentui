@@ -111,7 +111,7 @@ fn benchSetText(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
+                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
                 defer tb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -161,7 +161,7 @@ fn benchSetText(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
+                var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
                 defer tb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -208,7 +208,7 @@ fn benchWrap(
     var final_view_mem: usize = 0;
 
     for (0..iterations) |i| {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
         defer tb.deinit();
 
         try tb.setText(text);
@@ -269,7 +269,7 @@ fn benchMeasureForDimensionsLayout(
     const newline_stride: usize = 20;
 
     for (0..iterations) |i| {
-        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
+        var tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
         defer tb.deinit();
 
         try tb.setText(text);
@@ -346,7 +346,7 @@ fn benchSetTextStatic(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
+                var sb = try StaticTextBuffer.initWithBackend(allocator, pool, .unicode, .static);
                 defer sb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -396,7 +396,7 @@ fn benchSetTextStatic(
             var final_mem: usize = 0;
 
             for (0..iterations) |i| {
-                var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
+                var sb = try StaticTextBuffer.initWithBackend(allocator, pool, .unicode, .static);
                 defer sb.deinit();
 
                 var timer = try std.time.Timer.start();
@@ -444,7 +444,7 @@ fn benchWrapStatic(
     var final_view_mem: usize = 0;
 
     for (0..iterations) |i| {
-        var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
+        var sb = try StaticTextBuffer.initWithBackend(allocator, pool, .unicode, .static);
         defer sb.deinit();
 
         try sb.setText(text);
@@ -501,7 +501,7 @@ fn benchMeasureForDimensionsLayoutStatic(
     var final_view_mem: usize = 0;
 
     for (0..iterations) |i| {
-        var sb = try StaticTextBuffer.init(allocator, pool, .unicode, .static);
+        var sb = try StaticTextBuffer.initWithBackend(allocator, pool, .unicode, .static);
         defer sb.deinit();
 
         try sb.setText(text);

@@ -307,6 +307,14 @@ pub const UnifiedTextBuffer = struct {
         global_allocator: Allocator,
         pool: *gp.GraphemePool,
         width_method: utf8.WidthMethod,
+    ) TextBufferError!*Self {
+        return initWithBackend(global_allocator, pool, width_method, .rope);
+    }
+
+    pub fn initWithBackend(
+        global_allocator: Allocator,
+        pool: *gp.GraphemePool,
+        width_method: utf8.WidthMethod,
         kind: BackendKind,
     ) TextBufferError!*Self {
         assert(@intFromPtr(pool) != 0);

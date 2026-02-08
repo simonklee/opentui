@@ -581,7 +581,7 @@ export fn createTextBuffer(widthMethod: u8, editable: bool) ?*text_buffer.Unifie
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
     const kind: text_buffer.UnifiedTextBuffer.BackendKind = if (editable) .rope else .static;
-    const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, wMethod, kind) catch {
+    const tb = text_buffer.UnifiedTextBuffer.initWithBackend(globalAllocator, pool, wMethod, kind) catch {
         return null;
     };
     return tb;

@@ -58,7 +58,7 @@ fn setupTextBuffer(
     text: []const u8,
     wrap_width: ?u32,
 ) !struct { *UnifiedTextBuffer, *UnifiedTextBufferView } {
-    const tb = try UnifiedTextBuffer.init(allocator, pool, .unicode, .rope);
+    const tb = try UnifiedTextBuffer.init(allocator, pool, .unicode);
     errdefer tb.deinit();
 
     try tb.setText(text);
