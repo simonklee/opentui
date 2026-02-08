@@ -191,7 +191,6 @@ export class TextBuffer {
   /**
    * Add a highlight using character offsets into the full text.
    * start/end in highlight represent absolute character positions.
-   * Note: Only available on editable buffers.
    */
   public addHighlightByCharRange(highlight: Highlight): void {
     this.guard()
@@ -201,7 +200,6 @@ export class TextBuffer {
   /**
    * Add a highlight to a specific line by column positions.
    * start/end in highlight represent column offsets.
-   * Note: Only available on editable buffers.
    */
   public addHighlight(lineIdx: number, highlight: Highlight): void {
     this.guard()
@@ -225,13 +223,11 @@ export class TextBuffer {
 
   public getLineHighlights(lineIdx: number): Array<Highlight> {
     this.guard()
-    // Read operation - works on both static and unified buffers
     return this.lib.textBufferGetLineHighlights(this.bufferPtr, lineIdx)
   }
 
   public getHighlightCount(): number {
     this.guard()
-    // Read operation - works on both static and unified buffers
     return this.lib.textBufferGetHighlightCount(this.bufferPtr)
   }
 
