@@ -429,7 +429,7 @@ pub const UnifiedTextBuffer = struct {
 
         switch (self.backend) {
             .rope => |*backend| {
-                _ = backend.setTabWidth(new_width);
+                _ = backend.setTabWidth(&self.mem_registry, new_width);
             },
             .static => |*backend| {
                 _ = backend.setTabWidth(&self.mem_registry, new_width);

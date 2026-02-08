@@ -1,8 +1,21 @@
 const std = @import("std");
 const text_buffer = @import("../text-buffer.zig");
+const text_buffer_view = @import("../text-buffer-view.zig");
 const gp = @import("../grapheme.zig");
 
 const StaticTextBuffer = text_buffer.UnifiedTextBuffer;
+const TextBufferView = text_buffer_view.UnifiedTextBufferView;
+
+fn expectRangeParity(rope_tb: *text_buffer.UnifiedTextBuffer, static_tb: *text_buffer.UnifiedTextBuffer, start: u32, end: u32) !void {
+    var rope_out: [256]u8 = undefined;
+    var static_out: [256]u8 = undefined;
+
+    const rope_len = rope_tb.getTextRange(start, end, &rope_out);
+    const static_len = static_tb.getTextRange(start, end, &static_out);
+
+    try std.testing.expectEqual(rope_len, static_len);
+    try std.testing.expectEqualStrings(rope_out[0..rope_len], static_out[0..static_len]);
+}
 
 // =============================================================================
 // StaticTextBuffer Parity Tests
@@ -273,4 +286,117 @@ test "StaticTextBuffer - widthMethod and tabWidth accessors" {
 
     const tw = sb.tabWidth();
     try std.testing.expect(tw > 0);
+}
+
+test "backend parity - tab width change keeps line metrics aligned" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    defer rope_tb.deinit();
+
+    var static_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .static);
+    defer static_tb.deinit();
+
+    try rope_tb.setText("a\tb\tc");
+    try static_tb.setText("a\tb\tc");
+
+    try std.testing.expectEqual(rope_tb.lineWidthAt(0), static_tb.lineWidthAt(0));
+    try std.testing.expectEqual(rope_tb.maxLineWidth(), static_tb.maxLineWidth());
+
+    rope_tb.setTabWidth(8);
+    static_tb.setTabWidth(8);
+
+    try std.testing.expectEqual(rope_tb.lineWidthAt(0), static_tb.lineWidthAt(0));
+    try std.testing.expectEqual(rope_tb.maxLineWidth(), static_tb.maxLineWidth());
+}
+
+test "backend parity - tab width change keeps text range extraction aligned" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .rope);
+    defer rope_tb.deinit();
+
+    var static_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .wcwidth, .static);
+    defer static_tb.deinit();
+
+    try rope_tb.setText("a\tb\tc");
+    try static_tb.setText("a\tb\tc");
+
+    rope_tb.setTabWidth(8);
+    static_tb.setTabWidth(8);
+
+    try expectRangeParity(rope_tb, static_tb, 0, 5);
+    try expectRangeParity(rope_tb, static_tb, 0, 8);
+    try expectRangeParity(rope_tb, static_tb, 0, 10);
+    try expectRangeParity(rope_tb, static_tb, 1, 9);
+    try expectRangeParity(rope_tb, static_tb, 8, 19);
+}
+
+test "backend parity - mixed CRLF LF tabs CJK and emoji" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+
+    var rope_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .rope);
+    defer rope_tb.deinit();
+
+    var static_tb = try text_buffer.UnifiedTextBuffer.init(std.testing.allocator, pool, .unicode, .static);
+    defer static_tb.deinit();
+
+    const input = "A\t世🌍\r\nB\tC\n👩‍🚀\tZ";
+    try rope_tb.setText(input);
+    try static_tb.setText(input);
+
+    rope_tb.setTabWidth(4);
+    static_tb.setTabWidth(4);
+
+    try std.testing.expectEqual(rope_tb.lineCount(), static_tb.lineCount());
+
+    var row: u32 = 0;
+    while (row < rope_tb.lineCount()) : (row += 1) {
+        try std.testing.expectEqual(rope_tb.lineWidthAt(row), static_tb.lineWidthAt(row));
+    }
+
+    var rope_plain: [256]u8 = undefined;
+    var static_plain: [256]u8 = undefined;
+    const rope_plain_len = rope_tb.getPlainTextIntoBuffer(&rope_plain);
+    const static_plain_len = static_tb.getPlainTextIntoBuffer(&static_plain);
+    try std.testing.expectEqual(rope_plain_len, static_plain_len);
+    try std.testing.expectEqualStrings(rope_plain[0..rope_plain_len], static_plain[0..static_plain_len]);
+
+    var rope_view = try TextBufferView.init(std.testing.allocator, rope_tb);
+    defer rope_view.deinit();
+    var static_view = try TextBufferView.init(std.testing.allocator, static_tb);
+    defer static_view.deinit();
+
+    rope_view.setWrapMode(.char);
+    static_view.setWrapMode(.char);
+    rope_view.setWrapWidth(6);
+    static_view.setWrapWidth(6);
+
+    try std.testing.expectEqual(rope_view.getVirtualLineCount(), static_view.getVirtualLineCount());
+
+    const rope_info = rope_view.getCachedLineInfo();
+    const static_info = static_view.getCachedLineInfo();
+    try std.testing.expectEqual(rope_info.starts.len, static_info.starts.len);
+    try std.testing.expectEqual(rope_info.widths.len, static_info.widths.len);
+
+    for (rope_info.starts, 0..) |start, idx| {
+        try std.testing.expectEqual(start, static_info.starts[idx]);
+    }
+    for (rope_info.widths, 0..) |width, idx| {
+        try std.testing.expectEqual(width, static_info.widths[idx]);
+    }
+
+    _ = rope_view.setLocalSelection(1, 0, 3, 2, null, null);
+    _ = static_view.setLocalSelection(1, 0, 3, 2, null, null);
+
+    var rope_sel: [256]u8 = undefined;
+    var static_sel: [256]u8 = undefined;
+    const rope_sel_len = rope_view.getSelectedTextIntoBuffer(&rope_sel);
+    const static_sel_len = static_view.getSelectedTextIntoBuffer(&static_sel);
+
+    try std.testing.expectEqual(rope_sel_len, static_sel_len);
+    try std.testing.expectEqualStrings(rope_sel[0..rope_sel_len], static_sel[0..static_sel_len]);
 }

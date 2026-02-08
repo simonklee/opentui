@@ -134,7 +134,7 @@ pub const StaticBackend = struct {
             }
         }
 
-        self.rebuildLineIndex();
+        self.rebuildLineIndex() catch return false;
         return true;
     }
 
@@ -144,20 +144,43 @@ pub const StaticBackend = struct {
         return self.tab_width;
     }
 
+    fn requiredLineSlots(self: *const Self) u32 {
+        if (self.segments.items.len == 0) return 1;
+
+        var break_count: u32 = 0;
+        for (self.segments.items) |seg| {
+            if (seg.isBreak()) {
+                break_count += 1;
+            }
+        }
+
+        return break_count + 1;
+    }
+
+    fn ensureLineIndexCapacity(self: *Self, line_slots: u32) TextBufferError!void {
+        try self.line_starts.ensureTotalCapacity(self.global_allocator, line_slots);
+        try self.line_widths.ensureTotalCapacity(self.global_allocator, line_slots);
+        try self.line_seg_start.ensureTotalCapacity(self.global_allocator, line_slots);
+        try self.line_seg_end.ensureTotalCapacity(self.global_allocator, line_slots);
+    }
+
     pub fn clear(self: *Self) void {
         const line_count: u32 = @intCast(self.line_widths.items.len);
         assert(line_count >= 1);
         assert(line_count <= Limits.max_lines);
+
+        self.ensureLineIndexCapacity(1) catch @panic("StaticBackend.clear: out of memory while ensuring line index capacity");
+
         self.segments.clearRetainingCapacity();
         self.line_starts.clearRetainingCapacity();
         self.line_widths.clearRetainingCapacity();
         self.line_seg_start.clearRetainingCapacity();
         self.line_seg_end.clearRetainingCapacity();
 
-        self.line_starts.append(self.global_allocator, 0) catch {};
-        self.line_widths.append(self.global_allocator, 0) catch {};
-        self.line_seg_start.append(self.global_allocator, 0) catch {};
-        self.line_seg_end.append(self.global_allocator, 0) catch {};
+        self.line_starts.appendAssumeCapacity(0);
+        self.line_widths.appendAssumeCapacity(0);
+        self.line_seg_start.appendAssumeCapacity(0);
+        self.line_seg_end.appendAssumeCapacity(0);
 
         self.max_line_width = 0;
         self.total_width = 0;
@@ -171,16 +194,18 @@ pub const StaticBackend = struct {
         assert(line_count <= Limits.max_lines);
         _ = self.arena.reset(if (self.arena.queryCapacity() > 0) .retain_capacity else .free_all);
 
+        self.ensureLineIndexCapacity(1) catch @panic("StaticBackend.reset: out of memory while ensuring line index capacity");
+
         self.segments.clearRetainingCapacity();
         self.line_starts.clearRetainingCapacity();
         self.line_widths.clearRetainingCapacity();
         self.line_seg_start.clearRetainingCapacity();
         self.line_seg_end.clearRetainingCapacity();
 
-        self.line_starts.append(self.global_allocator, 0) catch {};
-        self.line_widths.append(self.global_allocator, 0) catch {};
-        self.line_seg_start.append(self.global_allocator, 0) catch {};
-        self.line_seg_end.append(self.global_allocator, 0) catch {};
+        self.line_starts.appendAssumeCapacity(0);
+        self.line_widths.appendAssumeCapacity(0);
+        self.line_seg_start.appendAssumeCapacity(0);
+        self.line_seg_end.appendAssumeCapacity(0);
 
         self.max_line_width = 0;
         self.total_width = 0;
@@ -446,12 +471,16 @@ pub const StaticBackend = struct {
         return .{ .has_content = true, .new_offset = chunk_end_offset };
     }
 
-    fn rebuildLineIndex(self: *Self) void {
+    fn rebuildLineIndex(self: *Self) TextBufferError!void {
         const seg_count: u32 = @intCast(self.segments.items.len);
         const line_count: u32 = @intCast(self.line_widths.items.len);
         assert(seg_count <= Limits.max_segments);
         assert(line_count <= Limits.max_lines);
         if (self.segments.items.len > 0) assert(self.segments.items[0].isLineStart());
+
+        const required_line_slots = self.requiredLineSlots();
+        try self.ensureLineIndexCapacity(required_line_slots);
+
         self.line_starts.clearRetainingCapacity();
         self.line_widths.clearRetainingCapacity();
         self.line_seg_start.clearRetainingCapacity();
@@ -462,10 +491,10 @@ pub const StaticBackend = struct {
         self.total_bytes = 0;
 
         if (seg_count == 0) {
-            self.line_starts.append(self.global_allocator, 0) catch {};
-            self.line_widths.append(self.global_allocator, 0) catch {};
-            self.line_seg_start.append(self.global_allocator, 0) catch {};
-            self.line_seg_end.append(self.global_allocator, 0) catch {};
+            self.line_starts.appendAssumeCapacity(0);
+            self.line_widths.appendAssumeCapacity(0);
+            self.line_seg_start.appendAssumeCapacity(0);
+            self.line_seg_end.appendAssumeCapacity(0);
             return;
         }
 
@@ -485,10 +514,10 @@ pub const StaticBackend = struct {
                     self.total_bytes += chunk.byte_end - chunk.byte_start;
                 },
                 .brk => {
-                    self.line_starts.append(self.global_allocator, line_start_offset) catch {};
-                    self.line_widths.append(self.global_allocator, current_line_width) catch {};
-                    self.line_seg_start.append(self.global_allocator, current_line_seg_start) catch {};
-                    self.line_seg_end.append(self.global_allocator, seg_idx) catch {};
+                    self.line_starts.appendAssumeCapacity(line_start_offset);
+                    self.line_widths.appendAssumeCapacity(current_line_width);
+                    self.line_seg_start.appendAssumeCapacity(current_line_seg_start);
+                    self.line_seg_end.appendAssumeCapacity(seg_idx);
                     if (current_line_width > self.max_line_width) self.max_line_width = current_line_width;
                     built_lines += 1;
 
@@ -504,10 +533,10 @@ pub const StaticBackend = struct {
         const has_content_after_break = current_line_seg_start < seg_count;
 
         if (has_content_after_break or had_breaks) {
-            self.line_starts.append(self.global_allocator, line_start_offset) catch {};
-            self.line_widths.append(self.global_allocator, current_line_width) catch {};
-            self.line_seg_start.append(self.global_allocator, current_line_seg_start) catch {};
-            self.line_seg_end.append(self.global_allocator, seg_count) catch {};
+            self.line_starts.appendAssumeCapacity(line_start_offset);
+            self.line_widths.appendAssumeCapacity(current_line_width);
+            self.line_seg_start.appendAssumeCapacity(current_line_seg_start);
+            self.line_seg_end.appendAssumeCapacity(seg_count);
             if (current_line_width > self.max_line_width) self.max_line_width = current_line_width;
         }
     }
