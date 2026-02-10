@@ -608,14 +608,14 @@ export fn writeOut(rendererPtr: *renderer.CliRenderer, dataPtr: [*]const u8, dat
     rendererPtr.writeOut(data);
 }
 
-export fn createTextBuffer(widthMethod: u8) ?*text_buffer.UnifiedTextBuffer {
+export fn createTextBuffer(widthMethod: u8, editable: bool) ?*text_buffer.UnifiedTextBuffer {
     const pool = gp.initGlobalPool(globalArena);
     const wMethod: utf8.WidthMethod = if (widthMethod == 0) .wcwidth else .unicode;
 
-    const tb = text_buffer.UnifiedTextBuffer.init(globalAllocator, pool, wMethod) catch {
+    const kind: text_buffer.UnifiedTextBuffer.BackendKind = if (editable) .rope else .static;
+    const tb = text_buffer.UnifiedTextBuffer.initWithBackend(globalAllocator, pool, wMethod, kind) catch {
         return null;
     };
-
     return tb;
 }
 

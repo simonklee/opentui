@@ -1096,7 +1096,7 @@ pub const UnifiedTextBufferView = struct {
                         const graphemes: []const GraphemeInfo = if (is_ascii_only)
                             &[_]GraphemeInfo{}
                         else
-                            chunk.getGraphemes(wctx.text_buffer.memRegistry(), wctx.text_buffer.getAllocator(), wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod()) catch &[_]GraphemeInfo{};
+                            chunk.getGraphemes(wctx.text_buffer.memRegistry(), wctx.text_buffer.allocator(), wctx.text_buffer.tabWidth(), wctx.text_buffer.widthMethod()) catch &[_]GraphemeInfo{};
                         var grapheme_idx: usize = 0;
                         var col_delta: i64 = 0;
 
