@@ -157,6 +157,9 @@ pub fn main() !void {
     if (!json_output and bench_filter != null) {
         try stdout.print("Filtering individual benchmarks by: \"{s}\"\n", .{bench_filter.?});
     }
+    if (!json_output and show_mem) {
+        try stdout.print("Memory columns: TextBuffer values use total backend allocations (arena + backend storage); View values use view arena capacity.\n", .{});
+    }
 
     var ran_any = false;
 
