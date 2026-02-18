@@ -68,6 +68,7 @@ import * as scrollboxMouseTest from "./scrollbox-mouse-test"
 import * as textTruncationDemo from "./text-truncation-demo"
 import * as grayscaleBufferDemo from "./grayscale-buffer-demo"
 import * as focusRestoreDemo from "./focus-restore-demo"
+import * as staticBufferDemo from "./static-buffer-demo"
 import { setupCommonDemoKeys } from "./lib/standalone-keys"
 
 interface Example {
@@ -167,6 +168,12 @@ const examples: Example[] = [
     description: "Text wrapping example",
     run: textWrapExample.run,
     destroy: textWrapExample.destroy,
+  },
+  {
+    name: "Static Buffer Demo",
+    description: "Compare StaticTextBuffer vs TextBuffer - side-by-side view with metrics",
+    run: staticBufferDemo.run,
+    destroy: staticBufferDemo.destroy,
   },
   {
     name: "Console Demo",

@@ -40,7 +40,7 @@ fn benchInsertOperations(
                 stats.record(timer.read());
 
                 if (iter == iterations - 1 and show_mem) {
-                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                    final_mem = eb.getTextBuffer().getAllocatedBytes();
                 }
             }
 
@@ -81,7 +81,7 @@ fn benchInsertOperations(
                 stats.record(timer.read());
 
                 if (iter == iterations - 1 and show_mem) {
-                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                    final_mem = eb.getTextBuffer().getAllocatedBytes();
                 }
             }
 
@@ -140,7 +140,7 @@ fn benchDeleteOperations(
                 stats.record(timer.read());
 
                 if (iter == iterations - 1 and show_mem) {
-                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                    final_mem = eb.getTextBuffer().getAllocatedBytes();
                 }
             }
 
@@ -185,7 +185,7 @@ fn benchDeleteOperations(
                 stats.record(timer.read());
 
                 if (iter == iterations - 1 and show_mem) {
-                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                    final_mem = eb.getTextBuffer().getAllocatedBytes();
                 }
             }
 
@@ -250,7 +250,7 @@ fn benchMixedOperations(
                 stats.record(timer.read());
 
                 if (iter == iterations - 1 and show_mem) {
-                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                    final_mem = eb.getTextBuffer().getAllocatedBytes();
                 }
             }
 
@@ -313,7 +313,7 @@ fn benchWordBoundaryOperations(
                 stats.record(timer.read());
 
                 if (iter == iterations - 1 and show_mem) {
-                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                    final_mem = eb.getTextBuffer().getAllocatedBytes();
                 }
             }
 
@@ -366,7 +366,7 @@ fn benchWordBoundaryOperations(
                 stats.record(timer.read());
 
                 if (iter == iterations - 1 and show_mem) {
-                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                    final_mem = eb.getTextBuffer().getAllocatedBytes();
                 }
             }
 
@@ -416,7 +416,7 @@ fn benchWordBoundaryOperations(
                 stats.record(timer.read());
 
                 if (iter == iterations - 1 and show_mem) {
-                    final_mem = eb.getTextBuffer().getArenaAllocatedBytes();
+                    final_mem = eb.getTextBuffer().getAllocatedBytes();
                 }
             }
 
