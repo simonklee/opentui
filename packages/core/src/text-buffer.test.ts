@@ -14,6 +14,14 @@ describe("TextBuffer", () => {
     buffer.destroy()
   })
 
+  describe("editable guard", () => {
+    it("should throw on append for static buffer", () => {
+      const staticBuffer = TextBuffer.create("wcwidth", { editable: false })
+      expect(() => staticBuffer.append(" World")).toThrow("TextBuffer.append requires editable: true")
+      staticBuffer.destroy()
+    })
+  })
+
   describe("setText and setStyledText", () => {
     it("should set text content", () => {
       const text = "Hello World"

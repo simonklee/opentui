@@ -20,6 +20,7 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
   tabIndicator?: string | number
   tabIndicatorColor?: string | RGBA
   truncate?: boolean
+  editable?: boolean
 }
 
 export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
@@ -52,6 +53,7 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     tabIndicator: undefined,
     tabIndicatorColor: undefined,
     truncate: false,
+    editable: true,
   } satisfies Partial<TextBufferOptions>
 
   constructor(ctx: RenderContext, options: TextBufferOptions) {
@@ -70,7 +72,8 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
       : this._defaultOptions.tabIndicatorColor
     this._truncate = options.truncate ?? this._defaultOptions.truncate
 
-    this.textBuffer = TextBuffer.create(this._ctx.widthMethod)
+    const editable = options.editable ?? this._defaultOptions.editable
+    this.textBuffer = TextBuffer.create(this._ctx.widthMethod, { editable })
     this.textBufferView = TextBufferView.create(this.textBuffer)
 
     const style = SyntaxStyle.create()

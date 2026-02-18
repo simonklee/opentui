@@ -5,7 +5,7 @@ const buffer = @import("../buffer.zig");
 const gp = @import("../grapheme.zig");
 const ss = @import("../syntax-style.zig");
 
-const TextBuffer = text_buffer.TextBuffer;
+const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.TextBufferView;
 const OptimizedBuffer = buffer.OptimizedBuffer;
 const RGBA = text_buffer.RGBA;
