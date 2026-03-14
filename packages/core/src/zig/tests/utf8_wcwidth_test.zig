@@ -355,3 +355,27 @@ test "wcwidth: getPrevGraphemeStart with ZWJ sequence" {
     }
     try testing.expect(count >= 3); // At least rocket, ZWJ, woman
 }
+
+test "findWrapBreaks wcwidth: CJK to ASCII transition" {
+    const text = "漢字abc";
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findWrapBreaks(text, &result, .wcwidth);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u32, 3), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 1), result.breaks.items[0].char_offset);
+}
+
+test "findWrapBreaks wcwidth: space and CJK mixed" {
+    const text = "漢 abc";
+    var result = utf8.WrapBreakResult.init(testing.allocator);
+    defer result.deinit();
+
+    try utf8.findWrapBreaks(text, &result, .wcwidth);
+
+    try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
+    try testing.expectEqual(@as(u32, 3), result.breaks.items[0].byte_offset);
+    try testing.expectEqual(@as(u32, 1), result.breaks.items[0].char_offset);
+}

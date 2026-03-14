@@ -108,6 +108,44 @@ describe("TextBufferView", () => {
       expect(lineInfo.lineWidthCols).toEqual([10, 10, 6])
     })
 
+    it("should return byte starts for no-wrap multi-byte lines (#609)", () => {
+      view.setWrapMode("none")
+      buffer.setStyledText(stringToStyledText("흐름\n도움"))
+
+      const lineInfo = view.lineInfo
+      expect(lineInfo.lineStartCols).toEqual([0, 7])
+    })
+
+    it("should keep #609 multi-byte wrap vectors byte-accurate", () => {
+      const decoder = new TextDecoder()
+      const encoder = new TextEncoder()
+      const vectors = [
+        { text: "흐름도", width: 4, starts: [0, 6], lines: ["흐름", "도"] },
+        { text: "你好世界", width: 4, starts: [0, 6], lines: ["你好", "世界"] },
+        { text: " 안녕a", width: 5, starts: [0, 7], lines: [" 안녕", "a"] },
+        { text: "🇰🇷🇯🇵🇨🇳", width: 4, starts: [0, 16], lines: ["🇰🇷🇯🇵", "🇨🇳"] },
+        { text: "👋🏻👋🏿hi", width: 4, starts: [0, 8, 16], lines: ["👋🏻", "👋🏿", "hi"] },
+        { text: "1️⃣한글", width: 4, starts: [0, 10], lines: ["1️⃣한", "글"] },
+        { text: "가나다라마바사", width: 6, starts: [0, 9, 18], lines: ["가나다", "라마바", "사"] },
+      ]
+
+      view.setWrapMode("char")
+      for (const vector of vectors) {
+        view.setWrapWidth(vector.width)
+        buffer.setStyledText(stringToStyledText(vector.text))
+
+        const lineInfo = view.lineInfo
+        expect(lineInfo.lineStartCols).toEqual(vector.starts)
+
+        const bytes = encoder.encode(vector.text)
+        const actualLines = lineInfo.lineStartCols.map((start, idx) => {
+          const end = idx + 1 < lineInfo.lineStartCols.length ? lineInfo.lineStartCols[idx + 1] : bytes.length
+          return decoder.decode(bytes.slice(start, end))
+        })
+        expect(actualLines).toEqual(vector.lines)
+      }
+    })
+
     it("should update lineInfo when wrap width changes", () => {
       const text = "The quick brown fox jumps over the lazy dog"
       const styledText = stringToStyledText(text)
@@ -700,6 +738,220 @@ describe("TextBufferView", () => {
       expect(result).not.toBeNull()
       expect(result!.lineCount).toBe(1)
       expect(result!.widthColsMax).toBe(11) // "Hello World" = 11 chars
+    })
+  })
+
+  describe("vector gate", () => {
+    const utf8FatalDecoder = new TextDecoder("utf-8", { fatal: true })
+
+    const assertMonotonicAndProgress = (lineStarts: number[], lineWidths: number[]): void => {
+      expect(lineStarts.length).toBe(lineWidths.length)
+      expect(lineStarts.length).toBeGreaterThan(0)
+      expect(lineStarts[0]).toBe(0)
+
+      for (let i = 1; i < lineStarts.length; i++) {
+        expect(lineStarts[i]).toBeGreaterThanOrEqual(lineStarts[i - 1])
+        if (lineWidths[i - 1] > 0) {
+          expect(lineStarts[i]).toBeGreaterThan(lineStarts[i - 1])
+        }
+      }
+    }
+
+    const assertUtf8BoundarySafety = (text: string, lineStarts: number[]): void => {
+      const bytes = new TextEncoder().encode(text)
+
+      for (let i = 0; i + 1 < lineStarts.length; i++) {
+        const start = lineStarts[i]
+        const end = lineStarts[i + 1]
+        expect(start).toBeGreaterThanOrEqual(0)
+        expect(end).toBeGreaterThanOrEqual(start)
+        expect(end).toBeLessThanOrEqual(bytes.length)
+        expect(() => utf8FatalDecoder.decode(bytes.slice(start, end))).not.toThrow()
+      }
+    }
+
+    const assertDeterministicLineInfo = (targetView: TextBufferView): void => {
+      const first = targetView.lineInfo
+      const second = targetView.lineInfo
+      expect(second.lineStartCols).toEqual(first.lineStartCols)
+      expect(second.lineWidthCols).toEqual(first.lineWidthCols)
+      expect(second.lineWidthColsMax).toBe(first.lineWidthColsMax)
+    }
+
+    const runScenario = (
+      targetBuffer: TextBuffer,
+      targetView: TextBufferView,
+      text: string,
+      wrapMode: "none" | "char" | "word",
+      wrapWidth: number | null,
+      tabWidth: number,
+    ) => {
+      targetBuffer.setTabWidth(tabWidth)
+      targetView.setWrapMode(wrapMode)
+      targetView.setWrapWidth(wrapWidth)
+      targetBuffer.setStyledText(stringToStyledText(text))
+      return targetView.lineInfo
+    }
+
+    const withWidthMethod = (
+      widthMethod: "wcwidth" | "unicode",
+      run: (targetBuffer: TextBuffer, targetView: TextBufferView) => void,
+    ): void => {
+      const targetBuffer = TextBuffer.create(widthMethod)
+      const targetView = TextBufferView.create(targetBuffer)
+      try {
+        run(targetBuffer, targetView)
+      } finally {
+        targetView.destroy()
+        targetBuffer.destroy()
+      }
+    }
+
+    const createFixedSeedCorpus = (
+      seed: number,
+      count: number,
+    ): Array<{ text: string; wrapWidth: number; tabWidth: number }> => {
+      let state = seed >>> 0
+      const next = (): number => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+        return state
+      }
+
+      const tokens = ["a", "b", "c", " ", "\t", "가", "나", "다", "👋🏻", "🌟", ".", ",", "/"]
+      const corpus: Array<{ text: string; wrapWidth: number; tabWidth: number }> = []
+
+      for (let i = 0; i < count; i++) {
+        const tokenCount = (next() % 24) + 1
+        let text = ""
+        for (let j = 0; j < tokenCount; j++) {
+          text += tokens[next() % tokens.length]
+        }
+
+        const wrapWidth = (next() % 8) + 1
+        const tabWidth = [2, 4, 8][next() % 3]
+        corpus.push({ text, wrapWidth, tabWidth })
+      }
+
+      return corpus
+    }
+
+    it("V1-V8 exact for wcwidth", () => {
+      let lineInfo = runScenario(buffer, view, "가a", "word", 1, 2)
+      expect(lineInfo.lineStartCols).toEqual([0, 3])
+      expect(lineInfo.lineWidthCols).toEqual([2, 1])
+
+      lineInfo = runScenario(buffer, view, "가나다", "word", 1, 2)
+      expect(lineInfo.lineStartCols).toEqual([0, 3, 6])
+      for (let i = 1; i < lineInfo.lineStartCols.length; i++) {
+        expect(lineInfo.lineStartCols[i]).toBeGreaterThan(lineInfo.lineStartCols[i - 1])
+      }
+
+      lineInfo = runScenario(buffer, view, "👋🏻a", "word", 1, 2)
+      expect(lineInfo.lineStartCols).toEqual([0, 8])
+      expect(lineInfo.lineWidthCols).toEqual([2, 1])
+
+      lineInfo = runScenario(buffer, view, "\tA", "word", 1, 2)
+      expect(lineInfo.lineStartCols).toEqual([0, 1])
+
+      lineInfo = runScenario(buffer, view, "흐름도", "word", 4, 2)
+      expect(lineInfo.lineStartCols).toEqual([0, 6])
+
+      lineInfo = runScenario(buffer, view, "hello world", "word", 5, 2)
+      expect(lineInfo.lineStartCols).toEqual([0, 6])
+
+      lineInfo = runScenario(buffer, view, "abcd\tx", "word", 8, 4)
+      expect(lineInfo.lineStartCols).toEqual([0, 5])
+
+      lineInfo = runScenario(buffer, view, "ab\r\ncd", "none", null, 2)
+      expect(lineInfo.lineStartCols).toEqual([0, 4])
+    })
+
+    it("unicode exact vectors where behavior is stable", () => {
+      withWidthMethod("unicode", (targetBuffer, targetView) => {
+        let lineInfo = runScenario(targetBuffer, targetView, "가a", "word", 1, 2)
+        expect(lineInfo.lineStartCols).toEqual([0, 3])
+        expect(lineInfo.lineWidthCols).toEqual([2, 1])
+
+        lineInfo = runScenario(targetBuffer, targetView, "가나다", "word", 1, 2)
+        expect(lineInfo.lineStartCols).toEqual([0, 3, 6])
+
+        lineInfo = runScenario(targetBuffer, targetView, "👋🏻a", "word", 1, 2)
+        expect(lineInfo.lineStartCols).toEqual([0, 8])
+        expect(lineInfo.lineWidthCols).toEqual([2, 1])
+
+        lineInfo = runScenario(targetBuffer, targetView, "\tA", "word", 1, 2)
+        expect(lineInfo.lineStartCols).toEqual([0, 1])
+
+        lineInfo = runScenario(targetBuffer, targetView, "흐름도", "word", 4, 2)
+        expect(lineInfo.lineStartCols).toEqual([0, 6])
+
+        lineInfo = runScenario(targetBuffer, targetView, "hello world", "word", 5, 2)
+        expect(lineInfo.lineStartCols).toEqual([0, 6])
+
+        lineInfo = runScenario(targetBuffer, targetView, "abcd\tx", "word", 8, 4)
+        expect(lineInfo.lineStartCols).toEqual([0, 5])
+
+        lineInfo = runScenario(targetBuffer, targetView, "ab\r\ncd", "none", null, 2)
+        expect(lineInfo.lineStartCols).toEqual([0, 4])
+      })
+    })
+
+    it("V9-V12 invariants hold for wcwidth and unicode", () => {
+      const canonicalScenarios: Array<{
+        text: string
+        wrapMode: "none" | "char" | "word"
+        wrapWidth: number | null
+        tabWidth: number
+      }> = [
+        { text: "가a", wrapMode: "word", wrapWidth: 1, tabWidth: 2 },
+        { text: "가나다", wrapMode: "word", wrapWidth: 1, tabWidth: 2 },
+        { text: "👋🏻a", wrapMode: "word", wrapWidth: 1, tabWidth: 2 },
+        { text: "\tA", wrapMode: "word", wrapWidth: 1, tabWidth: 2 },
+        { text: "흐름도", wrapMode: "word", wrapWidth: 4, tabWidth: 2 },
+        { text: "hello world", wrapMode: "word", wrapWidth: 5, tabWidth: 2 },
+        { text: "abcd\tx", wrapMode: "word", wrapWidth: 8, tabWidth: 4 },
+        { text: "ab\r\ncd", wrapMode: "none", wrapWidth: null, tabWidth: 2 },
+        {
+          text: "나,다.c/가🌟🌟c/나👋🏻/🌟가다,/.다",
+          wrapMode: "word",
+          wrapWidth: 3,
+          tabWidth: 4,
+        },
+      ]
+
+      const corpus = createFixedSeedCorpus(0x17c0ffee, 64)
+
+      for (const widthMethod of ["wcwidth", "unicode"] as const) {
+        withWidthMethod(widthMethod, (targetBuffer, targetView) => {
+          for (const scenario of canonicalScenarios) {
+            const lineInfo = runScenario(
+              targetBuffer,
+              targetView,
+              scenario.text,
+              scenario.wrapMode,
+              scenario.wrapWidth,
+              scenario.tabWidth,
+            )
+            assertUtf8BoundarySafety(scenario.text, lineInfo.lineStartCols)
+            assertMonotonicAndProgress(lineInfo.lineStartCols, lineInfo.lineWidthCols)
+            assertDeterministicLineInfo(targetView)
+          }
+
+          for (const sample of corpus) {
+            const lineInfo = runScenario(
+              targetBuffer,
+              targetView,
+              sample.text,
+              "word",
+              sample.wrapWidth,
+              sample.tabWidth,
+            )
+            assertUtf8BoundarySafety(sample.text, lineInfo.lineStartCols)
+            assertMonotonicAndProgress(lineInfo.lineStartCols, lineInfo.lineWidthCols)
+            assertDeterministicLineInfo(targetView)
+          }
+        })
+      }
     })
   })
 })
