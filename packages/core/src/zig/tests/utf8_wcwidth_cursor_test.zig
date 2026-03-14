@@ -96,25 +96,25 @@ test "wcwidth: getPrevGraphemeStart through ZWJ sequence" {
 test "wcwidth: findPosByWidth through emoji sequence" {
     const text = "AB👋🏿CD"; // A(1) B(1) 👋(2) 🏿(2) C(1) D(1) = 8 columns
 
-    const pos_start = utf8.findPosByWidth(text, 3, 4, false, false, .wcwidth);
+    const pos_start = utf8.resolveDisplayPosByWidth(text, 3, 4, false, false, .wcwidth);
     try testing.expectEqual(@as(u32, 2), pos_start.byte_offset);
 
-    const pos_end = utf8.findPosByWidth(text, 3, 4, false, true, .wcwidth);
+    const pos_end = utf8.resolveDisplayPosByWidth(text, 3, 4, false, true, .wcwidth);
     try testing.expectEqual(@as(u32, 6), pos_end.byte_offset);
 }
 
 test "wcwidth: findWrapPosByWidth through emoji" {
     const text = "Hi👋🏿Bye"; // H(1) i(1) 👋(2) 🏿(2) B(1) y(1) e(1) = 10 columns
 
-    const wrap_4 = utf8.findWrapPosByWidth(text, 4, 4, false, .wcwidth);
+    const wrap_4 = utf8.measureWrapFitByWidth(text, 4, 4, false, .wcwidth);
     try testing.expectEqual(@as(u32, 6), wrap_4.byte_offset);
     try testing.expectEqual(@as(u32, 4), wrap_4.columns_used);
 
-    const wrap_5 = utf8.findWrapPosByWidth(text, 5, 4, false, .wcwidth);
+    const wrap_5 = utf8.measureWrapFitByWidth(text, 5, 4, false, .wcwidth);
     try testing.expectEqual(@as(u32, 6), wrap_5.byte_offset);
     try testing.expectEqual(@as(u32, 4), wrap_5.columns_used);
 
-    const wrap_6 = utf8.findWrapPosByWidth(text, 6, 4, false, .wcwidth);
+    const wrap_6 = utf8.measureWrapFitByWidth(text, 6, 4, false, .wcwidth);
     try testing.expectEqual(@as(u32, 10), wrap_6.byte_offset);
     try testing.expectEqual(@as(u32, 6), wrap_6.columns_used);
 }
@@ -204,7 +204,7 @@ test "wcwidth: findGraphemeInfo with emoji" {
     defer result.deinit(testing.allocator);
 
     const text = "👋🏿"; // Wave + skin tone modifier
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
@@ -218,7 +218,7 @@ test "wcwidth: findGraphemeInfo with ZWJ sequence" {
     defer result.deinit(testing.allocator);
 
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
@@ -232,7 +232,7 @@ test "wcwidth: findGraphemeInfo with combining marks" {
     defer result.deinit(testing.allocator);
 
     const text = "e\u{0301}"; // e + combining acute
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
@@ -253,15 +253,15 @@ test "wcwidth: tab width handling" {
 test "wcwidth: boundary at wide character" {
     const text = "世X"; // 世(2) X(1) = 3 columns
 
-    const pos_start = utf8.findPosByWidth(text, 2, 4, false, false, .wcwidth);
+    const pos_start = utf8.resolveDisplayPosByWidth(text, 2, 4, false, false, .wcwidth);
     try testing.expectEqual(@as(u32, 3), pos_start.byte_offset);
     try testing.expectEqual(@as(u32, 2), pos_start.columns_used);
 
-    const pos_end = utf8.findPosByWidth(text, 2, 4, false, true, .wcwidth);
+    const pos_end = utf8.resolveDisplayPosByWidth(text, 2, 4, false, true, .wcwidth);
     try testing.expectEqual(@as(u32, 3), pos_end.byte_offset);
     try testing.expectEqual(@as(u32, 2), pos_end.columns_used);
 
-    const pos_3 = utf8.findPosByWidth(text, 3, 4, false, true, .wcwidth);
+    const pos_3 = utf8.resolveDisplayPosByWidth(text, 3, 4, false, true, .wcwidth);
     try testing.expectEqual(@as(u32, 4), pos_3.byte_offset);
     try testing.expectEqual(@as(u32, 3), pos_3.columns_used);
 }

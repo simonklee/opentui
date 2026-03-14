@@ -105,8 +105,7 @@ pub const WrapBreak = struct {
     // For CJK<->ASCII transitions, this is the last grapheme in the previous run.
     byte_offset: u32,
 
-    // char_offset is grapheme-count based, not a display column.
-    // Callers convert it to columns with charOffsetToColumn().
+    // char_offset is grapheme-count based and retained for legacy-only helpers/tests.
     char_offset: u32,
 };
 
@@ -750,7 +749,7 @@ pub fn scanLayoutNextWindowBatchNoBreaks(
 
 // Nothing needed here - using uucode.grapheme.isBreak directly
 
-pub fn findWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
+pub fn collectWrapBreaks(text: []const u8, result: *WrapBreakResult, width_method: WidthMethod) !void {
     // This function clears previous results and writes fresh break points.
     // Callers should treat `result.breaks` as replaced after the call.
     _ = width_method; // Currently unused, but kept for API consistency
@@ -1472,7 +1471,7 @@ inline fn handleClusterForPos(
 }
 
 /// Find wrap position by width - proxy function that dispatches based on width_method
-pub fn findWrapPosByWidth(
+pub fn measureWrapFitByWidth(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
@@ -1671,7 +1670,7 @@ fn findWrapPosByWidthWCWidth(
 ///   This ensures that if max_columns points to the middle of a width=2 grapheme, we include the whole grapheme
 /// - If !include_start_before: exclude graphemes that START at or after max_columns (snap backward for selection start)
 ///   This ensures that if max_columns points to the middle of a width=2 grapheme, we snap back to exclude it
-pub fn findPosByWidth(
+pub fn resolveDisplayPosByWidth(
     text: []const u8,
     max_columns: u32,
     tab_width: u8,
@@ -2152,7 +2151,7 @@ pub const GraphemeInfoResult = struct {
 
 /// Find all grapheme clusters in text and return info for multi-byte graphemes and tabs
 /// This is a proxy function that dispatches to the appropriate implementation based on width_method
-pub fn findGraphemeInfo(
+pub fn collectGraphemeInfo(
     text: []const u8,
     tab_width: u8,
     isASCIIOnly: bool,

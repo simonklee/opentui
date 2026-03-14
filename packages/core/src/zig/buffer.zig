@@ -948,7 +948,7 @@ pub const OptimizedBuffer = struct {
         defer grapheme_list.deinit(self.allocator);
 
         const tab_width: u8 = 2;
-        try utf8.findGraphemeInfo(text, tab_width, is_ascii_only, self.width_method, self.allocator, &grapheme_list);
+        try utf8.collectGraphemeInfo(text, tab_width, is_ascii_only, self.width_method, self.allocator, &grapheme_list);
         const specials = grapheme_list.items;
 
         var advance_cells: u32 = 0;

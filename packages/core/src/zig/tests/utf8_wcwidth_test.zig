@@ -6,7 +6,7 @@ test "findGraphemeInfo wcwidth: empty string" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("", 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo("", 4, false, .wcwidth, testing.allocator, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -14,7 +14,7 @@ test "findGraphemeInfo wcwidth: ASCII-only returns empty" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("hello world", 4, true, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo("hello world", 4, true, .wcwidth, testing.allocator, &result);
     try testing.expectEqual(@as(usize, 0), result.items.len);
 }
 
@@ -22,7 +22,7 @@ test "findGraphemeInfo wcwidth: ASCII with tab" {
     var result: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
     defer result.deinit(testing.allocator);
 
-    try utf8.findGraphemeInfo("hello\tworld", 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo("hello\tworld", 4, false, .wcwidth, testing.allocator, &result);
 
     // Should have one entry for the tab
     try testing.expectEqual(@as(usize, 1), result.items.len);
@@ -37,7 +37,7 @@ test "findGraphemeInfo wcwidth: CJK characters" {
     defer result.deinit(testing.allocator);
 
     const text = "hello世界";
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
     // Should have two entries for the CJK characters (each codepoint separately)
     try testing.expectEqual(@as(usize, 2), result.items.len);
@@ -60,7 +60,7 @@ test "findGraphemeInfo wcwidth: emoji with skin tone - single grapheme cluster" 
     defer result.deinit(testing.allocator);
 
     const text = "👋🏿"; // Wave + skin tone modifier
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
@@ -74,7 +74,7 @@ test "findGraphemeInfo wcwidth: emoji with ZWJ - single grapheme cluster" {
     defer result.deinit(testing.allocator);
 
     const text = "👩‍🚀"; // Woman + ZWJ + Rocket (11 bytes total)
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
 
@@ -87,7 +87,7 @@ test "findGraphemeInfo wcwidth: combining mark - part of base grapheme" {
     defer result.deinit(testing.allocator);
 
     const text = "e\u{0301}test"; // e + combining acute accent + test
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result);
 
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u32, 0), result.items[0].byte_offset);
@@ -103,8 +103,8 @@ test "findGraphemeInfo wcwidth vs unicode: emoji with skin tone" {
 
     const text = "Hi👋🏿Bye";
 
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result_wcwidth);
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result_wcwidth);
+    try utf8.collectGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
 
     try testing.expectEqual(@as(usize, 1), result_wcwidth.items.len);
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
@@ -127,8 +127,8 @@ test "findGraphemeInfo wcwidth vs unicode: flag emoji" {
 
     const text = "🇺🇸"; // US flag (two regional indicators)
 
-    try utf8.findGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result_wcwidth);
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
+    try utf8.collectGraphemeInfo(text, 4, false, .wcwidth, testing.allocator, &result_wcwidth);
+    try utf8.collectGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
 
     try testing.expectEqual(@as(usize, 1), result_wcwidth.items.len);
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
@@ -185,8 +185,8 @@ test "calculateTextWidth wcwidth: flag emoji counts both RIs" {
 test "findWrapPosByWidth wcwidth: emoji with skin tone stops earlier" {
     const text = "Hi👋🏿Bye"; // H(1) i(1) wave(2) skin(2) B(1) y(1) e(1) = 10 cols wcwidth
 
-    const result_wcwidth = utf8.findWrapPosByWidth(text, 4, 4, false, .wcwidth);
-    const result_unicode = utf8.findWrapPosByWidth(text, 4, 4, false, .unicode);
+    const result_wcwidth = utf8.measureWrapFitByWidth(text, 4, 4, false, .wcwidth);
+    const result_unicode = utf8.measureWrapFitByWidth(text, 4, 4, false, .unicode);
 
     // wcwidth: stops after "Hi👋" = 4 columns (1+1+2)
     try testing.expectEqual(@as(u32, 6), result_wcwidth.byte_offset);
@@ -201,12 +201,12 @@ test "findPosByWidth wcwidth: emoji boundary behavior" {
     const text = "AB👋🏿CD"; // A(1) B(1) wave(2) skin(2) C(1) D(1)
 
     // With include_start_before=false (selection start)
-    const start3 = utf8.findPosByWidth(text, 3, 4, false, false, .wcwidth);
+    const start3 = utf8.resolveDisplayPosByWidth(text, 3, 4, false, false, .wcwidth);
     // wcwidth: stops after "AB" at 2 columns (wave would exceed)
     try testing.expectEqual(@as(u32, 2), start3.byte_offset);
 
     // With include_start_before=true (selection end)
-    const end3 = utf8.findPosByWidth(text, 3, 4, false, true, .wcwidth);
+    const end3 = utf8.resolveDisplayPosByWidth(text, 3, 4, false, true, .wcwidth);
     // wcwidth: includes wave since it starts at column 2 which is < 3
     try testing.expectEqual(@as(u32, 6), end3.byte_offset);
     try testing.expectEqual(@as(u32, 4), end3.columns_used);
@@ -299,7 +299,7 @@ test "wcwidth: findWrapPosByWidth with ZWJ sequences" {
     const text = "AB👩‍🚀CD"; // A(1) B(1) woman(2) ZWJ(0) rocket(2) C(1) D(1) = 8
 
     // Should wrap after woman emoji (before ZWJ)
-    const result = utf8.findWrapPosByWidth(text, 4, 4, false, .wcwidth);
+    const result = utf8.measureWrapFitByWidth(text, 4, 4, false, .wcwidth);
     try testing.expectEqual(@as(u32, 6), result.byte_offset); // After woman emoji
     try testing.expectEqual(@as(u32, 4), result.columns_used);
 }
@@ -309,13 +309,13 @@ test "wcwidth: findPosByWidth with skin tone modifier" {
 
     // With include_start_before=false, include codepoints that end at or before max_columns
     // Wave ends at column 4, which is at max_columns=4, so it's included
-    const start4 = utf8.findPosByWidth(text, 4, 4, false, false, .wcwidth);
+    const start4 = utf8.resolveDisplayPosByWidth(text, 4, 4, false, false, .wcwidth);
     try testing.expectEqual(@as(u32, 6), start4.byte_offset); // After wave
     try testing.expectEqual(@as(u32, 4), start4.columns_used);
 
     // With include_start_before=true, include codepoints that start before max_columns
     // Wave starts at column 2 which is < 4, so it's included
-    const end4 = utf8.findPosByWidth(text, 4, 4, false, true, .wcwidth);
+    const end4 = utf8.resolveDisplayPosByWidth(text, 4, 4, false, true, .wcwidth);
     try testing.expectEqual(@as(u32, 6), end4.byte_offset); // After wave
     try testing.expectEqual(@as(u32, 4), end4.columns_used);
 }
@@ -361,7 +361,7 @@ test "findWrapBreaks wcwidth: CJK to ASCII transition" {
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findWrapBreaks(text, &result, .wcwidth);
+    try utf8.collectWrapBreaks(text, &result, .wcwidth);
 
     try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
     try testing.expectEqual(@as(u32, 3), result.breaks.items[0].byte_offset);
@@ -373,7 +373,7 @@ test "findWrapBreaks wcwidth: space and CJK mixed" {
     var result = utf8.WrapBreakResult.init(testing.allocator);
     defer result.deinit();
 
-    try utf8.findWrapBreaks(text, &result, .wcwidth);
+    try utf8.collectWrapBreaks(text, &result, .wcwidth);
 
     try testing.expectEqual(@as(usize, 1), result.breaks.items.len);
     try testing.expectEqual(@as(u32, 3), result.breaks.items[0].byte_offset);

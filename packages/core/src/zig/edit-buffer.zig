@@ -214,7 +214,7 @@ pub const EditBuffer = struct {
         const chunk_bytes = chunk.getBytes(self.tb.memRegistry());
         const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
 
-        const result = utf8.findPosByWidth(chunk_bytes, weight, self.tb.tabWidth(), is_ascii_only, false, self.tb.widthMethod());
+        const result = utf8.resolveDisplayPosByWidth(chunk_bytes, weight, self.tb.tabWidth(), is_ascii_only, false, self.tb.widthMethod());
         const split_byte_offset = result.byte_offset;
 
         const left_chunk = self.tb.createChunk(

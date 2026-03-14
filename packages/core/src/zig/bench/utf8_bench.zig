@@ -313,7 +313,7 @@ fn benchFindWrapBreaks(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                try utf8.findWrapBreaks(text, &wrap_result, .unicode);
+                try utf8.collectWrapBreaks(text, &wrap_result, .unicode);
                 stats.record(timer.read());
             }
 
@@ -344,7 +344,7 @@ fn benchFindWrapBreaks(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                try utf8.findWrapBreaks(text, &wrap_result, .unicode);
+                try utf8.collectWrapBreaks(text, &wrap_result, .unicode);
                 stats.record(timer.read());
             }
 
@@ -454,7 +454,7 @@ fn benchFindWrapPosByWidth(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                _ = utf8.findWrapPosByWidth(text, 40, 4, true, .unicode);
+                _ = utf8.measureWrapFitByWidth(text, 40, 4, true, .unicode);
                 stats.record(timer.read());
             }
 
@@ -481,7 +481,7 @@ fn benchFindWrapPosByWidth(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                _ = utf8.findWrapPosByWidth(text, 120, 4, true, .unicode);
+                _ = utf8.measureWrapFitByWidth(text, 120, 4, true, .unicode);
                 stats.record(timer.read());
             }
 
@@ -508,7 +508,7 @@ fn benchFindWrapPosByWidth(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
+                _ = utf8.measureWrapFitByWidth(text, 80, 4, false, .unicode);
                 stats.record(timer.read());
             }
 
@@ -535,7 +535,7 @@ fn benchFindWrapPosByWidth(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                _ = utf8.findWrapPosByWidth(text, 80, 4, false, .unicode);
+                _ = utf8.measureWrapFitByWidth(text, 80, 4, false, .unicode);
                 stats.record(timer.read());
             }
 
@@ -574,7 +574,7 @@ fn benchFindPosByWidth(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                _ = utf8.findPosByWidth(text, 500, 4, true, true, .unicode);
+                _ = utf8.resolveDisplayPosByWidth(text, 500, 4, true, true, .unicode);
                 stats.record(timer.read());
             }
 
@@ -601,7 +601,7 @@ fn benchFindPosByWidth(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                _ = utf8.findPosByWidth(text, 90000, 4, true, true, .unicode);
+                _ = utf8.resolveDisplayPosByWidth(text, 90000, 4, true, true, .unicode);
                 stats.record(timer.read());
             }
 
@@ -628,7 +628,7 @@ fn benchFindPosByWidth(
             var stats = BenchStats{};
             for (0..iterations) |_| {
                 var timer = try std.time.Timer.start();
-                _ = utf8.findPosByWidth(text, 5000, 4, false, true, .unicode);
+                _ = utf8.resolveDisplayPosByWidth(text, 5000, 4, false, true, .unicode);
                 stats.record(timer.read());
             }
 

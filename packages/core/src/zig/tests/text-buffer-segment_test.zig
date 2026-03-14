@@ -419,7 +419,7 @@ test "TextChunk legacy metadata projections derive from canonical spans" {
         for ([_]utf8.WidthMethod{ .wcwidth, .unicode, .no_zwj }) |width_method| {
             var legacy_wrap = utf8.WrapBreakResult.init(allocator);
             defer legacy_wrap.deinit();
-            try utf8.findWrapBreaks(case.text, &legacy_wrap, width_method);
+            try utf8.collectWrapBreaks(case.text, &legacy_wrap, width_method);
 
             const projected_wrap = try chunk.getWrapOffsets(&registry, allocator, case.tab_width, width_method);
             try testing.expectEqual(legacy_wrap.breaks.items.len, projected_wrap.len);
@@ -432,7 +432,7 @@ test "TextChunk legacy metadata projections derive from canonical spans" {
 
             var legacy_graphemes: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
             defer legacy_graphemes.deinit(allocator);
-            try utf8.findGraphemeInfo(case.text, case.tab_width, case.is_ascii_only, width_method, allocator, &legacy_graphemes);
+            try utf8.collectGraphemeInfo(case.text, case.tab_width, case.is_ascii_only, width_method, allocator, &legacy_graphemes);
 
             const projected_graphemes = try chunk.getGraphemes(&registry, allocator, case.tab_width, width_method);
             try testing.expectEqual(legacy_graphemes.items.len, projected_graphemes.len);

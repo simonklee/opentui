@@ -98,8 +98,8 @@ test "no_zwj: findGraphemeInfo splits ZWJ sequences" {
 
     const text = "Hi👩‍🚀Bye";
 
-    try utf8.findGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
-    try utf8.findGraphemeInfo(text, 4, false, .no_zwj, testing.allocator, &result_no_zwj);
+    try utf8.collectGraphemeInfo(text, 4, false, .unicode, testing.allocator, &result_unicode);
+    try utf8.collectGraphemeInfo(text, 4, false, .no_zwj, testing.allocator, &result_no_zwj);
 
     // unicode: 1 grapheme (the whole ZWJ sequence)
     try testing.expectEqual(@as(usize, 1), result_unicode.items.len);
@@ -114,8 +114,8 @@ test "no_zwj: findGraphemeInfo splits ZWJ sequences" {
 test "no_zwj: findWrapPosByWidth with ZWJ sequences" {
     const text = "AB👩‍🚀CD"; // A(1) B(1) woman(2) rocket(2) C(1) D(1)
 
-    const result_unicode = utf8.findWrapPosByWidth(text, 4, 4, false, .unicode);
-    const result_no_zwj = utf8.findWrapPosByWidth(text, 4, 4, false, .no_zwj);
+    const result_unicode = utf8.measureWrapFitByWidth(text, 4, 4, false, .unicode);
+    const result_no_zwj = utf8.measureWrapFitByWidth(text, 4, 4, false, .no_zwj);
 
     // unicode: stops after "AB👩‍🚀" = 4 columns (whole sequence)
     try testing.expectEqual(@as(u32, 4), result_unicode.columns_used);
@@ -128,8 +128,8 @@ test "no_zwj: findPosByWidth with ZWJ sequences" {
     const text = "AB👩‍🚀CD"; // A(1) B(1) woman(2) rocket(2) C(1) D(1)
 
     // With include_start_before=false
-    const start4_unicode = utf8.findPosByWidth(text, 4, 4, false, false, .unicode);
-    const start4_no_zwj = utf8.findPosByWidth(text, 4, 4, false, false, .no_zwj);
+    const start4_unicode = utf8.resolveDisplayPosByWidth(text, 4, 4, false, false, .unicode);
+    const start4_no_zwj = utf8.resolveDisplayPosByWidth(text, 4, 4, false, false, .no_zwj);
 
     // unicode: Woman+ZWJ+Rocket is one grapheme that ends at col 4, so it's included
     // Stops at 'C' (byte 13)
@@ -142,8 +142,8 @@ test "no_zwj: findPosByWidth with ZWJ sequences" {
     try testing.expectEqual(@as(u32, 4), start4_no_zwj.columns_used);
 
     // With include_start_before=true
-    const end4_unicode = utf8.findPosByWidth(text, 4, 4, false, true, .unicode);
-    const end4_no_zwj = utf8.findPosByWidth(text, 4, 4, false, true, .no_zwj);
+    const end4_unicode = utf8.resolveDisplayPosByWidth(text, 4, 4, false, true, .unicode);
+    const end4_no_zwj = utf8.resolveDisplayPosByWidth(text, 4, 4, false, true, .no_zwj);
 
     // unicode: includes whole sequence
     try testing.expectEqual(@as(u32, 4), end4_unicode.columns_used);

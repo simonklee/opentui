@@ -250,7 +250,7 @@ pub fn getGraphemeWidthAt(rope: *UnifiedRope, mem_registry: *const MemRegistry, 
                 const local_col: u32 = col - cols_before;
                 const bytes = chunk.getBytes(mem_registry);
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                const pos = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false, width_method);
+                const pos = utf8.resolveDisplayPosByWidth(bytes, local_col, tab_width, is_ascii, false, width_method);
                 if (pos.byte_offset >= bytes.len) return 0; // at end of chunk
                 const grapheme_start_col = pos.columns_used;
                 const width = utf8.getWidthAt(bytes, pos.byte_offset, tab_width, width_method);
@@ -301,7 +301,7 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
                 const is_ascii = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
                 const local_col: u32 = clamped_col - cols_before;
 
-                const here = utf8.findPosByWidth(bytes, local_col, tab_width, is_ascii, false, width_method);
+                const here = utf8.resolveDisplayPosByWidth(bytes, local_col, tab_width, is_ascii, false, width_method);
 
                 const grapheme_start_col = here.columns_used;
 
@@ -341,43 +341,6 @@ pub fn getPrevGraphemeWidth(rope: *UnifiedRope, mem_registry: *const MemRegistry
         }
     }
     return 0;
-}
-
-pub const CharOffsetColumnInfo = struct {
-    col: u32,
-    width: u32,
-};
-
-/// char_offset is grapheme-count based (not raw codepoint)
-/// grapheme_idx and col_delta carry incremental state across calls
-pub fn charOffsetToColumn(
-    char_offset: u32,
-    graphemes: []const GraphemeInfo,
-    grapheme_idx: *usize,
-    col_delta: *i64,
-) CharOffsetColumnInfo {
-    while (grapheme_idx.* < graphemes.len) {
-        const info = graphemes[grapheme_idx.*];
-        const info_char_offset = @as(i64, info.col_offset) - col_delta.*;
-        if (info_char_offset >= @as(i64, char_offset)) break;
-        col_delta.* += @as(i64, info.width) - 1;
-        grapheme_idx.* += 1;
-    }
-
-    var break_col_i64 = @as(i64, char_offset) + col_delta.*;
-    if (break_col_i64 < 0) break_col_i64 = 0;
-    const break_col = @as(u32, @intCast(break_col_i64));
-
-    var width: u32 = 1;
-    if (grapheme_idx.* < graphemes.len) {
-        const info = graphemes[grapheme_idx.*];
-        const info_char_offset = @as(i64, info.col_offset) - col_delta.*;
-        if (info_char_offset == @as(i64, char_offset)) {
-            width = @as(u32, info.width);
-        }
-    }
-
-    return .{ .col = break_col, .width = width };
 }
 
 /// Extract text between display-width offsets into a buffer
@@ -442,12 +405,12 @@ pub fn extractTextBetweenOffsets(
             var byte_end: u32 = @intCast(chunk_bytes.len);
 
             if (local_start_col > 0) {
-                const start_result = utf8.findPosByWidth(chunk_bytes, local_start_col, ctx.tab_width, is_ascii_only, false, .unicode);
+                const start_result = utf8.resolveDisplayPosByWidth(chunk_bytes, local_start_col, ctx.tab_width, is_ascii_only, false, .unicode);
                 byte_start = start_result.byte_offset;
             }
 
             if (local_end_col < chunk.width) {
-                const end_result = utf8.findPosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true, .unicode);
+                const end_result = utf8.resolveDisplayPosByWidth(chunk_bytes, local_end_col, ctx.tab_width, is_ascii_only, true, .unicode);
                 byte_end = end_result.byte_offset;
             }
 

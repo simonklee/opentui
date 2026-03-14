@@ -8,7 +8,7 @@
 //
 // Options:
 //   --mem                   Show memory statistics after each benchmark
-//   --filter, -f NAME       Run only benchmark categories matching NAME (case-insensitive substring)
+//   --filter, -f NAME       Run only benchmark categories matching NAME (case-insensitive substring, `|` = OR)
 //   --bench, -b NAME        Run only specific benchmarks matching NAME
 //   --json                  Output results in JSON format (machine-readable)
 //   --help, -h              Display help message and list available benchmarks
@@ -59,9 +59,7 @@ const BenchModule = struct {
     run: *const fn (std.mem.Allocator, bool, ?[]const u8) anyerror![]bench_utils.BenchResult,
 };
 
-fn matchesFilter(bench_name: []const u8, filter: ?[]const u8) bool {
-    if (filter == null) return true;
-    const filter_str = filter.?;
+fn matchesFilterToken(bench_name: []const u8, filter_str: []const u8) bool {
     if (filter_str.len == 0) return true;
 
     var i: usize = 0;
@@ -78,6 +76,21 @@ fn matchesFilter(bench_name: []const u8, filter: ?[]const u8) bool {
         }
         if (matches) return true;
     }
+    return false;
+}
+
+fn matchesFilter(bench_name: []const u8, filter: ?[]const u8) bool {
+    if (filter == null) return true;
+    const filter_str = filter.?;
+    if (filter_str.len == 0) return true;
+
+    var parts = std.mem.splitScalar(u8, filter_str, '|');
+    while (parts.next()) |raw_part| {
+        const part = std.mem.trim(u8, raw_part, " \t");
+        if (part.len == 0) continue;
+        if (matchesFilterToken(bench_name, part)) return true;
+    }
+
     return false;
 }
 
@@ -135,7 +148,7 @@ pub fn main() !void {
             try stdout.print("Options:\n", .{});
             try stdout.print("  --mem                   Show memory statistics\n", .{});
             try stdout.print("  --json                  Output in JSON format (machine-readable)\n", .{});
-            try stdout.print("  --filter, -f NAME       Run only benchmark categories matching NAME\n", .{});
+            try stdout.print("  --filter, -f NAME       Run only benchmark categories matching NAME (`|` = OR)\n", .{});
             try stdout.print("  --bench, -b NAME        Run only specific benchmarks matching NAME\n", .{});
             try stdout.print("  --help, -h              Show this help message\n\n", .{});
             try stdout.print("Available benchmarks:\n", .{});

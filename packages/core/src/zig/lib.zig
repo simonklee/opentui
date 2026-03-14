@@ -1712,7 +1712,7 @@ export fn encodeUnicode(
     defer grapheme_list.deinit(globalAllocator);
 
     const tab_width: u8 = 2;
-    utf8.findGraphemeInfo(text, tab_width, is_ascii_only, wMethod, globalAllocator, &grapheme_list) catch return false;
+    utf8.collectGraphemeInfo(text, tab_width, is_ascii_only, wMethod, globalAllocator, &grapheme_list) catch return false;
     const specials = grapheme_list.items;
 
     // Allocate output array
