@@ -27,6 +27,17 @@ fn forceAllTextChunksLayoutMode(tb: *TextBuffer, mode: LayoutCacheMode) void {
     }
 }
 
+fn firstTextChunk(tb: *TextBuffer) *const text_buffer.TextChunk {
+    var seg_idx: u32 = 0;
+    while (seg_idx < tb.rope().count()) : (seg_idx += 1) {
+        const seg = tb.rope().get(seg_idx) orelse continue;
+        if (seg.asText()) |chunk| {
+            return chunk;
+        }
+    }
+    unreachable;
+}
+
 test "TextBufferView wrapping - no wrap returns same line count" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
@@ -349,6 +360,38 @@ test "TextBufferView word wrapping - full and windowed layout spans agree" {
         try std.testing.expectEqualSlices(u32, full_info.line_wraps, windowed_info.line_wraps);
         try std.testing.expectEqual(full_info.line_width_cols_max, windowed_info.line_width_cols_max);
     }
+}
+
+test "TextBufferView materialized word wrap stays windowed while measure may populate canonical spans" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .unicode);
+    defer tb.deinit();
+    tb.setTabWidth(4);
+    try tb.setText("alpha beta gamma delta");
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+    view.setWrapMode(.word);
+    view.setWrapWidth(8);
+
+    const chunk_before = firstTextChunk(tb);
+    try std.testing.expectEqual(@as(?[]const text_buffer.GraphemeSpan, null), chunk_before.layout_spans);
+
+    try std.testing.expect(view.getVirtualLineCount() > 1);
+
+    const chunk_after_materialized = firstTextChunk(tb);
+    try std.testing.expectEqual(@as(?[]const text_buffer.GraphemeSpan, null), chunk_after_materialized.layout_spans);
+
+    const measure = try view.measureForDimensions(8, 0);
+    try std.testing.expect(measure.line_count > 1);
+
+    const chunk_after_measure = firstTextChunk(tb);
+    try std.testing.expect(chunk_after_measure.layout_spans != null);
+    try std.testing.expectEqual(LayoutCacheMode.full_cache, chunk_after_measure.layout_cache_mode);
 }
 
 test "TextBufferView virtual line spans - with highlights" {

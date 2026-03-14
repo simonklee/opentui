@@ -931,6 +931,11 @@ pub const UnifiedTextBufferView = struct {
         };
     }
 
+    const WrapSpanSourcePolicy = enum {
+        windowed_only,
+        prefer_word_full_layout_cache,
+    };
+
     fn shouldUseFullLayoutCache(chunk: *const TextChunk) bool {
         const byte_len = chunk.byte_end - chunk.byte_start;
         if (byte_len > 64 * 1024) {
@@ -1141,14 +1146,16 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
-    fn processWrapChunkSpans(comptime Context: type, ctx: *Context, chunk: *const TextChunk) void {
+    fn processWrapChunkSpans(comptime Context: type, ctx: *Context, chunk: *const TextChunk, policy: WrapSpanSourcePolicy) void {
         const chunk_bytes = chunk.getBytes(ctx.text_buffer.memRegistry());
         var cursor = utf8.LayoutScanCursor.init();
 
         const base_width_method = ctx.text_buffer.widthMethod();
         const word_width_method = layoutWidthMethodForSpanWrap(base_width_method);
 
-        if (ctx.wrap_mode == .word and shouldUseFullLayoutCache(chunk)) {
+        const use_word_full_layout_cache = ctx.wrap_mode == .word and policy == .prefer_word_full_layout_cache and shouldUseFullLayoutCache(chunk);
+
+        if (use_word_full_layout_cache) {
             const spans = chunk.getLayoutSpans(
                 ctx.text_buffer.memRegistry(),
                 ctx.text_buffer.getAllocator(),
@@ -1271,7 +1278,7 @@ pub const UnifiedTextBufferView = struct {
                 if (chunk_idx_in_line == 0) {
                     ctx.beginSourceLine();
                 }
-                processWrapChunkSpans(@This(), ctx, chunk);
+                processWrapChunkSpans(@This(), ctx, chunk, .prefer_word_full_layout_cache);
             }
 
             fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
@@ -1442,7 +1449,7 @@ pub const UnifiedTextBufferView = struct {
                     if (mctx.current_line_chunk_idx == 0) {
                         mctx.beginSourceLine();
                     }
-                    processWrapChunkSpans(MetricsContext, mctx, chunk);
+                    processWrapChunkSpans(MetricsContext, mctx, chunk, .prefer_word_full_layout_cache);
                     mctx.current_line_chunk_idx += 1;
                     mctx.current_line_width_cols += chunk.width;
                 } else if (seg.isBreak()) {
@@ -1858,45 +1865,7 @@ pub const UnifiedTextBufferView = struct {
 
                 fn segment_callback(ctx_ptr: *anyopaque, _: u32, chunk: *const TextChunk, _: u32) void {
                     const wctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                    const chunk_bytes = chunk.getBytes(wctx.text_buffer.memRegistry());
-                    var cursor = utf8.LayoutScanCursor.init();
-
-                    const base_width_method = wctx.text_buffer.widthMethod();
-                    const word_width_method = layoutWidthMethodForSpanWrap(base_width_method);
-
-                    wctx.layout_scratch.reset();
-
-                    while (true) {
-                        const slot = wctx.layout_scratch.acquire();
-                        const batch = if (wctx.wrap_mode == .char)
-                            utf8.scanLayoutNextWindowBatchNoBreaks(
-                                chunk_bytes,
-                                wctx.text_buffer.tabWidth(),
-                                chunk.isAsciiOnly(),
-                                base_width_method,
-                                &cursor,
-                                slot.spans,
-                                seg_mod.LAYOUT_WINDOW_BYTES,
-                            ) catch break
-                        else
-                            utf8.scanLayoutNextWindowBatch(
-                                chunk_bytes,
-                                wctx.text_buffer.tabWidth(),
-                                chunk.isAsciiOnly(),
-                                word_width_method,
-                                &cursor,
-                                slot.spans,
-                                seg_mod.LAYOUT_WINDOW_BYTES,
-                            ) catch break;
-
-                        if (wctx.wrap_mode == .char) {
-                            runCharWrapSpans(@This(), wctx, chunk, batch.spans);
-                        } else {
-                            runWordWrapSpans(@This(), wctx, chunk, batch.spans);
-                        }
-
-                        if (batch.done) break;
-                    }
+                    processWrapChunkSpans(@This(), wctx, chunk, .windowed_only);
                 }
 
                 fn line_end_callback(ctx_ptr: *anyopaque, line_info: iter_mod.LineInfo) void {
