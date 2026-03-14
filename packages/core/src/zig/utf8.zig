@@ -539,6 +539,7 @@ fn scanLayoutBatchInternal(
     width_method: WidthMethod,
     cursor: *LayoutScanCursor,
     scratch: []GraphemeSpan,
+    max_bytes: ?u32,
     include_breaks: bool,
 ) LayoutScanError!LayoutSpanBatch {
     const Decoded = struct {
@@ -567,10 +568,7 @@ fn scanLayoutBatchInternal(
 
         var pos: u32 = start_byte;
         var count: usize = 0;
-        while (pos < text.len and count < scratch.len) : ({
-            pos += 1;
-            count += 1;
-        }) {
+        while (pos < text.len and count < scratch.len) {
             const b = text[pos];
             scratch[count] = .{
                 .byte_start = pos,
@@ -579,6 +577,15 @@ fn scanLayoutBatchInternal(
                 .col_width = 1,
                 .break_after = if (include_breaks) breakKindForCodepoint(b, b) else .none,
             };
+
+            pos += 1;
+            count += 1;
+
+            if (max_bytes) |byte_limit| {
+                if (count > 0 and pos < text.len and pos - start_byte >= byte_limit) {
+                    break;
+                }
+            }
         }
 
         const prev_cp: ?u21 = if (pos > 0) @as(u21, text[pos - 1]) else null;
@@ -648,7 +655,7 @@ fn scanLayoutBatchInternal(
             count += 1;
             col += cluster_width_state.width;
 
-            if (count == scratch.len) {
+            if (count == scratch.len or if (max_bytes) |byte_limit| count > 0 and pos < text.len and @as(u32, @intCast(pos)) - start_byte >= byte_limit else false) {
                 setLayoutScanCursor(cursor, @intCast(pos), col, pre_prev_cp, pre_break_state, pre_prev_word_class);
                 return .{
                     .spans = scratch[0..count],
@@ -703,7 +710,7 @@ pub fn scanLayoutNextBatch(
     cursor: *LayoutScanCursor,
     scratch: []GraphemeSpan,
 ) LayoutScanError!LayoutSpanBatch {
-    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, true);
+    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, null, true);
 }
 
 pub fn scanLayoutNextBatchNoBreaks(
@@ -714,7 +721,31 @@ pub fn scanLayoutNextBatchNoBreaks(
     cursor: *LayoutScanCursor,
     scratch: []GraphemeSpan,
 ) LayoutScanError!LayoutSpanBatch {
-    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, false);
+    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, null, false);
+}
+
+pub fn scanLayoutNextWindowBatch(
+    text: []const u8,
+    tab_width: u8,
+    is_ascii_only: bool,
+    width_method: WidthMethod,
+    cursor: *LayoutScanCursor,
+    scratch: []GraphemeSpan,
+    max_bytes: u32,
+) LayoutScanError!LayoutSpanBatch {
+    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, max_bytes, true);
+}
+
+pub fn scanLayoutNextWindowBatchNoBreaks(
+    text: []const u8,
+    tab_width: u8,
+    is_ascii_only: bool,
+    width_method: WidthMethod,
+    cursor: *LayoutScanCursor,
+    scratch: []GraphemeSpan,
+    max_bytes: u32,
+) LayoutScanError!LayoutSpanBatch {
+    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, max_bytes, false);
 }
 
 // Nothing needed here - using uucode.grapheme.isBreak directly

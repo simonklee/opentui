@@ -3,7 +3,6 @@ const bench_utils = @import("../bench-utils.zig");
 const seg_mod = @import("../text-buffer-segment.zig");
 const mem_registry_mod = @import("../mem-registry.zig");
 const gp = @import("../grapheme.zig");
-const utf8 = @import("../utf8.zig");
 
 const TextChunk = seg_mod.TextChunk;
 const MemRegistry = mem_registry_mod.MemRegistry;
@@ -11,9 +10,33 @@ const BenchResult = bench_utils.BenchResult;
 const BenchStats = bench_utils.BenchStats;
 const MemStat = bench_utils.MemStat;
 
-pub const benchName = "TextChunk getGraphemes";
+pub const benchName = "TextChunk Layout Spans";
 
 const TextType = enum { ascii, mixed, heavy_unicode };
+
+const CountSpansContext = struct {
+    count: usize = 0,
+};
+
+fn countSpans(ctx_ptr: *anyopaque, _: seg_mod.GraphemeSpan) anyerror!void {
+    const ctx = @as(*CountSpansContext, @ptrCast(@alignCast(ctx_ptr)));
+    ctx.count += 1;
+}
+
+fn textTypeLabel(text_type: TextType) []const u8 {
+    return switch (text_type) {
+        .ascii => "ASCII",
+        .mixed => "Mixed",
+        .heavy_unicode => "Heavy Unicode",
+    };
+}
+
+fn layoutModeLabel(mode: seg_mod.LayoutCacheMode) []const u8 {
+    return switch (mode) {
+        .full_cache => "full_cache",
+        .windowed => "windowed",
+    };
+}
 
 fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextType) ![]u8 {
     var buffer: std.ArrayListUnmanaged(u8) = .{};
@@ -21,7 +44,6 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
 
     switch (text_type) {
         .ascii => {
-            // Pure ASCII text with tabs
             const patterns = [_][]const u8{
                 "The quick brown fox jumps over the lazy dog. ",
                 "Lorem ipsum dolor sit amet, consectetur elit. ",
@@ -37,7 +59,6 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
             }
         },
         .mixed => {
-            // Mix of ASCII and Unicode (realistic code/text)
             const patterns = [_][]const u8{
                 "Hello, 世界! Unicode test. ",
                 "Mixed: ASCII 中文 emoji 🌍 text. ",
@@ -55,7 +76,6 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
             }
         },
         .heavy_unicode => {
-            // Heavy Unicode with emojis, combining marks, and wide chars
             const patterns = [_][]const u8{
                 "世界中文字符測試文本。",
                 "こんにちは、日本語テキスト。",
@@ -77,31 +97,22 @@ fn generateTestText(allocator: std.mem.Allocator, size: usize, text_type: TextTy
     return try buffer.toOwnedSlice(allocator);
 }
 
-fn benchGetGraphemes(
+fn benchForEachLayoutSpans(
     allocator: std.mem.Allocator,
     size: usize,
     text_type: TextType,
+    mode: seg_mod.LayoutCacheMode,
     iterations: usize,
     show_mem: bool,
 ) !BenchResult {
-    // Generate test text
     const text = try generateTestText(allocator, size, text_type);
     defer allocator.free(text);
 
-    // Create memory registry
     var registry = MemRegistry.init(allocator);
     defer registry.deinit();
 
     const mem_id = try registry.register(text, false);
-
-    // Determine if ASCII-only
-    const is_ascii = switch (text_type) {
-        .ascii => true,
-        else => false,
-    };
-
-    // Create TextChunk
-    // Width is approximate - clamped to u16 max
+    const is_ascii = text_type == .ascii;
     const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
     var chunk = TextChunk{
         .mem_id = mem_id,
@@ -112,53 +123,53 @@ fn benchGetGraphemes(
     };
 
     var stats = BenchStats{};
-    var grapheme_count: usize = 0;
+    var span_count: usize = 0;
     var final_mem: usize = 0;
 
     for (0..iterations) |i| {
-        // Create a fresh arena for each iteration
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
         const arena_alloc = arena.allocator();
 
-        // Clear cached graphemes
-        chunk.graphemes = null;
+        chunk.layout_spans = null;
+        chunk.layout_cache_allocator = null;
+        chunk.layout_cache_valid = true;
+        chunk.layout_cache_tab_width = 4;
+        chunk.layout_cache_width_method = .unicode;
+        chunk.layout_cache_mode = mode;
+
+        var scratch = seg_mod.LayoutSpanScratch.init();
+        var ctx = CountSpansContext{};
 
         var timer = try std.time.Timer.start();
-        const graphemes = try chunk.getGraphemes(
-            &registry,
-            arena_alloc,
-            4, // tab width
-            .unicode,
-        );
+        try chunk.forEachLayoutSpans(&registry, arena_alloc, 4, .unicode, &scratch, &ctx, countSpans);
         stats.record(timer.read());
 
         if (i == 0) {
-            grapheme_count = graphemes.len;
+            span_count = ctx.count;
         }
 
         if (i == iterations - 1 and show_mem) {
-            // Estimate memory used for grapheme storage
-            final_mem = graphemes.len * @sizeOf(seg_mod.GraphemeInfo);
+            final_mem = switch (mode) {
+                .full_cache => if (chunk.layout_spans) |spans| spans.len * @sizeOf(seg_mod.GraphemeSpan) else 0,
+                .windowed => @sizeOf(seg_mod.LayoutSpanScratch),
+            };
         }
     }
 
-    const type_str = switch (text_type) {
-        .ascii => "ASCII",
-        .mixed => "Mixed",
-        .heavy_unicode => "Heavy Unicode",
-    };
-
     const name = try std.fmt.allocPrint(
         allocator,
-        "getGraphemes {s} ({d} bytes, {d} graphemes)",
-        .{ type_str, size, grapheme_count },
+        "forEachLayoutSpans {s} {s} ({d} bytes, {d} spans)",
+        .{ layoutModeLabel(mode), textTypeLabel(text_type), size, span_count },
     );
 
     const mem_stats: ?[]const MemStat = if (show_mem) blk: {
-        const mem_stat_slice = try allocator.alloc(MemStat, 1);
-        mem_stat_slice[0] = .{ .name = "Graphemes", .bytes = final_mem };
-        break :blk mem_stat_slice;
+        const stats_slice = try allocator.alloc(MemStat, 1);
+        stats_slice[0] = .{
+            .name = if (mode == .full_cache) "LayoutSpans" else "LayoutSpanScratch",
+            .bytes = final_mem,
+        };
+        break :blk stats_slice;
     } else null;
 
     return BenchResult{
@@ -172,21 +183,22 @@ fn benchGetGraphemes(
     };
 }
 
-fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextType) ![]const u8 {
+fn computeBenchName(
+    allocator: std.mem.Allocator,
+    size: usize,
+    text_type: TextType,
+    mode: seg_mod.LayoutCacheMode,
+) ![]const u8 {
     var temp_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer temp_arena.deinit();
     const temp_alloc = temp_arena.allocator();
 
     const text = try generateTestText(temp_alloc, size, text_type);
-
     var registry = MemRegistry.init(temp_alloc);
     defer registry.deinit();
 
     const mem_id = try registry.register(text, false);
-    const is_ascii = switch (text_type) {
-        .ascii => true,
-        else => false,
-    };
+    const is_ascii = text_type == .ascii;
     const approx_width: u16 = @intCast(@min(text.len, std.math.maxInt(u16)));
     var chunk = TextChunk{
         .mem_id = mem_id,
@@ -196,23 +208,19 @@ fn computeBenchName(allocator: std.mem.Allocator, size: usize, text_type: TextTy
         .flags = if (is_ascii) TextChunk.Flags.ASCII_ONLY else 0,
     };
 
-    const graphemes = try chunk.getGraphemes(
-        &registry,
-        temp_alloc,
-        4, // tab width
-        .unicode,
-    );
+    chunk.layout_cache_valid = true;
+    chunk.layout_cache_tab_width = 4;
+    chunk.layout_cache_width_method = .unicode;
+    chunk.layout_cache_mode = mode;
 
-    const type_str = switch (text_type) {
-        .ascii => "ASCII",
-        .mixed => "Mixed",
-        .heavy_unicode => "Heavy Unicode",
-    };
+    var scratch = seg_mod.LayoutSpanScratch.init();
+    var ctx = CountSpansContext{};
+    try chunk.forEachLayoutSpans(&registry, temp_alloc, 4, .unicode, &scratch, &ctx, countSpans);
 
     return try std.fmt.allocPrint(
         allocator,
-        "getGraphemes {s} ({d} bytes, {d} graphemes)",
-        .{ type_str, size, graphemes.len },
+        "forEachLayoutSpans {s} {s} ({d} bytes, {d} spans)",
+        .{ layoutModeLabel(mode), textTypeLabel(text_type), size, ctx.count },
     );
 }
 
@@ -221,50 +229,39 @@ pub fn run(
     show_mem: bool,
     bench_filter: ?[]const u8,
 ) ![]BenchResult {
-    // Global pool and unicode data are initialized once in bench.zig
     _ = gp.initGlobalPool(allocator);
 
     var results: std.ArrayListUnmanaged(BenchResult) = .{};
     errdefer results.deinit(allocator);
 
     const iterations: usize = 100;
-
-    // Test different chunk sizes: 100B, 1KB, 4KB, 16KB, 64KB
     const sizes = [_]usize{ 100, 1024, 4 * 1024, 16 * 1024, 64 * 1024 };
     const text_types = [_]TextType{ .ascii, .mixed, .heavy_unicode };
+    const modes = [_]seg_mod.LayoutCacheMode{ .full_cache, .windowed };
 
     if (bench_filter == null) {
-        for (text_types) |text_type| {
-            for (sizes) |size| {
-                const result = try benchGetGraphemes(
-                    allocator,
-                    size,
-                    text_type,
-                    iterations,
-                    show_mem,
-                );
-                try results.append(allocator, result);
+        for (modes) |mode| {
+            for (text_types) |text_type| {
+                for (sizes) |size| {
+                    const result = try benchForEachLayoutSpans(allocator, size, text_type, mode, iterations, show_mem);
+                    try results.append(allocator, result);
+                }
             }
         }
     } else {
-        for (text_types) |text_type| {
-            for (sizes) |size| {
-                const name = try computeBenchName(allocator, size, text_type);
-                if (!bench_utils.matchesBenchFilter(name, bench_filter)) {
-                    allocator.free(name);
-                    continue;
+        for (modes) |mode| {
+            for (text_types) |text_type| {
+                for (sizes) |size| {
+                    const benchmark_name = try computeBenchName(allocator, size, text_type, mode);
+                    if (bench_utils.matchesBenchFilter(benchmark_name, bench_filter)) {
+                        var result = try benchForEachLayoutSpans(allocator, size, text_type, mode, iterations, show_mem);
+                        allocator.free(result.name);
+                        result.name = benchmark_name;
+                        try results.append(allocator, result);
+                    } else {
+                        allocator.free(benchmark_name);
+                    }
                 }
-
-                var result = try benchGetGraphemes(
-                    allocator,
-                    size,
-                    text_type,
-                    iterations,
-                    show_mem,
-                );
-                allocator.free(result.name);
-                result.name = name;
-                try results.append(allocator, result);
             }
         }
     }

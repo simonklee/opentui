@@ -35,6 +35,50 @@ pub const ChunkFitResult = struct {
 pub const GraphemeInfo = utf8.GraphemeInfo;
 pub const GraphemeSpan = utf8.GraphemeSpan;
 
+pub const LayoutCacheMode = enum {
+    full_cache,
+    windowed,
+};
+
+pub const LAYOUT_FULL_CACHE_MAX_CHUNK_BYTES: u32 = 8 * 1024;
+pub const LAYOUT_FULL_CACHE_MAX_SPANS: u32 = 2048;
+pub const LAYOUT_ASCII_FULL_CACHE_MAX_CHUNK_BYTES: u32 = 256;
+pub const LAYOUT_WINDOW_BYTES: u32 = 2 * 1024;
+pub const LAYOUT_WINDOW_MAX_SPANS: usize = 512;
+pub const LAYOUT_WINDOW_SLOTS: usize = 2;
+
+pub const SpanConsumer = *const fn (ctx: *anyopaque, span: GraphemeSpan) anyerror!void;
+
+pub const LayoutSpanScratch = struct {
+    pub const Slot = struct {
+        index: usize,
+        spans: []GraphemeSpan,
+    };
+
+    slots: [LAYOUT_WINDOW_SLOTS][LAYOUT_WINDOW_MAX_SPANS]GraphemeSpan = undefined,
+    lens: [LAYOUT_WINDOW_SLOTS]usize = [_]usize{0} ** LAYOUT_WINDOW_SLOTS,
+    next_slot: usize = 0,
+
+    pub fn init() LayoutSpanScratch {
+        return .{};
+    }
+
+    pub fn reset(self: *LayoutSpanScratch) void {
+        self.lens = [_]usize{0} ** LAYOUT_WINDOW_SLOTS;
+        self.next_slot = 0;
+    }
+
+    pub fn acquire(self: *LayoutSpanScratch) Slot {
+        const slot_index = self.next_slot;
+        self.next_slot = (self.next_slot + 1) % LAYOUT_WINDOW_SLOTS;
+        self.lens[slot_index] = 0;
+        return .{
+            .index = slot_index,
+            .spans = self.slots[slot_index][0..],
+        };
+    }
+};
+
 /// A chunk represents a contiguous sequence of UTF-8 bytes from a specific memory buffer
 pub const TextChunk = struct {
     mem_id: u8,
@@ -42,9 +86,12 @@ pub const TextChunk = struct {
     byte_end: u32,
     width: u16,
     flags: u8 = 0,
-    graphemes: ?[]GraphemeInfo = null,
-    wrap_offsets: ?[]utf8.WrapBreak = null,
     layout_spans: ?[]const GraphemeSpan = null,
+    layout_cache_allocator: ?Allocator = null,
+    layout_cache_tab_width: u8 = 0,
+    layout_cache_width_method: utf8.WidthMethod = .unicode,
+    layout_cache_valid: bool = false,
+    layout_cache_mode: LayoutCacheMode = .windowed,
 
     pub const Flags = struct {
         pub const ASCII_ONLY: u8 = 0b00000001; // Printable ASCII only (32..126).
@@ -72,81 +119,49 @@ pub const TextChunk = struct {
         return mem_buf[self.byte_start..self.byte_end];
     }
 
-    /// Lazily compute and cache grapheme info for this chunk
-    /// Returns a slice that is valid until the buffer is reset
-    /// For ASCII-only chunks, returns an empty slice (sentinel)
-    /// For mixed chunks, returns only multibyte (non-ASCII) graphemes and tabs with their column offsets
-    pub fn getGraphemes(
-        self: *const TextChunk,
-        mem_registry: *const MemRegistry,
-        allocator: Allocator,
-        tabwidth: u8,
-        width_method: utf8.WidthMethod,
-    ) TextBufferError![]const GraphemeInfo {
-        const mut_self = @constCast(self);
-        if (self.graphemes) |cached| {
-            return cached;
-        }
-
-        if (self.isAsciiOnly()) {
-            const empty_slice = try allocator.alloc(GraphemeInfo, 0);
-            mut_self.graphemes = empty_slice;
-            return empty_slice;
-        }
-
-        const chunk_bytes = self.getBytes(mem_registry);
-
-        var grapheme_list: std.ArrayListUnmanaged(GraphemeInfo) = .{};
-        errdefer grapheme_list.deinit(allocator);
-
-        try utf8.findGraphemeInfo(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, allocator, &grapheme_list);
-
-        // TODO: Calling this with an arena allocator will just double the memory usage?
-        const graphemes = try grapheme_list.toOwnedSlice(allocator);
-
-        mut_self.graphemes = graphemes;
-        return graphemes;
+    fn layoutCacheMatches(self: *const TextChunk, tabwidth: u8, width_method: utf8.WidthMethod) bool {
+        return self.layout_cache_valid and
+            self.layout_cache_tab_width == tabwidth and
+            self.layout_cache_width_method == width_method;
     }
 
-    /// Lazily compute and cache wrap offsets for this chunk
-    /// Returns a slice that is valid until the buffer is reset
-    pub fn getWrapOffsets(
-        self: *const TextChunk,
-        mem_registry: *const MemRegistry,
-        allocator: Allocator,
-        width_method: utf8.WidthMethod,
-    ) TextBufferError![]const utf8.WrapBreak {
-        const mut_self = @constCast(self);
-        if (self.wrap_offsets) |cached| {
-            return cached;
+    fn chooseLayoutCacheMode(self: *const TextChunk) LayoutCacheMode {
+        const byte_len = self.byte_end - self.byte_start;
+        if (self.isAsciiOnly() and byte_len > LAYOUT_ASCII_FULL_CACHE_MAX_CHUNK_BYTES) {
+            return .windowed;
         }
-
-        const chunk_bytes = self.getBytes(mem_registry);
-        var wrap_result = utf8.WrapBreakResult.init(allocator);
-        errdefer wrap_result.deinit();
-
-        try utf8.findWrapBreaks(chunk_bytes, &wrap_result, width_method);
-
-        // TODO: Do not cache for chunks < 64 bytes, as it does not profit from the cache
-        // Use toOwnedSlice to transfer ownership without copying
-        const wrap_offsets = try wrap_result.breaks.toOwnedSlice(allocator);
-        mut_self.wrap_offsets = wrap_offsets;
-
-        return wrap_offsets;
+        if (byte_len > LAYOUT_FULL_CACHE_MAX_CHUNK_BYTES or byte_len > LAYOUT_FULL_CACHE_MAX_SPANS) {
+            return .windowed;
+        }
+        return .full_cache;
     }
 
-    pub fn getLayoutSpans(
+    fn resetLayoutCache(self: *TextChunk) void {
+        self.layout_spans = null;
+        self.layout_cache_allocator = null;
+        self.layout_cache_valid = false;
+        self.layout_cache_mode = .windowed;
+    }
+
+    fn ensureLayoutCacheState(self: *const TextChunk, tabwidth: u8, width_method: utf8.WidthMethod) LayoutCacheMode {
+        const mut_self = @constCast(self);
+        if (!self.layoutCacheMatches(tabwidth, width_method)) {
+            mut_self.resetLayoutCache();
+            mut_self.layout_cache_tab_width = tabwidth;
+            mut_self.layout_cache_width_method = width_method;
+            mut_self.layout_cache_valid = true;
+            mut_self.layout_cache_mode = self.chooseLayoutCacheMode();
+        }
+        return mut_self.layout_cache_mode;
+    }
+
+    fn buildOwnedLayoutSpans(
         self: *const TextChunk,
         mem_registry: *const MemRegistry,
         allocator: Allocator,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
     ) TextBufferError![]const GraphemeSpan {
-        const mut_self = @constCast(self);
-        if (self.layout_spans) |cached| {
-            return cached;
-        }
-
         const chunk_bytes = self.getBytes(mem_registry);
         var scan_result = utf8.LayoutScanResult.init(allocator);
         defer scan_result.deinit();
@@ -156,9 +171,222 @@ pub const TextChunk = struct {
             error.OutOfMemory => return TextBufferError.OutOfMemory,
         };
 
-        const layout_spans = try scan_result.spans.toOwnedSlice(allocator);
+        return scan_result.spans.toOwnedSlice(allocator) catch return TextBufferError.OutOfMemory;
+    }
+
+    fn ensureFullLayoutSpans(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+    ) TextBufferError![]const GraphemeSpan {
+        _ = self.ensureLayoutCacheState(tabwidth, width_method);
+
+        const mut_self = @constCast(self);
+        if (self.layout_spans) |cached| {
+            mut_self.layout_cache_mode = .full_cache;
+            return cached;
+        }
+
+        const layout_spans = try self.buildOwnedLayoutSpans(mem_registry, allocator, tabwidth, width_method);
         mut_self.layout_spans = layout_spans;
+        mut_self.layout_cache_allocator = allocator;
+        mut_self.layout_cache_tab_width = tabwidth;
+        mut_self.layout_cache_width_method = width_method;
+        mut_self.layout_cache_valid = true;
+        mut_self.layout_cache_mode = .full_cache;
         return layout_spans;
+    }
+
+    fn forEachLayoutSpansInternal(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+        force_mode: ?LayoutCacheMode,
+        include_breaks: bool,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        const default_mode = self.ensureLayoutCacheState(tabwidth, width_method);
+        const effective_mode = force_mode orelse default_mode;
+
+        if (effective_mode == .full_cache) {
+            const spans = try self.ensureFullLayoutSpans(mem_registry, allocator, tabwidth, width_method);
+            for (spans) |cached_span| {
+                if (include_breaks) {
+                    try consumer(ctx, cached_span);
+                } else {
+                    var span = cached_span;
+                    span.break_after = .none;
+                    try consumer(ctx, span);
+                }
+            }
+            return;
+        }
+
+        scratch.reset();
+
+        const chunk_bytes = self.getBytes(mem_registry);
+        var cursor = utf8.LayoutScanCursor.init();
+
+        while (true) {
+            const slot = scratch.acquire();
+            const batch = if (include_breaks)
+                try utf8.scanLayoutNextWindowBatch(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &cursor, slot.spans, LAYOUT_WINDOW_BYTES)
+            else
+                try utf8.scanLayoutNextWindowBatchNoBreaks(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &cursor, slot.spans, LAYOUT_WINDOW_BYTES);
+
+            scratch.lens[slot.index] = batch.spans.len;
+            for (batch.spans) |span| {
+                try consumer(ctx, span);
+            }
+
+            if (batch.done) break;
+        }
+    }
+
+    pub fn getGraphemes(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+    ) TextBufferError![]const GraphemeInfo {
+        if (self.isAsciiOnly()) {
+            return &[_]GraphemeInfo{};
+        }
+
+        const chunk_bytes = self.getBytes(mem_registry);
+        const ProjectionContext = struct {
+            allocator: Allocator,
+            chunk_bytes: []const u8,
+            graphemes: std.ArrayListUnmanaged(GraphemeInfo) = .{},
+
+            fn deinit(projection_ctx: *@This()) void {
+                projection_ctx.graphemes.deinit(projection_ctx.allocator);
+            }
+
+            fn consume(ctx_ptr: *anyopaque, span: GraphemeSpan) anyerror!void {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                const byte_start: usize = @intCast(span.byte_start);
+                const is_tab = span.byte_len == 1 and byte_start < ctx.chunk_bytes.len and ctx.chunk_bytes[byte_start] == '\t';
+                if (!is_tab and span.byte_len == 1) return;
+
+                try ctx.graphemes.append(ctx.allocator, .{
+                    .byte_offset = span.byte_start,
+                    .byte_len = @intCast(span.byte_len),
+                    .width = @intCast(span.col_width),
+                    .col_offset = span.col_start,
+                });
+            }
+        };
+
+        var scratch = LayoutSpanScratch.init();
+        var ctx = ProjectionContext{
+            .allocator = allocator,
+            .chunk_bytes = chunk_bytes,
+        };
+        errdefer ctx.deinit();
+
+        self.forEachLayoutSpans(mem_registry, allocator, tabwidth, width_method, &scratch, &ctx, ProjectionContext.consume) catch |err| switch (err) {
+            error.OutOfMemory => return TextBufferError.OutOfMemory,
+            else => unreachable,
+        };
+
+        return ctx.graphemes.toOwnedSlice(allocator) catch TextBufferError.OutOfMemory;
+    }
+
+    pub fn getWrapOffsets(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+    ) TextBufferError![]const utf8.WrapBreak {
+        const ProjectionContext = struct {
+            allocator: Allocator,
+            breaks: std.ArrayListUnmanaged(utf8.WrapBreak) = .{},
+            span_index: u32 = 0,
+
+            fn deinit(projection_ctx: *@This()) void {
+                projection_ctx.breaks.deinit(projection_ctx.allocator);
+            }
+
+            fn consume(ctx_ptr: *anyopaque, span: GraphemeSpan) anyerror!void {
+                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                if (span.break_after != .none) {
+                    try ctx.breaks.append(ctx.allocator, .{
+                        .byte_offset = span.byte_start,
+                        .char_offset = ctx.span_index,
+                    });
+                }
+                ctx.span_index += 1;
+            }
+        };
+
+        var scratch = LayoutSpanScratch.init();
+        var ctx = ProjectionContext{ .allocator = allocator };
+        errdefer ctx.deinit();
+
+        self.forEachLayoutSpans(mem_registry, allocator, tabwidth, width_method, &scratch, &ctx, ProjectionContext.consume) catch |err| switch (err) {
+            error.OutOfMemory => return TextBufferError.OutOfMemory,
+            else => unreachable,
+        };
+
+        return ctx.breaks.toOwnedSlice(allocator) catch TextBufferError.OutOfMemory;
+    }
+
+    pub fn getLayoutSpans(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+    ) TextBufferError![]const GraphemeSpan {
+        return self.ensureFullLayoutSpans(mem_registry, allocator, tabwidth, width_method);
+    }
+
+    pub fn forEachLayoutSpans(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, null, true, scratch, ctx, consumer);
+    }
+
+    pub fn forEachLayoutSpansNoBreaks(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, null, false, scratch, ctx, consumer);
+    }
+
+    pub fn forEachLayoutSpansCached(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, .full_cache, true, scratch, ctx, consumer);
     }
 };
 
@@ -330,8 +558,12 @@ pub const Segment = union(enum) {
                 .byte_end = right_chunk.byte_end,
                 .width = left_chunk.width + right_chunk.width,
                 .flags = left_chunk.flags,
-                .graphemes = null,
-                .wrap_offsets = null,
+                .layout_spans = null,
+                .layout_cache_allocator = null,
+                .layout_cache_tab_width = 0,
+                .layout_cache_width_method = .unicode,
+                .layout_cache_valid = false,
+                .layout_cache_mode = .windowed,
             },
         };
     }

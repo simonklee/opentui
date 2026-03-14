@@ -29,6 +29,9 @@ pub const WrapMode = seg_mod.WrapMode;
 pub const ChunkFitResult = seg_mod.ChunkFitResult;
 pub const GraphemeInfo = seg_mod.GraphemeInfo;
 pub const GraphemeSpan = seg_mod.GraphemeSpan;
+pub const LayoutCacheMode = seg_mod.LayoutCacheMode;
+pub const LayoutSpanScratch = seg_mod.LayoutSpanScratch;
+pub const SpanConsumer = seg_mod.SpanConsumer;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
 
@@ -149,11 +152,51 @@ pub const UnifiedTextBuffer = struct {
     }
 
     pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
-        return chunk.getWrapOffsets(&self.mem_registry, self.allocator, self.width_method);
+        return chunk.getWrapOffsets(&self.mem_registry, self.allocator, self.tab_width, self.width_method);
     }
 
     pub fn getLayoutSpansFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const seg_mod.GraphemeSpan {
         return chunk.getLayoutSpans(&self.mem_registry, self.allocator, self.tab_width, self.width_method);
+    }
+
+    pub fn forEachLayoutSpansFor(
+        self: *const Self,
+        chunk: *const TextChunk,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        var scratch = LayoutSpanScratch.init();
+        return chunk.forEachLayoutSpans(&self.mem_registry, self.allocator, self.tab_width, self.width_method, &scratch, ctx, consumer);
+    }
+
+    pub fn forEachLayoutSpansForWithScratch(
+        self: *const Self,
+        chunk: *const TextChunk,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        return chunk.forEachLayoutSpans(&self.mem_registry, self.allocator, self.tab_width, self.width_method, scratch, ctx, consumer);
+    }
+
+    pub fn forEachLayoutSpansForWithScratchCached(
+        self: *const Self,
+        chunk: *const TextChunk,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        return chunk.forEachLayoutSpansCached(&self.mem_registry, self.allocator, self.tab_width, self.width_method, scratch, ctx, consumer);
+    }
+
+    pub fn forEachLayoutSpansForWithScratchNoBreaks(
+        self: *const Self,
+        chunk: *const TextChunk,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        return chunk.forEachLayoutSpansNoBreaks(&self.mem_registry, self.allocator, self.tab_width, self.width_method, scratch, ctx, consumer);
     }
 
     /// Accessor: walk all lines and segments via callbacks.

@@ -4200,6 +4200,42 @@ fn collectScanLayoutBatches(
     return collection;
 }
 
+fn collectScanLayoutWindowBatches(
+    text: []const u8,
+    tab_width: u8,
+    is_ascii_only: bool,
+    width_method: utf8.WidthMethod,
+    max_bytes: u32,
+    include_breaks: bool,
+) !BatchScanCollection {
+    var collection = BatchScanCollection{
+        .spans = .{},
+        .total_bytes = 0,
+        .total_cols = 0,
+    };
+    errdefer collection.deinit(testing.allocator);
+
+    var cursor = utf8.LayoutScanCursor.init();
+    const scratch_len = @max(@as(usize, 1), text.len);
+    const scratch = try testing.allocator.alloc(utf8.GraphemeSpan, scratch_len);
+    defer testing.allocator.free(scratch);
+
+    while (true) {
+        const batch = if (include_breaks)
+            try utf8.scanLayoutNextWindowBatch(text, tab_width, is_ascii_only, width_method, &cursor, scratch, max_bytes)
+        else
+            try utf8.scanLayoutNextWindowBatchNoBreaks(text, tab_width, is_ascii_only, width_method, &cursor, scratch, max_bytes);
+
+        try collection.spans.appendSlice(testing.allocator, batch.spans);
+        collection.total_bytes += batch.consumed_bytes;
+        collection.total_cols += batch.consumed_cols;
+
+        if (batch.done) break;
+    }
+
+    return collection;
+}
+
 test "scanLayout: full scan matches legacy wrap-break and grapheme scanners" {
     const wrap_break_cases = [_]struct {
         text: []const u8,
@@ -4261,6 +4297,43 @@ test "scanLayout: batches match full scan across width methods and scratch sizes
 
                 for (full.spans.items, 0..) |span, idx| {
                     try testing.expectEqualDeep(span, batched.spans.items[idx]);
+                }
+            }
+        }
+    }
+}
+
+test "scanLayout: explicit byte windows match full scan across width methods" {
+    const cases = [_]struct {
+        text: []const u8,
+        is_ascii_only: bool,
+    }{
+        .{
+            .text = "0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage 0123456789 abcdefghijklmnopqrstuvwxyz /-_. repeated ascii for layout window coverage ",
+            .is_ascii_only = true,
+        },
+        .{
+            .text = "Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks Hello 世界\t👩‍🚀-abc/가나다 path-breaks ",
+            .is_ascii_only = false,
+        },
+    };
+
+    for ([_]utf8.WidthMethod{ .wcwidth, .unicode, .no_zwj }) |width_method| {
+        for (cases) |case| {
+            var full = utf8.LayoutScanResult.init(testing.allocator);
+            defer full.deinit();
+            try utf8.scanLayout(case.text, 4, case.is_ascii_only, width_method, &full);
+
+            for ([_]u32{ 64, 128, 512, 2048 }) |window_bytes| {
+                var windowed = try collectScanLayoutWindowBatches(case.text, 4, case.is_ascii_only, width_method, window_bytes, true);
+                defer windowed.deinit(testing.allocator);
+
+                try testing.expectEqual(full.total_bytes, windowed.total_bytes);
+                try testing.expectEqual(full.total_cols, windowed.total_cols);
+                try testing.expectEqual(full.spans.items.len, windowed.spans.items.len);
+
+                for (full.spans.items, 0..) |span, idx| {
+                    try testing.expectEqualDeep(span, windowed.spans.items[idx]);
                 }
             }
         }

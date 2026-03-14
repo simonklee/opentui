@@ -8,7 +8,24 @@ const WidthMethod = @import("../utf8.zig").WidthMethod;
 
 const TextBuffer = text_buffer.UnifiedTextBuffer;
 const TextBufferView = text_buffer_view.UnifiedTextBufferView;
+const LayoutCacheMode = text_buffer.LayoutCacheMode;
 const RGBA = text_buffer.RGBA;
+
+fn forceAllTextChunksLayoutMode(tb: *TextBuffer, mode: LayoutCacheMode) void {
+    var seg_idx: u32 = 0;
+    while (seg_idx < tb.rope().count()) : (seg_idx += 1) {
+        const seg = tb.rope().get(seg_idx) orelse continue;
+        if (seg.asText()) |chunk| {
+            const mut_chunk = @constCast(chunk);
+            mut_chunk.layout_spans = null;
+            mut_chunk.layout_cache_allocator = null;
+            mut_chunk.layout_cache_valid = true;
+            mut_chunk.layout_cache_tab_width = tb.tabWidth();
+            mut_chunk.layout_cache_width_method = tb.widthMethod();
+            mut_chunk.layout_cache_mode = mode;
+        }
+    }
+}
 
 test "TextBufferView wrapping - no wrap returns same line count" {
     const pool = gp.initGlobalPool(std.testing.allocator);
@@ -287,6 +304,50 @@ test "TextBufferView getCachedLineInfo - with wrapping" {
         if (i < line_info.line_width_cols.len - 1) {
             try std.testing.expect(width <= 7);
         }
+    }
+}
+
+test "TextBufferView word wrapping - full and windowed layout spans agree" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    const text = "alpha beta\t가a-b gamma\n👩‍🚀 path/with-parts delta epsilon";
+
+    for ([_]WidthMethod{ .wcwidth, .unicode, .no_zwj }) |width_method| {
+        var tb_full = try TextBuffer.init(std.testing.allocator, pool, link_pool, width_method);
+        defer tb_full.deinit();
+        tb_full.setTabWidth(4);
+        try tb_full.setText(text);
+        forceAllTextChunksLayoutMode(tb_full, .full_cache);
+
+        var tb_windowed = try TextBuffer.init(std.testing.allocator, pool, link_pool, width_method);
+        defer tb_windowed.deinit();
+        tb_windowed.setTabWidth(4);
+        try tb_windowed.setText(text);
+        forceAllTextChunksLayoutMode(tb_windowed, .windowed);
+
+        var full_view = try TextBufferView.init(std.testing.allocator, tb_full);
+        defer full_view.deinit();
+        full_view.setWrapMode(.word);
+        full_view.setWrapWidth(8);
+
+        var windowed_view = try TextBufferView.init(std.testing.allocator, tb_windowed);
+        defer windowed_view.deinit();
+        windowed_view.setWrapMode(.word);
+        windowed_view.setWrapWidth(8);
+
+        try std.testing.expectEqual(full_view.getVirtualLineCount(), windowed_view.getVirtualLineCount());
+
+        const full_info = full_view.getCachedLineInfo();
+        const windowed_info = windowed_view.getCachedLineInfo();
+
+        try std.testing.expectEqualSlices(u32, full_info.line_start_cols, windowed_info.line_start_cols);
+        try std.testing.expectEqualSlices(u32, full_info.line_width_cols, windowed_info.line_width_cols);
+        try std.testing.expectEqualSlices(u32, full_info.line_sources, windowed_info.line_sources);
+        try std.testing.expectEqualSlices(u32, full_info.line_wraps, windowed_info.line_wraps);
+        try std.testing.expectEqual(full_info.line_width_cols_max, windowed_info.line_width_cols_max);
     }
 }
 
