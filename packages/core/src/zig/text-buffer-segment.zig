@@ -49,7 +49,37 @@ pub const LAYOUT_WINDOW_SLOTS: usize = 2;
 
 pub const SpanConsumer = *const fn (ctx: *anyopaque, span: GraphemeSpan) anyerror!void;
 
+pub const LayoutSpanRange = struct {
+    byte_start: u32,
+    byte_end: u32,
+    col_start: u32,
+    col_end: u32,
+
+    pub fn init(byte_start: u32, byte_len: u32, col_start: u32, width_cols: u32) LayoutSpanRange {
+        return .{
+            .byte_start = byte_start,
+            .byte_end = byte_start + byte_len,
+            .col_start = col_start,
+            .col_end = col_start + width_cols,
+        };
+    }
+
+    pub fn isEmpty(self: LayoutSpanRange) bool {
+        return self.byte_start >= self.byte_end or self.col_start >= self.col_end;
+    }
+};
+
 pub const LayoutSpanScratch = struct {
+    pub const RangeCursor = struct {
+        active: bool = false,
+        mem_id: u8 = 0,
+        chunk_byte_start: u32 = 0,
+        chunk_byte_end: u32 = 0,
+        tabwidth: u8 = 0,
+        width_method: utf8.WidthMethod = .unicode,
+        cursor: utf8.LayoutScanCursor = utf8.LayoutScanCursor.init(),
+    };
+
     pub const Slot = struct {
         index: usize,
         spans: []GraphemeSpan,
@@ -58,6 +88,7 @@ pub const LayoutSpanScratch = struct {
     slots: [LAYOUT_WINDOW_SLOTS][LAYOUT_WINDOW_MAX_SPANS]GraphemeSpan = undefined,
     lens: [LAYOUT_WINDOW_SLOTS]usize = [_]usize{0} ** LAYOUT_WINDOW_SLOTS,
     next_slot: usize = 0,
+    range_cursor: RangeCursor = .{},
 
     pub fn init() LayoutSpanScratch {
         return .{};
@@ -66,6 +97,11 @@ pub const LayoutSpanScratch = struct {
     pub fn reset(self: *LayoutSpanScratch) void {
         self.lens = [_]usize{0} ** LAYOUT_WINDOW_SLOTS;
         self.next_slot = 0;
+        self.range_cursor = .{};
+    }
+
+    pub fn clearRangeCursor(self: *LayoutSpanScratch) void {
+        self.range_cursor = .{};
     }
 
     pub fn acquire(self: *LayoutSpanScratch) Slot {
@@ -249,6 +285,201 @@ pub const TextChunk = struct {
         }
     }
 
+    fn lowerBoundSpanByByte(spans: []const GraphemeSpan, byte_start: u32) usize {
+        var lo: usize = 0;
+        var hi: usize = spans.len;
+
+        while (lo < hi) {
+            const mid = lo + (hi - lo) / 2;
+            const span = spans[mid];
+            const span_end = span.byte_start + span.byte_len;
+            if (span_end <= byte_start) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+
+        return lo;
+    }
+
+    fn clipSpanToRangeNoBreaks(span_in: GraphemeSpan, range: LayoutSpanRange) ?GraphemeSpan {
+        const span_byte_start = span_in.byte_start;
+        const span_byte_end = span_in.byte_start + span_in.byte_len;
+        if (span_byte_end <= range.byte_start or span_byte_start >= range.byte_end) {
+            return null;
+        }
+
+        var span = span_in;
+        span.break_after = .none;
+
+        const span_col_end = span.col_start + span.col_width;
+        if (span_byte_start >= range.byte_start and
+            span_byte_end <= range.byte_end and
+            span.col_start >= range.col_start and
+            span_col_end <= range.col_end)
+        {
+            return span;
+        }
+
+        // Partial clipping is only safe for 1:1 spans.
+        if (span.byte_len != span.col_width) {
+            return null;
+        }
+
+        const clipped_byte_start = @max(span_byte_start, range.byte_start);
+        const clipped_byte_end = @min(span_byte_end, range.byte_end);
+        if (clipped_byte_start >= clipped_byte_end) {
+            return null;
+        }
+
+        const drop_cols = clipped_byte_start - span_byte_start;
+        const clipped_byte_len = clipped_byte_end - clipped_byte_start;
+
+        span.byte_start = clipped_byte_start;
+        span.byte_len = clipped_byte_len;
+        span.col_start += drop_cols;
+        span.col_width = @intCast(clipped_byte_len);
+
+        if (span.col_start < range.col_start or span.col_start + span.col_width > range.col_end) {
+            return null;
+        }
+
+        return span;
+    }
+
+    fn forEachLayoutSpansRangeNoBreaksFullCache(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+        range: LayoutSpanRange,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        const spans = try self.ensureFullLayoutSpans(mem_registry, allocator, tabwidth, width_method);
+        var idx = lowerBoundSpanByByte(spans, range.byte_start);
+
+        while (idx < spans.len) : (idx += 1) {
+            const cached_span = spans[idx];
+            if (cached_span.byte_start >= range.byte_end) {
+                break;
+            }
+
+            if (clipSpanToRangeNoBreaks(cached_span, range)) |span| {
+                try consumer(ctx, span);
+            }
+        }
+    }
+
+    fn forEachLayoutSpansRangeNoBreaksWindowed(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+        range: LayoutSpanRange,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        const chunk_bytes = self.getBytes(mem_registry);
+        const state = &scratch.range_cursor;
+
+        const key_matches = state.active and
+            state.mem_id == self.mem_id and
+            state.chunk_byte_start == self.byte_start and
+            state.chunk_byte_end == self.byte_end and
+            state.tabwidth == tabwidth and
+            state.width_method == width_method;
+
+        if (!key_matches) {
+            state.* = .{
+                .active = true,
+                .mem_id = self.mem_id,
+                .chunk_byte_start = self.byte_start,
+                .chunk_byte_end = self.byte_end,
+                .tabwidth = tabwidth,
+                .width_method = width_method,
+                .cursor = utf8.LayoutScanCursor.init(),
+            };
+        } else if (state.cursor.byte_offset > range.byte_start or state.cursor.col_offset > range.col_start) {
+            state.cursor.reset();
+        }
+
+        while (state.cursor.byte_offset < range.byte_start) {
+            const before = state.cursor.byte_offset;
+            const remaining = range.byte_start - state.cursor.byte_offset;
+            const window_bytes = @max(@as(u32, 1), @min(remaining, @as(u32, LAYOUT_WINDOW_BYTES)));
+
+            const slot = scratch.acquire();
+            const batch = try utf8.scanLayoutNextWindowBatchNoBreaks(
+                chunk_bytes,
+                tabwidth,
+                self.isAsciiOnly(),
+                width_method,
+                &state.cursor,
+                slot.spans,
+                window_bytes,
+            );
+
+            scratch.lens[slot.index] = batch.spans.len;
+
+            if (state.cursor.byte_offset == before) {
+                break;
+            }
+
+            if (batch.done and state.cursor.byte_offset < range.byte_start) {
+                return;
+            }
+        }
+
+        if (state.cursor.byte_offset != range.byte_start or state.cursor.col_offset != range.col_start) {
+            try self.forEachLayoutSpansRangeNoBreaksFullCache(
+                mem_registry,
+                allocator,
+                tabwidth,
+                width_method,
+                range,
+                ctx,
+                consumer,
+            );
+            return;
+        }
+
+        while (state.cursor.byte_offset < range.byte_end) {
+            const before = state.cursor.byte_offset;
+            const remaining = range.byte_end - state.cursor.byte_offset;
+            if (remaining == 0) break;
+
+            const window_bytes = @max(@as(u32, 1), @min(remaining, @as(u32, LAYOUT_WINDOW_BYTES)));
+
+            const slot = scratch.acquire();
+            const batch = try utf8.scanLayoutNextWindowBatchNoBreaks(
+                chunk_bytes,
+                tabwidth,
+                self.isAsciiOnly(),
+                width_method,
+                &state.cursor,
+                slot.spans,
+                window_bytes,
+            );
+
+            scratch.lens[slot.index] = batch.spans.len;
+
+            for (batch.spans) |batch_span| {
+                if (clipSpanToRangeNoBreaks(batch_span, range)) |span| {
+                    try consumer(ctx, span);
+                }
+            }
+
+            if (state.cursor.byte_offset == before or batch.done) {
+                break;
+            }
+        }
+    }
+
     pub fn getGraphemes(
         self: *const TextChunk,
         mem_registry: *const MemRegistry,
@@ -374,6 +605,56 @@ pub const TextChunk = struct {
         consumer: SpanConsumer,
     ) anyerror!void {
         return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, null, false, scratch, ctx, consumer);
+    }
+
+    pub fn forEachLayoutSpansRangeNoBreaks(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+        range: LayoutSpanRange,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        const chunk_byte_len = self.byte_end - self.byte_start;
+        const chunk_col_len: u32 = self.width;
+
+        const clamped_range = LayoutSpanRange{
+            .byte_start = @min(range.byte_start, chunk_byte_len),
+            .byte_end = @min(range.byte_end, chunk_byte_len),
+            .col_start = @min(range.col_start, chunk_col_len),
+            .col_end = @min(range.col_end, chunk_col_len),
+        };
+
+        if (clamped_range.isEmpty()) {
+            return;
+        }
+
+        const default_mode = self.ensureLayoutCacheState(tabwidth, width_method);
+        if (default_mode == .full_cache) {
+            return self.forEachLayoutSpansRangeNoBreaksFullCache(
+                mem_registry,
+                allocator,
+                tabwidth,
+                width_method,
+                clamped_range,
+                ctx,
+                consumer,
+            );
+        }
+
+        return self.forEachLayoutSpansRangeNoBreaksWindowed(
+            mem_registry,
+            allocator,
+            tabwidth,
+            width_method,
+            clamped_range,
+            scratch,
+            ctx,
+            consumer,
+        );
     }
 
     pub fn forEachLayoutSpansCached(

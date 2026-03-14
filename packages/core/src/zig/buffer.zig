@@ -1210,6 +1210,7 @@ pub const OptimizedBuffer = struct {
             line_info.line_start_cols[firstVisibleLine]
         else
             0;
+        var draw_layout_scratch = tb.LayoutSpanScratch.init();
 
         for (virtual_lines[firstVisibleLine..lastPossibleLine], 0..) |vline, slice_idx| {
             if (currentY >= bufferBottomY) break;
@@ -1260,268 +1261,391 @@ pub const OptimizedBuffer = struct {
             for (vline.chunks.items) |vchunk| {
                 const chunk = vchunk.chunk;
                 const chunk_bytes = chunk.getBytes(text_buffer.memRegistry());
-                const specials = chunk.getGraphemes(text_buffer.memRegistry(), text_buffer.getAllocator(), text_buffer.tabWidth(), text_buffer.widthMethod()) catch continue;
                 const line_col_offset = vline.col_offset;
 
                 if (currentX >= @as(i32, @intCast(self.width))) {
-                    globalCharPos += vchunk.width;
-                    currentX += @intCast(vchunk.width);
+                    globalCharPos += vchunk.width_cols;
+                    currentX += @intCast(vchunk.width_cols);
                     continue;
                 }
-                const col_end = vchunk.grapheme_start + vchunk.width;
-                var col = vchunk.grapheme_start;
-                var special_idx: usize = 0;
-                var byte_offset: u32 = 0;
 
-                if (vchunk.grapheme_start > 0) {
-                    // Use UTF-8 aware position finding to skip to the grapheme_start
-                    const is_ascii_only = (vchunk.chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
-                    const pos_result = utf8.findPosByWidth(chunk_bytes, vchunk.grapheme_start, text_buffer.tabWidth(), is_ascii_only, false, text_buffer.widthMethod());
-                    byte_offset = pos_result.byte_offset;
+                var col = vchunk.col_start_in_chunk;
+                const col_end = vchunk.col_start_in_chunk + vchunk.width_cols;
+                var skip_rest_of_chunk = false;
 
-                    // Advance special_idx to match the skipped columns
-                    var init_col: u32 = 0;
-                    while (init_col < vchunk.grapheme_start and special_idx < specials.len) {
-                        const g = specials[special_idx];
-                        if (g.col_offset < vchunk.grapheme_start) {
-                            special_idx += 1;
-                            init_col = g.col_offset + g.width;
-                        } else {
-                            break;
+                const DrawChunkSpanContext = struct {
+                    self: *OptimizedBuffer,
+                    view: *ViewType,
+                    text_buffer: *TextBuffer,
+                    chunk_bytes: []const u8,
+                    vline: *const tbv.VirtualLine,
+                    line_col_offset: u32,
+                    col_offset: u32,
+                    horizontal_offset: u32,
+                    viewport_width: u32,
+                    current_y: i32,
+                    global_char_pos: *u32,
+                    current_x: *i32,
+                    column_in_line: *u32,
+                    col: *u32,
+                    skip_rest_of_chunk: *bool,
+                    spans: []const tb.StyleSpan,
+                    span_idx: *usize,
+                    next_change_col: *u32,
+                    line_fg: *RGBA,
+                    line_bg: *RGBA,
+                    line_attributes: *u32,
+                    default_fg: RGBA,
+                    default_bg: RGBA,
+                    default_attributes: u32,
+
+                    fn consume(ctx_ptr: *anyopaque, span: tb.GraphemeSpan) anyerror!void {
+                        const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+                        const g_width: u32 = span.col_width;
+
+                        if (ctx.skip_rest_of_chunk.*) {
+                            ctx.global_char_pos.* += g_width;
+                            ctx.col.* += g_width;
+                            return;
                         }
-                    }
-                }
 
-                while (col < col_end) {
-                    const at_special = special_idx < specials.len and specials[special_idx].col_offset == col;
-
-                    var grapheme_bytes: []const u8 = undefined;
-                    var g_width: u8 = undefined;
-
-                    if (at_special) {
-                        const g = specials[special_idx];
-                        grapheme_bytes = chunk_bytes[g.byte_offset .. g.byte_offset + g.byte_len];
-                        g_width = g.width;
-                        byte_offset = g.byte_offset + g.byte_len;
-                        special_idx += 1;
-                    } else {
-                        if (byte_offset >= chunk_bytes.len) break;
-                        const cp_len = std.unicode.utf8ByteSequenceLength(chunk_bytes[byte_offset]) catch 1;
-                        const next_byte_offset = @min(byte_offset + cp_len, chunk_bytes.len);
-                        grapheme_bytes = chunk_bytes[byte_offset..next_byte_offset];
-                        g_width = 1;
-                        byte_offset = next_byte_offset;
-                    }
-
-                    if (column_in_line < horizontal_offset) {
-                        globalCharPos += g_width;
-                        column_in_line += g_width;
-                        col += g_width;
-                        continue;
-                    }
-
-                    if (column_in_line >= horizontal_offset + viewport_width) {
-                        globalCharPos += (col_end - col);
-                        break;
-                    }
-
-                    if (currentX < -@as(i32, @intCast(g_width))) {
-                        globalCharPos += g_width;
-                        currentX += @as(i32, @intCast(g_width));
-                        column_in_line += g_width;
-                        col += g_width;
-                        continue;
-                    }
-
-                    if (currentX >= @as(i32, @intCast(self.width))) {
-                        globalCharPos += (col_end - col);
-                        break;
-                    }
-
-                    if (!self.isPointInScissor(currentX, currentY)) {
-                        globalCharPos += g_width;
-                        currentX += @as(i32, @intCast(g_width));
-                        column_in_line += g_width;
-                        col += g_width;
-                        continue;
-                    }
-
-                    var selection_offset = globalCharPos;
-                    if (vline.is_truncated and globalCharPos >= line_col_offset) {
-                        const ellipsis_width: u32 = 3;
-                        const column_offset_in_line = globalCharPos - line_col_offset;
-                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
-                            selection_offset = line_col_offset + vline.ellipsis_pos;
-                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
-                            selection_offset = line_col_offset + vline.truncation_suffix_start +
-                                (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
-                        } else {
-                            selection_offset = line_col_offset + column_offset_in_line;
+                        const start: usize = @intCast(span.byte_start);
+                        const end: usize = @intCast(span.byte_start + span.byte_len);
+                        if (start >= ctx.chunk_bytes.len or end > ctx.chunk_bytes.len or start > end) {
+                            ctx.global_char_pos.* += g_width;
+                            ctx.col.* += g_width;
+                            return;
                         }
-                    }
 
-                    // Track the actual column position in the source line (including horizontal offset)
-                    var source_col_pos = col_offset + column_in_line;
-                    if (vline.is_truncated) {
-                        const ellipsis_width: u32 = 3;
-                        const column_offset_in_line = globalCharPos - line_col_offset;
-                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
-                            source_col_pos = std.math.maxInt(u32);
-                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
-                            source_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
+                        const grapheme_bytes = ctx.chunk_bytes[start..end];
+
+                        if (ctx.column_in_line.* < ctx.horizontal_offset) {
+                            ctx.global_char_pos.* += g_width;
+                            ctx.column_in_line.* += g_width;
+                            ctx.col.* += g_width;
+                            return;
                         }
-                    }
 
-                    if (source_col_pos >= next_change_col and span_idx + 1 < spans.len) {
-                        span_idx += 1;
-                        const new_span = spans[span_idx];
+                        if (ctx.column_in_line.* >= ctx.horizontal_offset + ctx.viewport_width) {
+                            ctx.skip_rest_of_chunk.* = true;
+                            ctx.global_char_pos.* += g_width;
+                            ctx.col.* += g_width;
+                            return;
+                        }
 
-                        lineFg = defaultFg;
-                        lineBg = defaultBg;
-                        lineAttributes = defaultAttributes;
+                        if (ctx.current_x.* < -@as(i32, @intCast(g_width))) {
+                            ctx.global_char_pos.* += g_width;
+                            ctx.current_x.* += @as(i32, @intCast(g_width));
+                            ctx.column_in_line.* += g_width;
+                            ctx.col.* += g_width;
+                            return;
+                        }
 
-                        if (text_buffer.getSyntaxStyle()) |style| {
-                            if (new_span.style_id != 0) {
-                                if (style.resolveById(new_span.style_id)) |resolved_style| {
-                                    if (resolved_style.fg) |fg| lineFg = fg;
-                                    if (resolved_style.bg) |bg| lineBg = bg;
-                                    lineAttributes |= resolved_style.attributes;
-                                }
+                        if (ctx.current_x.* >= @as(i32, @intCast(ctx.self.width))) {
+                            ctx.skip_rest_of_chunk.* = true;
+                            ctx.global_char_pos.* += g_width;
+                            ctx.col.* += g_width;
+                            return;
+                        }
+
+                        if (!ctx.self.isPointInScissor(ctx.current_x.*, ctx.current_y)) {
+                            ctx.global_char_pos.* += g_width;
+                            ctx.current_x.* += @as(i32, @intCast(g_width));
+                            ctx.column_in_line.* += g_width;
+                            ctx.col.* += g_width;
+                            return;
+                        }
+
+                        var selection_offset = ctx.global_char_pos.*;
+                        if (ctx.vline.is_truncated and ctx.global_char_pos.* >= ctx.line_col_offset) {
+                            const ellipsis_width: u32 = 3;
+                            const column_offset_in_line = ctx.global_char_pos.* - ctx.line_col_offset;
+                            if (column_offset_in_line >= ctx.vline.ellipsis_pos and column_offset_in_line < ctx.vline.ellipsis_pos + ellipsis_width) {
+                                selection_offset = ctx.line_col_offset + ctx.vline.ellipsis_pos;
+                            } else if (column_offset_in_line >= ctx.vline.ellipsis_pos + ellipsis_width) {
+                                selection_offset = ctx.line_col_offset + ctx.vline.truncation_suffix_start +
+                                    (column_offset_in_line - ctx.vline.ellipsis_pos - ellipsis_width);
+                            } else {
+                                selection_offset = ctx.line_col_offset + column_offset_in_line;
                             }
                         }
 
-                        next_change_col = new_span.next_col;
-                    }
+                        var source_col_pos = ctx.col_offset + ctx.column_in_line.*;
+                        if (ctx.vline.is_truncated) {
+                            const ellipsis_width: u32 = 3;
+                            const column_offset_in_line = ctx.global_char_pos.* - ctx.line_col_offset;
+                            if (column_offset_in_line >= ctx.vline.ellipsis_pos and column_offset_in_line < ctx.vline.ellipsis_pos + ellipsis_width) {
+                                source_col_pos = std.math.maxInt(u32);
+                            } else if (column_offset_in_line >= ctx.vline.ellipsis_pos + ellipsis_width) {
+                                source_col_pos = ctx.vline.truncation_suffix_start + (column_offset_in_line - ctx.vline.ellipsis_pos - ellipsis_width);
+                            }
+                        }
 
-                    if (vline.is_truncated) {
-                        const column_offset_in_line = globalCharPos - line_col_offset;
-                        const ellipsis_width: u32 = 3;
-                        if (column_offset_in_line >= vline.ellipsis_pos and column_offset_in_line < vline.ellipsis_pos + ellipsis_width) {
-                            lineFg = defaultFg;
-                            lineBg = defaultBg;
-                            lineAttributes = defaultAttributes;
-                        } else if (column_offset_in_line >= vline.ellipsis_pos + ellipsis_width) {
-                            const suffix_col_pos = vline.truncation_suffix_start + (column_offset_in_line - vline.ellipsis_pos - ellipsis_width);
-                            if (spans.len == 0) {
-                                lineFg = defaultFg;
-                                lineBg = defaultBg;
-                                lineAttributes = defaultAttributes;
-                                next_change_col = std.math.maxInt(u32);
-                            } else {
-                                var suffix_span_idx: usize = 0;
-                                while (suffix_span_idx < spans.len and spans[suffix_span_idx].next_col <= suffix_col_pos) {
-                                    suffix_span_idx += 1;
+                        while (source_col_pos >= ctx.next_change_col.* and ctx.span_idx.* + 1 < ctx.spans.len) {
+                            ctx.span_idx.* += 1;
+                            const new_span = ctx.spans[ctx.span_idx.*];
+
+                            ctx.line_fg.* = ctx.default_fg;
+                            ctx.line_bg.* = ctx.default_bg;
+                            ctx.line_attributes.* = ctx.default_attributes;
+
+                            if (ctx.text_buffer.getSyntaxStyle()) |style| {
+                                if (new_span.style_id != 0) {
+                                    if (style.resolveById(new_span.style_id)) |resolved_style| {
+                                        if (resolved_style.fg) |fg| ctx.line_fg.* = fg;
+                                        if (resolved_style.bg) |bg| ctx.line_bg.* = bg;
+                                        ctx.line_attributes.* |= resolved_style.attributes;
+                                    }
                                 }
-                                if (suffix_span_idx < spans.len) {
-                                    span_idx = suffix_span_idx;
-                                }
-                                const active_span = spans[span_idx];
-                                lineFg = defaultFg;
-                                lineBg = defaultBg;
-                                lineAttributes = defaultAttributes;
-                                if (text_buffer.getSyntaxStyle()) |style| {
-                                    if (active_span.style_id != 0) {
-                                        if (style.resolveById(active_span.style_id)) |resolved_style| {
-                                            if (resolved_style.fg) |fg| lineFg = fg;
-                                            if (resolved_style.bg) |bg| lineBg = bg;
-                                            lineAttributes |= resolved_style.attributes;
+                            }
+
+                            ctx.next_change_col.* = new_span.next_col;
+                        }
+
+                        if (ctx.vline.is_truncated) {
+                            const column_offset_in_line = ctx.global_char_pos.* - ctx.line_col_offset;
+                            const ellipsis_width: u32 = 3;
+                            if (column_offset_in_line >= ctx.vline.ellipsis_pos and column_offset_in_line < ctx.vline.ellipsis_pos + ellipsis_width) {
+                                ctx.line_fg.* = ctx.default_fg;
+                                ctx.line_bg.* = ctx.default_bg;
+                                ctx.line_attributes.* = ctx.default_attributes;
+                            } else if (column_offset_in_line >= ctx.vline.ellipsis_pos + ellipsis_width) {
+                                const suffix_col_pos = ctx.vline.truncation_suffix_start + (column_offset_in_line - ctx.vline.ellipsis_pos - ellipsis_width);
+                                if (ctx.spans.len == 0) {
+                                    ctx.line_fg.* = ctx.default_fg;
+                                    ctx.line_bg.* = ctx.default_bg;
+                                    ctx.line_attributes.* = ctx.default_attributes;
+                                    ctx.next_change_col.* = std.math.maxInt(u32);
+                                } else {
+                                    var suffix_span_idx: usize = 0;
+                                    while (suffix_span_idx < ctx.spans.len and ctx.spans[suffix_span_idx].next_col <= suffix_col_pos) {
+                                        suffix_span_idx += 1;
+                                    }
+                                    if (suffix_span_idx < ctx.spans.len) {
+                                        ctx.span_idx.* = suffix_span_idx;
+                                    }
+                                    const active_span = ctx.spans[ctx.span_idx.*];
+                                    ctx.line_fg.* = ctx.default_fg;
+                                    ctx.line_bg.* = ctx.default_bg;
+                                    ctx.line_attributes.* = ctx.default_attributes;
+                                    if (ctx.text_buffer.getSyntaxStyle()) |style| {
+                                        if (active_span.style_id != 0) {
+                                            if (style.resolveById(active_span.style_id)) |resolved_style| {
+                                                if (resolved_style.fg) |fg| ctx.line_fg.* = fg;
+                                                if (resolved_style.bg) |bg| ctx.line_bg.* = bg;
+                                                ctx.line_attributes.* |= resolved_style.attributes;
+                                            }
                                         }
                                     }
+                                    ctx.next_change_col.* = active_span.next_col;
                                 }
-                                next_change_col = active_span.next_col;
                             }
                         }
-                    }
 
-                    var finalFg = lineFg;
-                    var finalBg = lineBg;
-                    const finalAttributes = lineAttributes;
+                        var final_fg = ctx.line_fg.*;
+                        var final_bg = ctx.line_bg.*;
+                        const final_attributes = ctx.line_attributes.*;
 
-                    var cell_idx: u32 = 0;
-                    while (cell_idx < g_width) : (cell_idx += 1) {
-                        if (view.getSelection()) |sel| {
-                            const isSelected = selection_offset + cell_idx >= sel.start and selection_offset + cell_idx < sel.end;
-                            if (isSelected) {
-                                if (sel.bgColor) |selBg| {
-                                    finalBg = selBg;
-                                    if (sel.fgColor) |selFg| {
-                                        finalFg = selFg;
+                        var cell_idx: u32 = 0;
+                        while (cell_idx < g_width) : (cell_idx += 1) {
+                            if (ctx.view.getSelection()) |sel| {
+                                const is_selected = selection_offset + cell_idx >= sel.start and selection_offset + cell_idx < sel.end;
+                                if (is_selected) {
+                                    if (sel.bgColor) |sel_bg| {
+                                        final_bg = sel_bg;
+                                        if (sel.fgColor) |sel_fg| {
+                                            final_fg = sel_fg;
+                                        }
+                                    } else {
+                                        const temp = ctx.line_fg.*;
+                                        final_fg = if (ctx.line_bg.*[3] > 0) ctx.line_bg.* else RGBA{ 0.0, 0.0, 0.0, 1.0 };
+                                        final_bg = temp;
                                     }
-                                } else {
-                                    const temp = lineFg;
-                                    finalFg = if (lineBg[3] > 0) lineBg else RGBA{ 0.0, 0.0, 0.0, 1.0 };
-                                    finalBg = temp;
+                                    break;
                                 }
-                                break;
                             }
                         }
-                    }
 
-                    // Skip zero-width characters (ZWJ, VS16, etc.) - don't render them
-                    // Don't increment col since they take no space
-                    if (g_width == 0) {
-                        continue;
-                    }
+                        if (g_width == 0) {
+                            return;
+                        }
 
-                    var drawFg = finalFg;
-                    var drawBg = finalBg;
-                    const drawAttributes = finalAttributes;
+                        var draw_fg = final_fg;
+                        var draw_bg = final_bg;
+                        const draw_attributes = final_attributes;
 
-                    if (drawAttributes & (1 << 5) != 0) {
-                        const temp = drawFg;
-                        drawFg = drawBg;
-                        drawBg = temp;
-                    }
+                        if (draw_attributes & (1 << 5) != 0) {
+                            const temp = draw_fg;
+                            draw_fg = draw_bg;
+                            draw_bg = temp;
+                        }
 
-                    if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
-                        const tab_indicator = view.getTabIndicator();
-                        const tab_indicator_color = view.getTabIndicatorColor();
+                        if (grapheme_bytes.len == 1 and grapheme_bytes[0] == '\t') {
+                            const tab_indicator = ctx.view.getTabIndicator();
+                            const tab_indicator_color = ctx.view.getTabIndicatorColor();
 
-                        var tab_col: u32 = 0;
-                        while (tab_col < g_width) : (tab_col += 1) {
-                            if (currentX + @as(i32, @intCast(tab_col)) >= @as(i32, @intCast(self.width))) break;
+                            var tab_col: u32 = 0;
+                            while (tab_col < g_width) : (tab_col += 1) {
+                                if (ctx.current_x.* + @as(i32, @intCast(tab_col)) >= @as(i32, @intCast(ctx.self.width))) break;
 
-                            const char = if (tab_col == 0 and tab_indicator != null) tab_indicator.? else DEFAULT_SPACE_CHAR;
-                            const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else drawFg;
+                                const char = if (tab_col == 0 and tab_indicator != null) tab_indicator.? else DEFAULT_SPACE_CHAR;
+                                const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else draw_fg;
 
-                            try self.setCellWithAlphaBlending(
-                                @intCast(currentX + @as(i32, @intCast(tab_col))),
-                                @intCast(currentY),
-                                char,
-                                fg,
-                                drawBg,
-                                drawAttributes,
+                                try ctx.self.setCellWithAlphaBlending(
+                                    @intCast(ctx.current_x.* + @as(i32, @intCast(tab_col))),
+                                    @intCast(ctx.current_y),
+                                    char,
+                                    fg,
+                                    draw_bg,
+                                    draw_attributes,
+                                );
+                            }
+                        } else {
+                            var encoded_char: u32 = 0;
+                            if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
+                                encoded_char = @as(u32, grapheme_bytes[0]);
+                            } else {
+                                const gid = ctx.self.pool.alloc(grapheme_bytes) catch |err| {
+                                    logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ grapheme_bytes.len, grapheme_bytes, err });
+                                    ctx.global_char_pos.* += g_width;
+                                    ctx.current_x.* += @as(i32, @intCast(g_width));
+                                    ctx.column_in_line.* += g_width;
+                                    ctx.col.* += g_width;
+                                    return;
+                                };
+                                encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
+                            }
+
+                            try ctx.self.setCellWithAlphaBlending(
+                                @intCast(ctx.current_x.*),
+                                @intCast(ctx.current_y),
+                                encoded_char,
+                                draw_fg,
+                                draw_bg,
+                                draw_attributes,
                             );
                         }
-                    } else {
-                        var encoded_char: u32 = 0;
-                        if (grapheme_bytes.len == 1 and g_width == 1 and grapheme_bytes[0] >= 32) {
-                            encoded_char = @as(u32, grapheme_bytes[0]);
-                        } else {
-                            const gid = self.pool.alloc(grapheme_bytes) catch |err| {
-                                logger.warn("GraphemePool.alloc FAILED for grapheme (len={d}, bytes={any}): {}", .{ grapheme_bytes.len, grapheme_bytes, err });
-                                globalCharPos += g_width;
-                                currentX += @as(i32, @intCast(g_width));
-                                col += g_width;
-                                continue;
-                            };
-                            encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
+
+                        ctx.global_char_pos.* += g_width;
+                        ctx.current_x.* += @as(i32, @intCast(g_width));
+                        ctx.column_in_line.* += g_width;
+                        ctx.col.* += g_width;
+                    }
+                };
+
+                var draw_ctx = DrawChunkSpanContext{
+                    .self = self,
+                    .view = view,
+                    .text_buffer = text_buffer,
+                    .chunk_bytes = chunk_bytes,
+                    .vline = &vline,
+                    .line_col_offset = line_col_offset,
+                    .col_offset = col_offset,
+                    .horizontal_offset = horizontal_offset,
+                    .viewport_width = viewport_width,
+                    .current_y = currentY,
+                    .global_char_pos = &globalCharPos,
+                    .current_x = &currentX,
+                    .column_in_line = &column_in_line,
+                    .col = &col,
+                    .skip_rest_of_chunk = &skip_rest_of_chunk,
+                    .spans = spans,
+                    .span_idx = &span_idx,
+                    .next_change_col = &next_change_col,
+                    .line_fg = &lineFg,
+                    .line_bg = &lineBg,
+                    .line_attributes = &lineAttributes,
+                    .default_fg = defaultFg,
+                    .default_bg = defaultBg,
+                    .default_attributes = defaultAttributes,
+                };
+
+                const range = tb.LayoutSpanRange{
+                    .byte_start = vchunk.byte_start_in_chunk,
+                    .byte_end = vchunk.byte_start_in_chunk + vchunk.byte_len,
+                    .col_start = vchunk.col_start_in_chunk,
+                    .col_end = vchunk.col_start_in_chunk + vchunk.width_cols,
+                };
+
+                const chunk_byte_len = chunk.byte_end - chunk.byte_start;
+                const is_ascii_only = (chunk.flags & tb.TextChunk.Flags.ASCII_ONLY) != 0;
+                const should_try_full_cache = if (is_ascii_only)
+                    chunk_byte_len <= 256
+                else
+                    chunk_byte_len <= 8 * 1024 and chunk_byte_len <= 2048;
+
+                if (should_try_full_cache) {
+                    if (text_buffer.getLayoutSpansFor(chunk)) |full_spans| {
+                        var lo: usize = 0;
+                        var hi: usize = full_spans.len;
+                        while (lo < hi) {
+                            const mid = lo + (hi - lo) / 2;
+                            const mid_span = full_spans[mid];
+                            const mid_end = mid_span.byte_start + mid_span.byte_len;
+                            if (mid_end <= range.byte_start) {
+                                lo = mid + 1;
+                            } else {
+                                hi = mid;
+                            }
                         }
 
-                        try self.setCellWithAlphaBlending(
-                            @intCast(currentX),
-                            @intCast(currentY),
-                            encoded_char,
-                            drawFg,
-                            drawBg,
-                            drawAttributes,
+                        var span_i = lo;
+                        while (span_i < full_spans.len) : (span_i += 1) {
+                            const cached_span = full_spans[span_i];
+                            if (cached_span.byte_start >= range.byte_end) {
+                                break;
+                            }
+
+                            const cached_end = cached_span.byte_start + cached_span.byte_len;
+                            if (cached_end <= range.byte_start) {
+                                continue;
+                            }
+
+                            var draw_span = cached_span;
+                            draw_span.break_after = .none;
+
+                            if (draw_span.byte_start < range.byte_start or cached_end > range.byte_end) {
+                                if (draw_span.byte_len == @as(u32, draw_span.col_width)) {
+                                    const clipped_start = @max(draw_span.byte_start, range.byte_start);
+                                    const clipped_end = @min(cached_end, range.byte_end);
+                                    if (clipped_start >= clipped_end) {
+                                        continue;
+                                    }
+
+                                    const drop_cols = clipped_start - draw_span.byte_start;
+                                    const clipped_len = clipped_end - clipped_start;
+                                    draw_span.byte_start = clipped_start;
+                                    draw_span.byte_len = clipped_len;
+                                    draw_span.col_start += drop_cols;
+                                    draw_span.col_width = @intCast(clipped_len);
+                                } else {
+                                    continue;
+                                }
+                            }
+
+                            try DrawChunkSpanContext.consume(&draw_ctx, draw_span);
+                        }
+                    } else |_| {
+                        try text_buffer.forEachLayoutSpansRangeNoBreaksForWithScratch(
+                            chunk,
+                            range,
+                            &draw_layout_scratch,
+                            &draw_ctx,
+                            DrawChunkSpanContext.consume,
                         );
                     }
+                } else {
+                    try text_buffer.forEachLayoutSpansRangeNoBreaksForWithScratch(
+                        chunk,
+                        range,
+                        &draw_layout_scratch,
+                        &draw_ctx,
+                        DrawChunkSpanContext.consume,
+                    );
+                }
 
-                    globalCharPos += g_width;
-                    currentX += @as(i32, @intCast(g_width));
-                    column_in_line += g_width;
-                    col += g_width;
+                if (skip_rest_of_chunk) {
+                    globalCharPos += col_end - col;
                 }
             }
 

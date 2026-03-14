@@ -66,6 +66,56 @@ fn collectChunkSpansWithMode(
     return collection.spans.toOwnedSlice(allocator);
 }
 
+fn collectChunkRangeSpansWithMode(
+    chunk: *const TextChunk,
+    registry: *const MemRegistry,
+    allocator: std.mem.Allocator,
+    tab_width: u8,
+    width_method: utf8.WidthMethod,
+    mode: LayoutCacheMode,
+    range: seg_mod.LayoutSpanRange,
+) ![]const seg_mod.GraphemeSpan {
+    var chunk_copy = chunk.*;
+    chunk_copy.layout_spans = null;
+    chunk_copy.layout_cache_allocator = null;
+    chunk_copy.layout_cache_valid = true;
+    chunk_copy.layout_cache_tab_width = tab_width;
+    chunk_copy.layout_cache_width_method = width_method;
+    chunk_copy.layout_cache_mode = mode;
+
+    var scratch = LayoutSpanScratch.init();
+    var collection = SpanCollection{ .allocator = allocator };
+    errdefer collection.deinit();
+
+    try chunk_copy.forEachLayoutSpansRangeNoBreaks(
+        registry,
+        allocator,
+        tab_width,
+        width_method,
+        range,
+        &scratch,
+        &collection,
+        collectSpan,
+    );
+
+    return collection.spans.toOwnedSlice(allocator);
+}
+
+fn rangeForSpanSlice(spans: []const seg_mod.GraphemeSpan, start_idx: usize, end_idx_exclusive: usize) seg_mod.LayoutSpanRange {
+    std.debug.assert(start_idx < end_idx_exclusive);
+    std.debug.assert(end_idx_exclusive <= spans.len);
+
+    const start_span = spans[start_idx];
+    const end_span = spans[end_idx_exclusive - 1];
+
+    return .{
+        .byte_start = start_span.byte_start,
+        .byte_end = end_span.byte_start + end_span.byte_len,
+        .col_start = start_span.col_start,
+        .col_end = end_span.col_start + end_span.col_width,
+    };
+}
+
 test "Segment.measure - text chunk" {
     const chunk = TextChunk{
         .mem_id = 0,
@@ -238,6 +288,103 @@ test "TextChunk.forEachLayoutSpans full cache and windowed modes match across wi
             expected_no_break.break_after = .none;
             try testing.expectEqualDeep(expected_no_break, windowed_no_breaks[idx]);
         }
+    }
+}
+
+test "TextChunk.forEachLayoutSpansRangeNoBreaks full cache and windowed modes match" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var registry = MemRegistry.init(testing.allocator);
+    defer registry.deinit();
+
+    const text = try buildRepeatedText(allocator, "Hello 世界\t👩‍🚀-abc/가나다 path-breaks ", 96);
+    const mem_id = try registry.register(text, false);
+    const chunk = TextChunk{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = @intCast(utf8.calculateTextWidth(text, 4, false, .unicode)),
+        .flags = 0,
+    };
+
+    for ([_]utf8.WidthMethod{ .wcwidth, .unicode, .no_zwj }) |width_method| {
+        const full_no_breaks = try collectChunkSpansWithMode(&chunk, &registry, allocator, 4, width_method, .full_cache, false);
+        try testing.expect(full_no_breaks.len > 32);
+
+        const start_idx = full_no_breaks.len / 4;
+        const end_idx = @min(start_idx + 96, full_no_breaks.len);
+        const range = rangeForSpanSlice(full_no_breaks, start_idx, end_idx);
+
+        const full_range = try collectChunkRangeSpansWithMode(&chunk, &registry, allocator, 4, width_method, .full_cache, range);
+        const windowed_range = try collectChunkRangeSpansWithMode(&chunk, &registry, allocator, 4, width_method, .windowed, range);
+
+        try testing.expectEqual(end_idx - start_idx, full_range.len);
+        try testing.expectEqual(full_range.len, windowed_range.len);
+
+        for (full_range, 0..) |span, idx| {
+            const expected = full_no_breaks[start_idx + idx];
+            try testing.expectEqualDeep(expected, span);
+            try testing.expectEqualDeep(span, windowed_range[idx]);
+            try testing.expectEqual(utf8.BreakKind.none, span.break_after);
+        }
+    }
+}
+
+test "TextChunk.forEachLayoutSpansRangeNoBreaks reuses shared scratch across adjacent ranges" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var registry = MemRegistry.init(testing.allocator);
+    defer registry.deinit();
+
+    const text = try buildRepeatedText(allocator, "abcdefghijklmnopqrstuvwxyz0123456789", 256);
+    const mem_id = try registry.register(text, false);
+    var chunk = TextChunk{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = @intCast(text.len),
+        .flags = TextChunk.Flags.ASCII_ONLY,
+        .layout_cache_valid = true,
+        .layout_cache_tab_width = 4,
+        .layout_cache_width_method = .unicode,
+        .layout_cache_mode = .windowed,
+    };
+
+    const full_no_breaks = try collectChunkSpansWithMode(&chunk, &registry, allocator, 4, .unicode, .full_cache, false);
+    try testing.expect(full_no_breaks.len > 200);
+
+    const first_start: usize = 32;
+    const first_end: usize = 96;
+    const second_start: usize = first_end;
+    const second_end: usize = 192;
+
+    const first_range = rangeForSpanSlice(full_no_breaks, first_start, first_end);
+    const second_range = rangeForSpanSlice(full_no_breaks, second_start, second_end);
+
+    var scratch = LayoutSpanScratch.init();
+    var collection = SpanCollection{ .allocator = allocator };
+    defer collection.deinit();
+
+    try chunk.forEachLayoutSpansRangeNoBreaks(&registry, allocator, 4, .unicode, first_range, &scratch, &collection, collectSpan);
+    try chunk.forEachLayoutSpansRangeNoBreaks(&registry, allocator, 4, .unicode, second_range, &scratch, &collection, collectSpan);
+
+    const expected_len = (first_end - first_start) + (second_end - second_start);
+    try testing.expectEqual(expected_len, collection.spans.items.len);
+
+    var idx: usize = 0;
+    while (idx < first_end - first_start) : (idx += 1) {
+        const expected = full_no_breaks[first_start + idx];
+        try testing.expectEqualDeep(expected, collection.spans.items[idx]);
+    }
+
+    var second_idx: usize = 0;
+    while (second_idx < second_end - second_start) : (second_idx += 1) {
+        const expected = full_no_breaks[second_start + second_idx];
+        try testing.expectEqualDeep(expected, collection.spans.items[(first_end - first_start) + second_idx]);
     }
 }
 

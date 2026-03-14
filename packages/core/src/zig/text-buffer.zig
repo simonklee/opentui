@@ -31,6 +31,7 @@ pub const GraphemeInfo = seg_mod.GraphemeInfo;
 pub const GraphemeSpan = seg_mod.GraphemeSpan;
 pub const LayoutCacheMode = seg_mod.LayoutCacheMode;
 pub const LayoutSpanScratch = seg_mod.LayoutSpanScratch;
+pub const LayoutSpanRange = seg_mod.LayoutSpanRange;
 pub const SpanConsumer = seg_mod.SpanConsumer;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
@@ -211,6 +212,26 @@ pub const UnifiedTextBuffer = struct {
         consumer: SpanConsumer,
     ) anyerror!void {
         return chunk.forEachLayoutSpansNoBreaks(&self.mem_registry, self.allocator, self.tab_width, self.width_method, scratch, ctx, consumer);
+    }
+
+    pub fn forEachLayoutSpansRangeNoBreaksForWithScratch(
+        self: *const Self,
+        chunk: *const TextChunk,
+        range: LayoutSpanRange,
+        scratch: *LayoutSpanScratch,
+        ctx: *anyopaque,
+        consumer: SpanConsumer,
+    ) anyerror!void {
+        return chunk.forEachLayoutSpansRangeNoBreaks(
+            &self.mem_registry,
+            self.allocator,
+            self.tab_width,
+            self.width_method,
+            range,
+            scratch,
+            ctx,
+            consumer,
+        );
     }
 
     /// Accessor: walk all lines and segments via callbacks.

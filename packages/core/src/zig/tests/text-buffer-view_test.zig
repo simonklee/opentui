@@ -2760,7 +2760,7 @@ test "TextBufferView truncation - verify ellipsis chunk injection" {
 
     // Verify the middle chunk is the ellipsis
     const ellipsis_chunk = vlines[0].chunks.items[1];
-    try std.testing.expectEqual(@as(u32, 3), ellipsis_chunk.width);
+    try std.testing.expectEqual(@as(u32, 3), ellipsis_chunk.width_cols);
 
     // Get the ellipsis text to verify it's "..."
     const ellipsis_text = ellipsis_chunk.chunk.getBytes(tb.memRegistry());

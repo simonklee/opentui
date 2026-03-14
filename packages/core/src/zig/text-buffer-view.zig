@@ -76,10 +76,12 @@ pub const VirtualLineSpanInfo = struct {
 };
 
 pub const VirtualChunk = struct {
-    grapheme_start: u32,
-    width: u32,
-    byte_start: u32 = 0,
+    // Byte window in the source chunk
+    byte_start_in_chunk: u32 = 0,
     byte_len: u32 = 0,
+    // Column window in the source chunk
+    col_start_in_chunk: u32 = 0,
+    width_cols: u32,
     // Direct reference to source chunk for rendering
     chunk: *const TextChunk,
 };
@@ -774,6 +776,40 @@ pub const UnifiedTextBufferView = struct {
 
         const ellipsis_width: u32 = 3;
 
+        const keepChunkPrefix = struct {
+            fn apply(chunk: VirtualChunk, keep_cols: u32) ?VirtualChunk {
+                if (keep_cols == 0) return null;
+                if (keep_cols >= chunk.width_cols) return chunk;
+
+                if (chunk.byte_len == chunk.width_cols) {
+                    var partial = chunk;
+                    partial.width_cols = keep_cols;
+                    partial.byte_len = keep_cols;
+                    return partial;
+                }
+
+                return null;
+            }
+        }.apply;
+
+        const dropChunkPrefix = struct {
+            fn apply(chunk: VirtualChunk, drop_cols: u32) ?VirtualChunk {
+                if (drop_cols == 0) return chunk;
+                if (drop_cols >= chunk.width_cols) return null;
+
+                if (chunk.byte_len == chunk.width_cols) {
+                    var partial = chunk;
+                    partial.col_start_in_chunk += drop_cols;
+                    partial.width_cols -= drop_cols;
+                    partial.byte_start_in_chunk += drop_cols;
+                    partial.byte_len -= drop_cols;
+                    return partial;
+                }
+
+                return null;
+            }
+        }.apply;
+
         for (self.virtual_lines.items) |*vline| {
             if (vline.width_cols <= vp.width) continue;
 
@@ -797,32 +833,34 @@ pub const UnifiedTextBufferView = struct {
                 if (prefix_accumulated >= prefix_width) break;
 
                 const space_left = prefix_width - prefix_accumulated;
-                if (chunk.width <= space_left) {
+                if (chunk.width_cols <= space_left) {
                     new_chunks.append(self.virtual_lines_arena.allocator(), chunk) catch return;
-                    prefix_accumulated += chunk.width;
+                    prefix_accumulated += chunk.width_cols;
                 } else {
-                    var partial = chunk;
-                    partial.width = space_left;
-                    new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
-                    prefix_accumulated += space_left;
+                    if (keepChunkPrefix(chunk, space_left)) |partial| {
+                        new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
+                        prefix_accumulated += partial.width_cols;
+                    }
                     break;
                 }
             }
 
             new_chunks.append(self.virtual_lines_arena.allocator(), VirtualChunk{
-                .grapheme_start = 0,
-                .width = ellipsis_width,
                 .chunk = &self.ellipsis_chunk,
+                .byte_start_in_chunk = 0,
+                .byte_len = self.ellipsis_chunk.byte_end - self.ellipsis_chunk.byte_start,
+                .col_start_in_chunk = 0,
+                .width_cols = ellipsis_width,
             }) catch return;
 
             const suffix_start_pos = vline.width_cols - suffix_width;
 
             var pos_accumulated: u32 = 0;
             for (vline.chunks.items) |chunk| {
-                const chunk_end = pos_accumulated + chunk.width;
+                const chunk_end = pos_accumulated + chunk.width_cols;
 
                 if (chunk_end <= suffix_start_pos) {
-                    pos_accumulated += chunk.width;
+                    pos_accumulated += chunk.width_cols;
                     continue;
                 }
 
@@ -830,13 +868,12 @@ pub const UnifiedTextBufferView = struct {
                     new_chunks.append(self.virtual_lines_arena.allocator(), chunk) catch return;
                 } else {
                     const offset_in_chunk = suffix_start_pos - pos_accumulated;
-                    var partial = chunk;
-                    partial.grapheme_start += offset_in_chunk;
-                    partial.width = chunk.width - offset_in_chunk;
-                    new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
+                    if (dropChunkPrefix(chunk, offset_in_chunk)) |partial| {
+                        new_chunks.append(self.virtual_lines_arena.allocator(), partial) catch return;
+                    }
                 }
 
-                pos_accumulated += chunk.width;
+                pos_accumulated += chunk.width_cols;
             }
 
             vline.chunks.clearRetainingCapacity();
@@ -1588,11 +1625,11 @@ pub const UnifiedTextBufferView = struct {
 
                     if (ctx.current_vline) |*vline| {
                         vline.chunks.append(ctx.allocator, VirtualChunk{
-                            .grapheme_start = 0,
-                            .width = chunk.width,
-                            .byte_start = 0,
-                            .byte_len = chunk.byte_end - chunk.byte_start,
                             .chunk = chunk,
+                            .byte_start_in_chunk = 0,
+                            .byte_len = chunk.byte_end - chunk.byte_start,
+                            .col_start_in_chunk = 0,
+                            .width_cols = chunk.width,
                         }) catch {};
                     }
 
@@ -1682,7 +1719,7 @@ pub const UnifiedTextBufferView = struct {
                     wctx.last_wrap_active = true;
                     wctx.last_wrap_chunk_idx = @intCast(last_idx);
                     wctx.last_wrap_chunk_byte_len = last_chunk.byte_len;
-                    wctx.last_wrap_chunk_width = last_chunk.width;
+                    wctx.last_wrap_chunk_width = last_chunk.width_cols;
                     wctx.last_wrap_line_position = wctx.line_position;
                     wctx.last_wrap_global_col_offset = wctx.global_col_offset;
                     wctx.last_wrap_global_byte_offset = wctx.global_byte_offset;
@@ -1695,8 +1732,8 @@ pub const UnifiedTextBufferView = struct {
                     const last_chunk = wctx.current_vline.chunks.items[last_idx];
                     if (last_chunk.chunk != chunk) return false;
 
-                    return last_chunk.grapheme_start + last_chunk.width == span.col_start and
-                        last_chunk.byte_start + last_chunk.byte_len == span.byte_start;
+                    return last_chunk.col_start_in_chunk + last_chunk.width_cols == span.col_start and
+                        last_chunk.byte_start_in_chunk + last_chunk.byte_len == span.byte_start;
                 }
 
                 fn appendSpan(wctx: *@This(), chunk: *const TextChunk, span: utf8.GraphemeSpan, track_wrap_breaks: bool) void {
@@ -1705,15 +1742,15 @@ pub const UnifiedTextBufferView = struct {
 
                     if (wctx.canExtendLastChunk(chunk, span)) {
                         const last_idx = wctx.current_vline.chunks.items.len - 1;
-                        wctx.current_vline.chunks.items[last_idx].width += span_width;
+                        wctx.current_vline.chunks.items[last_idx].width_cols += span_width;
                         wctx.current_vline.chunks.items[last_idx].byte_len += span_byte_len;
                     } else {
                         wctx.current_vline.chunks.append(wctx.allocator, VirtualChunk{
-                            .grapheme_start = span.col_start,
-                            .width = span_width,
-                            .byte_start = span.byte_start,
-                            .byte_len = span_byte_len,
                             .chunk = chunk,
+                            .byte_start_in_chunk = span.byte_start,
+                            .byte_len = span_byte_len,
+                            .col_start_in_chunk = span.col_start,
+                            .width_cols = span_width,
                         }) catch {};
                     }
 
@@ -1772,20 +1809,20 @@ pub const UnifiedTextBufferView = struct {
 
                     var split_tail: ?VirtualChunk = null;
                     const wrap_chunk = wctx.current_vline.chunks.items[wrap_idx];
-                    if (saved_byte_len < wrap_chunk.byte_len and saved_width < wrap_chunk.width) {
+                    if (saved_byte_len < wrap_chunk.byte_len and saved_width < wrap_chunk.width_cols) {
                         split_tail = .{
                             .chunk = wrap_chunk.chunk,
-                            .grapheme_start = wrap_chunk.grapheme_start + saved_width,
-                            .width = wrap_chunk.width - saved_width,
-                            .byte_start = wrap_chunk.byte_start + saved_byte_len,
+                            .byte_start_in_chunk = wrap_chunk.byte_start_in_chunk + saved_byte_len,
                             .byte_len = wrap_chunk.byte_len - saved_byte_len,
+                            .col_start_in_chunk = wrap_chunk.col_start_in_chunk + saved_width,
+                            .width_cols = wrap_chunk.width_cols - saved_width,
                         };
                     }
 
                     const suffix_chunks = wctx.current_vline.chunks.items[wrap_idx + 1 ..];
 
                     wctx.current_vline.chunks.items[wrap_idx].byte_len = saved_byte_len;
-                    wctx.current_vline.chunks.items[wrap_idx].width = saved_width;
+                    wctx.current_vline.chunks.items[wrap_idx].width_cols = saved_width;
                     wctx.current_vline.chunks.items.len = wrap_idx + 1;
 
                     if (saved_byte_len == 0 or saved_width == 0) {
@@ -1801,8 +1838,8 @@ pub const UnifiedTextBufferView = struct {
                     if (split_tail) |tail_chunk| {
                         wctx.current_vline.chunks.append(wctx.allocator, tail_chunk) catch {};
                         wctx.global_byte_offset += tail_chunk.byte_len;
-                        wctx.global_col_offset += tail_chunk.width;
-                        wctx.line_position += tail_chunk.width;
+                        wctx.global_col_offset += tail_chunk.width_cols;
+                        wctx.line_position += tail_chunk.width_cols;
                     }
 
                     var moved_idx: usize = 0;
@@ -1812,8 +1849,8 @@ pub const UnifiedTextBufferView = struct {
                         wctx.current_vline.chunks.append(wctx.allocator, moved_chunk) catch {};
 
                         wctx.global_byte_offset += moved_chunk.byte_len;
-                        wctx.global_col_offset += moved_chunk.width;
-                        wctx.line_position += moved_chunk.width;
+                        wctx.global_col_offset += moved_chunk.width_cols;
+                        wctx.line_position += moved_chunk.width_cols;
                     }
 
                     return true;
