@@ -50,6 +50,16 @@ pub const StyledChunk = extern struct {
 pub const UnifiedTextBuffer = struct {
     const Self = @This();
 
+    pub const RecentChangeKind = enum(u8) {
+        other,
+        append,
+    };
+
+    pub const AppendAnchor = struct {
+        line_idx: u32,
+        seg_start: u32,
+    };
+
     mem_registry: MemRegistry,
     default_fg: ?RGBA,
     default_bg: ?RGBA,
@@ -75,6 +85,10 @@ pub const UnifiedTextBuffer = struct {
     /// Monotonic counter that increments on every content change. Views use this
     /// to detect stale caches even after clearViewDirty() runs.
     content_epoch: u64,
+    recent_change_kind: RecentChangeKind,
+    recent_change_epoch: u64,
+    recent_append_line_idx: u32,
+    recent_append_seg_start: u32,
 
     // Per-line highlight cache (invalidated on edits)
     // Maps line_idx to highlights for that line
@@ -256,6 +270,10 @@ pub const UnifiedTextBuffer = struct {
             .next_view_id = 0,
             .free_view_ids = free_view_ids,
             .content_epoch = 0,
+            .recent_change_kind = .other,
+            .recent_change_epoch = 0,
+            .recent_append_line_idx = 0,
+            .recent_append_seg_start = 0,
             .line_highlights = .{},
             .line_spans = .{},
             .highlight_batch_depth = 0,
@@ -346,10 +364,23 @@ pub const UnifiedTextBuffer = struct {
         return self.content_epoch;
     }
 
+    pub fn getAppendAnchorForEpoch(self: *const Self, epoch: u64) ?AppendAnchor {
+        if (self.recent_change_kind != .append or self.recent_change_epoch != epoch) {
+            return null;
+        }
+
+        return .{
+            .line_idx = self.recent_append_line_idx,
+            .seg_start = self.recent_append_seg_start,
+        };
+    }
+
     fn markAllViewsDirty(self: *Self) void {
         // Increment epoch first so views see the new value when checking caches.
         // Use wrapping add for safety, though u64 won't overflow in practice.
         self.content_epoch +%= 1;
+        self.recent_change_kind = .other;
+        self.recent_change_epoch = self.content_epoch;
         for (self.view_dirty_flags.items) |*flag| {
             flag.* = true;
         }
@@ -513,6 +544,16 @@ pub const UnifiedTextBuffer = struct {
             return;
         }
 
+        var append_anchor_line_idx: u32 = 0;
+        var append_anchor_seg_start: u32 = 0;
+        const line_count_before = self._rope.markerCount(.linestart);
+        if (line_count_before > 0) {
+            append_anchor_line_idx = line_count_before - 1;
+            if (self._rope.getMarker(.linestart, append_anchor_line_idx)) |marker| {
+                append_anchor_seg_start = marker.leaf_index;
+            }
+        }
+
         // The rope's boundary rewrite will handle normalization at join points
         var result = try self.textToSegments(self.global_allocator, text, mem_id, 0, false);
         defer result.segments.deinit(result.allocator);
@@ -521,6 +562,10 @@ pub const UnifiedTextBuffer = struct {
         try self._rope.insert_slice(insert_pos, result.segments.items);
 
         self.markAllViewsDirty();
+        self.recent_change_kind = .append;
+        self.recent_change_epoch = self.content_epoch;
+        self.recent_append_line_idx = append_anchor_line_idx;
+        self.recent_append_seg_start = append_anchor_seg_start;
     }
 
     /// Internal setText that doesn't call clear (for use by setStyledText)

@@ -2548,6 +2548,54 @@ test "TextBufferView measureForDimensions - word wrap agrees with getVirtualLine
     }
 }
 
+test "TextBufferView measureForDimensions - append stream agrees with getVirtualLines" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    const link_pool = link.initGlobalLinkPool(std.testing.allocator);
+    defer link.deinitGlobalLinkPool();
+
+    var tb = try TextBuffer.init(std.testing.allocator, pool, link_pool, .wcwidth);
+    defer tb.deinit();
+
+    var view = try TextBufferView.init(std.testing.allocator, tb);
+    defer view.deinit();
+
+    try tb.setText("seed");
+    view.setWrapMode(.word);
+
+    const token = "token ";
+    const newline = "\n";
+    const token_mem_id = try tb.registerMemBuffer(token, false);
+    const newline_mem_id = try tb.registerMemBuffer(newline, false);
+
+    const width: u32 = 18;
+
+    var step: usize = 0;
+    while (step < 80) : (step += 1) {
+        try tb.appendFromMemId(token_mem_id);
+        if ((step + 1) % 9 == 0) {
+            try tb.appendFromMemId(newline_mem_id);
+        }
+
+        const measure1 = try view.measureForDimensions(width, 0);
+        const measure2 = try view.measureForDimensions(width, 0);
+
+        try std.testing.expectEqual(measure1.line_count, measure2.line_count);
+        try std.testing.expectEqual(measure1.width_cols_max, measure2.width_cols_max);
+
+        view.setWrapWidth(width);
+        const vlines = view.getVirtualLines();
+
+        var width_cols_max: u32 = 0;
+        for (vlines) |vline| {
+            width_cols_max = @max(width_cols_max, vline.width_cols);
+        }
+
+        try std.testing.expectEqual(@as(u32, @intCast(vlines.len)), measure1.line_count);
+        try std.testing.expectEqual(width_cols_max, measure1.width_cols_max);
+    }
+}
+
 test "TextBufferView truncation - basic truncate single line" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();
