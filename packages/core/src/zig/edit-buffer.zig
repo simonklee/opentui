@@ -647,6 +647,72 @@ pub const EditBuffer = struct {
         self.emitNativeEvent("content-changed");
     }
 
+    const NextBoundaryScanContext = struct {
+        cols_before: u32,
+        local_cursor_col: u32,
+        line_width: u32,
+        passed_cursor: bool,
+        chunk_bytes: []const u8,
+        boundary_col: ?u32 = null,
+
+        fn consume(ctx_ptr: *anyopaque, span: seg_mod.GraphemeSpan) anyerror!void {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            if (!isEditorWordBoundaryKind(span.break_after)) return;
+
+            const break_col = span.col_start;
+            const target_col = ctx.cols_before + span.col_start + @as(u32, span.col_width);
+
+            if (ctx.passed_cursor or break_col > ctx.local_cursor_col) {
+                if (target_col <= ctx.line_width) {
+                    ctx.boundary_col = target_col;
+                    return error.EditorBoundaryFound;
+                }
+                return;
+            }
+
+            if (!ctx.passed_cursor and
+                break_col == ctx.local_cursor_col and
+                isCursorAlignedScriptTransitionBoundary(span, ctx.chunk_bytes))
+            {
+                if (target_col <= ctx.line_width) {
+                    ctx.boundary_col = target_col;
+                    return error.EditorBoundaryFound;
+                }
+            }
+        }
+    };
+
+    const PrevBoundaryScanContext = struct {
+        cols_before: u32,
+        cursor_col: u32,
+        last_boundary: ?u32 = null,
+
+        fn consume(ctx_ptr: *anyopaque, span: seg_mod.GraphemeSpan) anyerror!void {
+            const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
+            if (!isEditorWordBoundaryKind(span.break_after)) return;
+
+            const boundary_col = ctx.cols_before + span.col_start + @as(u32, span.col_width);
+            if (boundary_col < ctx.cursor_col) {
+                ctx.last_boundary = boundary_col;
+            }
+        }
+    };
+
+    fn isEditorWordBoundaryKind(kind: utf8.BreakKind) bool {
+        return switch (kind) {
+            .whitespace, .punctuation, .script_transition => true,
+            else => false,
+        };
+    }
+
+    fn isCursorAlignedScriptTransitionBoundary(span: seg_mod.GraphemeSpan, chunk_bytes: []const u8) bool {
+        if (span.break_after != .script_transition) return false;
+        const break_byte_offset: usize = @intCast(span.byte_start);
+        if (break_byte_offset >= chunk_bytes.len) return false;
+        const break_cp = utf8.decodeUtf8Unchecked(chunk_bytes, break_byte_offset).cp;
+        return utf8.isWordCodepoint(break_cp);
+    }
+
     pub fn getNextWordBoundary(self: *EditBuffer) Cursor {
         if (self.cursors.items.len == 0) return .{ .row = 0, .col = 0 };
         const cursor = self.cursors.items[0];
@@ -669,55 +735,26 @@ pub const EditBuffer = struct {
 
                 // Check this chunk if cursor is within it OR if we've already passed the cursor
                 if (cursor.col < next_cols or passed_cursor) {
-                    const wrap_offsets = self.tb.getWrapOffsetsFor(chunk) catch {
-                        cols_before = next_cols;
-                        passed_cursor = true;
-                        continue;
+                    var scan_ctx = NextBoundaryScanContext{
+                        .cols_before = cols_before,
+                        .local_cursor_col = if (cursor.col > cols_before) cursor.col - cols_before else 0,
+                        .line_width = line_width,
+                        .passed_cursor = passed_cursor,
+                        .chunk_bytes = chunk.getBytes(self.tb.memRegistry()),
                     };
-                    const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                    const graphemes: []const seg_mod.GraphemeInfo = if (is_ascii_only)
-                        &[_]seg_mod.GraphemeInfo{}
-                    else
-                        chunk.getGraphemes(self.tb.memRegistry(), self.tb.getAllocator(), self.tb.tabWidth(), self.tb.widthMethod()) catch &[_]seg_mod.GraphemeInfo{};
-                    var grapheme_idx: usize = 0;
-                    var col_delta: i64 = 0;
 
-                    // For chunks containing or after the cursor, find the first break after cursor position
-                    const local_cursor_col = if (cursor.col > cols_before) cursor.col - cols_before else 0;
+                    self.tb.forEachLayoutSpansFor(chunk, &scan_ctx, NextBoundaryScanContext.consume) catch |err| switch (err) {
+                        error.EditorBoundaryFound => {},
+                        else => {
+                            cols_before = next_cols;
+                            passed_cursor = true;
+                            continue;
+                        },
+                    };
 
-                    for (wrap_offsets) |wrap_break| {
-                        const break_info = iter_mod.charOffsetToColumn(wrap_break.char_offset, graphemes, &grapheme_idx, &col_delta);
-                        const break_col = break_info.col;
-
-                        // If we've passed the cursor chunk, any break is valid
-                        // If we're in the cursor chunk, break must be after cursor position
-                        if (passed_cursor or break_col > local_cursor_col) {
-                            // break_col points at the break grapheme start.
-                            // Adding width moves the cursor to the boundary after it.
-                            const target_col = cols_before + break_col + break_info.width;
-                            if (target_col <= line_width) {
-                                const offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, target_col) orelse cursor.offset;
-                                return .{ .row = cursor.row, .col = target_col, .desired_col = target_col, .offset = offset };
-                            }
-                        }
-
-                        // A boundary at the cursor can still be the next word step
-                        // for script-transition cases like "a日", "日a", or "丽abc".
-                        // Only accept it when the boundary starts on a word codepoint.
-                        if (!passed_cursor and break_col == local_cursor_col) {
-                            const break_byte_offset: usize = @intCast(wrap_break.byte_offset);
-                            const chunk_bytes = chunk.getBytes(self.tb.memRegistry());
-                            if (break_byte_offset < chunk_bytes.len) {
-                                const break_cp = utf8.decodeUtf8Unchecked(chunk_bytes, break_byte_offset).cp;
-                                if (utf8.isWordCodepoint(break_cp)) {
-                                    const target_col = cols_before + break_col + break_info.width;
-                                    if (target_col <= line_width) {
-                                        const offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, target_col) orelse cursor.offset;
-                                        return .{ .row = cursor.row, .col = target_col, .desired_col = target_col, .offset = offset };
-                                    }
-                                }
-                            }
-                        }
+                    if (scan_ctx.boundary_col) |target_col| {
+                        const offset = iter_mod.coordsToOffset(self.tb.rope(), cursor.row, target_col) orelse cursor.offset;
+                        return .{ .row = cursor.row, .col = target_col, .desired_col = target_col, .offset = offset };
                     }
 
                     // Mark that we've processed/passed the cursor position
@@ -753,27 +790,18 @@ pub const EditBuffer = struct {
             if (seg.asText()) |chunk| {
                 const next_cols = cols_before + chunk.width;
 
-                const wrap_offsets = self.tb.getWrapOffsetsFor(chunk) catch {
+                var scan_ctx = PrevBoundaryScanContext{
+                    .cols_before = cols_before,
+                    .cursor_col = cursor.col,
+                    .last_boundary = last_boundary,
+                };
+
+                self.tb.forEachLayoutSpansFor(chunk, &scan_ctx, PrevBoundaryScanContext.consume) catch {
                     cols_before = next_cols;
+                    if (cursor.col <= cols_before) break;
                     continue;
                 };
-                const is_ascii_only = (chunk.flags & TextChunk.Flags.ASCII_ONLY) != 0;
-                const graphemes: []const seg_mod.GraphemeInfo = if (is_ascii_only)
-                    &[_]seg_mod.GraphemeInfo{}
-                else
-                    chunk.getGraphemes(self.tb.memRegistry(), self.tb.getAllocator(), self.tb.tabWidth(), self.tb.widthMethod()) catch &[_]seg_mod.GraphemeInfo{};
-                var grapheme_idx: usize = 0;
-                var col_delta: i64 = 0;
-
-                for (wrap_offsets) |wrap_break| {
-                    const break_info = iter_mod.charOffsetToColumn(wrap_break.char_offset, graphemes, &grapheme_idx, &col_delta);
-                    // break_info follows the same convention as getNextWordBoundary:
-                    // use break start + grapheme width to land after the break grapheme.
-                    const boundary_col = cols_before + break_info.col + break_info.width;
-                    if (boundary_col < cursor.col) {
-                        last_boundary = boundary_col;
-                    }
-                }
+                last_boundary = scan_ctx.last_boundary;
 
                 cols_before = next_cols;
                 if (cursor.col <= cols_before) break;
