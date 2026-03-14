@@ -4055,3 +4055,240 @@ test "Thai: ว่ is a single grapheme cluster" {
     try testing.expectEqual(@as(usize, 1), result.items.len);
     try testing.expectEqual(@as(u8, 1), result.items[0].width);
 }
+
+const BatchScanCollection = struct {
+    spans: std.ArrayListUnmanaged(utf8.GraphemeSpan),
+    total_bytes: u32,
+    total_cols: u32,
+
+    fn deinit(self: *BatchScanCollection, allocator: std.mem.Allocator) void {
+        self.spans.deinit(allocator);
+    }
+};
+
+fn expectScanLayoutWrapBreakParity(text: []const u8, tab_width: u8, is_ascii_only: bool, width_method: utf8.WidthMethod) !void {
+    var legacy = utf8.WrapBreakResult.init(testing.allocator);
+    defer legacy.deinit();
+    try utf8.findWrapBreaks(text, &legacy, width_method);
+
+    var scan = utf8.LayoutScanResult.init(testing.allocator);
+    defer scan.deinit();
+    try utf8.scanLayout(text, tab_width, is_ascii_only, width_method, &scan);
+
+    var break_idx: usize = 0;
+    for (scan.spans.items, 0..) |span, span_idx| {
+        if (span.break_after == .none) continue;
+
+        try testing.expect(break_idx < legacy.breaks.items.len);
+        try testing.expectEqual(legacy.breaks.items[break_idx].byte_offset, span.byte_start);
+        try testing.expectEqual(legacy.breaks.items[break_idx].char_offset, @as(u32, @intCast(span_idx)));
+        break_idx += 1;
+    }
+
+    try testing.expectEqual(legacy.breaks.items.len, break_idx);
+}
+
+fn expectScanLayoutGraphemeParity(text: []const u8, tab_width: u8, is_ascii_only: bool, width_method: utf8.WidthMethod) !void {
+    var legacy: std.ArrayListUnmanaged(utf8.GraphemeInfo) = .{};
+    defer legacy.deinit(testing.allocator);
+    try utf8.findGraphemeInfo(text, tab_width, is_ascii_only, width_method, testing.allocator, &legacy);
+
+    var scan = utf8.LayoutScanResult.init(testing.allocator);
+    defer scan.deinit();
+    try utf8.scanLayout(text, tab_width, is_ascii_only, width_method, &scan);
+
+    var idx: usize = 0;
+    for (scan.spans.items) |span| {
+        const byte_start: usize = @intCast(span.byte_start);
+        const is_tab = span.byte_len == 1 and byte_start < text.len and text[byte_start] == '\t';
+        if (span.byte_len == 1 and !is_tab) continue;
+
+        try testing.expect(idx < legacy.items.len);
+        try testing.expectEqual(legacy.items[idx].byte_offset, span.byte_start);
+        try testing.expectEqual(legacy.items[idx].byte_len, @as(u8, @intCast(span.byte_len)));
+        try testing.expectEqual(legacy.items[idx].width, @as(u8, @intCast(span.col_width)));
+        try testing.expectEqual(legacy.items[idx].col_offset, span.col_start);
+        idx += 1;
+    }
+
+    try testing.expectEqual(legacy.items.len, idx);
+}
+
+fn collectScanLayoutBatches(
+    text: []const u8,
+    tab_width: u8,
+    is_ascii_only: bool,
+    width_method: utf8.WidthMethod,
+    scratch_len: usize,
+    include_breaks: bool,
+) !BatchScanCollection {
+    var collection = BatchScanCollection{
+        .spans = .{},
+        .total_bytes = 0,
+        .total_cols = 0,
+    };
+    errdefer collection.deinit(testing.allocator);
+
+    var cursor = utf8.LayoutScanCursor.init();
+    const scratch = try testing.allocator.alloc(utf8.GraphemeSpan, scratch_len);
+    defer testing.allocator.free(scratch);
+
+    while (true) {
+        const batch = if (include_breaks)
+            try utf8.scanLayoutNextBatch(text, tab_width, is_ascii_only, width_method, &cursor, scratch)
+        else
+            try utf8.scanLayoutNextBatchNoBreaks(text, tab_width, is_ascii_only, width_method, &cursor, scratch);
+
+        try collection.spans.appendSlice(testing.allocator, batch.spans);
+        collection.total_bytes += batch.consumed_bytes;
+        collection.total_cols += batch.consumed_cols;
+
+        if (batch.done) break;
+    }
+
+    return collection;
+}
+
+test "scanLayout: full scan matches legacy wrap-break and grapheme scanners" {
+    const wrap_break_cases = [_]struct {
+        text: []const u8,
+        tab_width: u8,
+        is_ascii_only: bool,
+    }{
+        .{ .text = "Hello, world! -path/file.", .tab_width = 4, .is_ascii_only = true },
+        .{ .text = "Hello 世界 test", .tab_width = 4, .is_ascii_only = false },
+        .{ .text = "Hi👋🏿Bye", .tab_width = 4, .is_ascii_only = false },
+        .{ .text = "日本語abc", .tab_width = 4, .is_ascii_only = false },
+    };
+
+    const grapheme_cases = [_]struct {
+        text: []const u8,
+        tab_width: u8,
+        is_ascii_only: bool,
+    }{
+        .{ .text = "hello\tworld", .tab_width = 4, .is_ascii_only = false },
+        .{ .text = "hello世界", .tab_width = 4, .is_ascii_only = false },
+        .{ .text = "👩‍🚀", .tab_width = 4, .is_ascii_only = false },
+        .{ .text = "e\u{0301}test", .tab_width = 4, .is_ascii_only = false },
+    };
+
+    for ([_]utf8.WidthMethod{ .wcwidth, .unicode, .no_zwj }) |width_method| {
+        for (wrap_break_cases) |case| {
+            try expectScanLayoutWrapBreakParity(case.text, case.tab_width, case.is_ascii_only, width_method);
+        }
+        for (grapheme_cases) |case| {
+            try expectScanLayoutGraphemeParity(case.text, case.tab_width, case.is_ascii_only, width_method);
+        }
+    }
+}
+
+test "scanLayout: batches match full scan across width methods and scratch sizes" {
+    const cases = [_]struct {
+        text: []const u8,
+        tab_width: u8,
+        is_ascii_only: bool,
+    }{
+        .{ .text = "Hello, world! -path/file.", .tab_width = 4, .is_ascii_only = true },
+        .{ .text = "Hello 世界 test", .tab_width = 4, .is_ascii_only = false },
+        .{ .text = "👋🏻a\t日本語abc", .tab_width = 4, .is_ascii_only = false },
+        .{ .text = "👩‍🚀-🚀", .tab_width = 4, .is_ascii_only = false },
+    };
+
+    for ([_]utf8.WidthMethod{ .wcwidth, .unicode, .no_zwj }) |width_method| {
+        for (cases) |case| {
+            var full = utf8.LayoutScanResult.init(testing.allocator);
+            defer full.deinit();
+            try utf8.scanLayout(case.text, case.tab_width, case.is_ascii_only, width_method, &full);
+
+            for ([_]usize{ 1, 2, 3, 5 }) |scratch_len| {
+                var batched = try collectScanLayoutBatches(case.text, case.tab_width, case.is_ascii_only, width_method, scratch_len, true);
+                defer batched.deinit(testing.allocator);
+
+                try testing.expectEqual(full.total_bytes, batched.total_bytes);
+                try testing.expectEqual(full.total_cols, batched.total_cols);
+                try testing.expectEqual(full.spans.items.len, batched.spans.items.len);
+
+                for (full.spans.items, 0..) |span, idx| {
+                    try testing.expectEqualDeep(span, batched.spans.items[idx]);
+                }
+            }
+        }
+    }
+}
+
+test "scanLayout: no-break batches preserve spans and clear break markers" {
+    const text = "가a-b\t👩‍🚀";
+    var full = utf8.LayoutScanResult.init(testing.allocator);
+    defer full.deinit();
+    try utf8.scanLayout(text, 4, false, .unicode, &full);
+
+    var batched = try collectScanLayoutBatches(text, 4, false, .unicode, 2, false);
+    defer batched.deinit(testing.allocator);
+
+    try testing.expectEqual(full.total_bytes, batched.total_bytes);
+    try testing.expectEqual(full.total_cols, batched.total_cols);
+    try testing.expectEqual(full.spans.items.len, batched.spans.items.len);
+
+    for (full.spans.items, 0..) |span, idx| {
+        const batch_span = batched.spans.items[idx];
+        try testing.expectEqual(span.byte_start, batch_span.byte_start);
+        try testing.expectEqual(span.byte_len, batch_span.byte_len);
+        try testing.expectEqual(span.col_start, batch_span.col_start);
+        try testing.expectEqual(span.col_width, batch_span.col_width);
+        try testing.expectEqual(utf8.BreakKind.none, batch_span.break_after);
+    }
+}
+
+test "scanLayout: malformed UTF-8 always makes byte progress" {
+    const cases = [_][]const u8{
+        &[_]u8{0xE2},
+        &[_]u8{ 0xF0, 0x9F, 0x91 },
+        &[_]u8{ 0xE2, 0x28, 0xA1 },
+        &[_]u8{ 0x80, 0x80 },
+        &[_]u8{ 0xC2, 0x7F },
+    };
+
+    for ([_]utf8.WidthMethod{ .wcwidth, .unicode, .no_zwj }) |width_method| {
+        for (cases) |text| {
+            var full = utf8.LayoutScanResult.init(testing.allocator);
+            defer full.deinit();
+            try utf8.scanLayout(text, 4, false, width_method, &full);
+
+            try testing.expectEqual(@as(u32, @intCast(text.len)), full.total_bytes);
+            try testing.expect(full.spans.items.len > 0);
+            try testing.expectEqual(@as(u32, 0), full.spans.items[0].byte_start);
+
+            var previous_end: u32 = 0;
+            for (full.spans.items) |span| {
+                try testing.expect(span.byte_len >= 1);
+                try testing.expect(span.byte_start >= previous_end);
+                try testing.expect(span.byteEnd() <= text.len);
+                previous_end = span.byteEnd();
+            }
+            try testing.expectEqual(@as(u32, @intCast(text.len)), previous_end);
+
+            var batched = try collectScanLayoutBatches(text, 4, false, width_method, 1, true);
+            defer batched.deinit(testing.allocator);
+            try testing.expectEqual(@as(u32, @intCast(text.len)), batched.total_bytes);
+        }
+    }
+}
+
+test "scanLayout: break kinds distinguish whitespace punctuation and script transitions" {
+    const text = "a 가a-b";
+    var result = utf8.LayoutScanResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.scanLayout(text, 4, false, .unicode, &result);
+
+    try testing.expectEqual(@as(usize, 6), result.spans.items.len);
+    try testing.expectEqual(utf8.BreakKind.none, result.spans.items[0].break_after);
+    try testing.expectEqual(utf8.BreakKind.whitespace, result.spans.items[1].break_after);
+    try testing.expectEqual(utf8.BreakKind.script_transition, result.spans.items[2].break_after);
+    try testing.expectEqual(utf8.BreakKind.none, result.spans.items[3].break_after);
+    try testing.expectEqual(utf8.BreakKind.punctuation, result.spans.items[4].break_after);
+    try testing.expectEqual(utf8.BreakKind.none, result.spans.items[5].break_after);
+}
+
+test "scanLayout: lookahead stays within bound" {
+    try testing.expect(utf8.LAYOUT_SCAN_MAX_LOOKAHEAD_CODEPOINTS <= 2);
+}

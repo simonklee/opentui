@@ -363,6 +363,77 @@ fn benchFindWrapBreaks(
     return results.toOwnedSlice(results_alloc);
 }
 
+fn benchScanLayout(
+    results_alloc: std.mem.Allocator,
+    iterations: usize,
+    bench_filter: ?[]const u8,
+) ![]BenchResult {
+    var results: std.ArrayListUnmanaged(BenchResult) = .{};
+    errdefer results.deinit(results_alloc);
+
+    {
+        const name = "scanLayout: ASCII (10KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const alloc = temp.allocator();
+            const text = try generateAsciiText(alloc, 10 * 1024);
+
+            var result = utf8.LayoutScanResult.init(alloc);
+            defer result.deinit();
+
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                try utf8.scanLayout(text, 4, true, .unicode, &result);
+                stats.record(timer.read());
+            }
+
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
+        }
+    }
+
+    {
+        const name = "scanLayout: Mixed (10KB)";
+        if (bench_utils.matchesBenchFilter(name, bench_filter)) {
+            var temp = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            defer temp.deinit();
+            const alloc = temp.allocator();
+            const text = try generateMixedText(alloc, 10 * 1024);
+
+            var result = utf8.LayoutScanResult.init(alloc);
+            defer result.deinit();
+
+            var stats = BenchStats{};
+            for (0..iterations) |_| {
+                var timer = try std.time.Timer.start();
+                try utf8.scanLayout(text, 4, false, .unicode, &result);
+                stats.record(timer.read());
+            }
+
+            try results.append(results_alloc, BenchResult{
+                .name = name,
+                .min_ns = stats.min_ns,
+                .avg_ns = stats.avg(),
+                .max_ns = stats.max_ns,
+                .total_ns = stats.total_ns,
+                .iterations = iterations,
+                .mem_stats = null,
+            });
+        }
+    }
+
+    return results.toOwnedSlice(results_alloc);
+}
+
 // Benchmark findWrapPosByWidth
 fn benchFindWrapPosByWidth(
     results_alloc: std.mem.Allocator,
@@ -782,6 +853,10 @@ pub fn run(
     // findWrapBreaks benchmarks
     const wrap_breaks_results = try benchFindWrapBreaks(allocator, iterations, bench_filter);
     try all_results.appendSlice(allocator, wrap_breaks_results);
+
+    // scanLayout benchmarks
+    const scan_layout_results = try benchScanLayout(allocator, iterations, bench_filter);
+    try all_results.appendSlice(allocator, scan_layout_results);
 
     // findWrapPosByWidth benchmarks
     const wrap_pos_results = try benchFindWrapPosByWidth(allocator, iterations, bench_filter);
