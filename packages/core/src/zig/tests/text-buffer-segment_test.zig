@@ -1,10 +1,13 @@
 const std = @import("std");
 const testing = std.testing;
 const seg_mod = @import("../text-buffer-segment.zig");
+const mem_registry_mod = @import("../mem-registry.zig");
+const utf8 = @import("../utf8.zig");
 
 const Segment = seg_mod.Segment;
 const UnifiedRope = seg_mod.UnifiedRope;
 const TextChunk = seg_mod.TextChunk;
+const MemRegistry = mem_registry_mod.MemRegistry;
 
 test "Segment.measure - text chunk" {
     const chunk = TextChunk{
@@ -69,6 +72,47 @@ test "Segment.asText" {
 
     const brk_seg = Segment{ .brk = {} };
     try testing.expect(brk_seg.asText() == null);
+}
+
+test "TextChunk.getLayoutSpans caches canonical spans" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var registry = MemRegistry.init(testing.allocator);
+    defer registry.deinit();
+
+    const text = "가\ta-b";
+    const mem_id = try registry.register(text, false);
+    var chunk = TextChunk{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = @intCast(utf8.calculateTextWidth(text, 4, false, .unicode)),
+        .flags = 0,
+    };
+
+    const first = try chunk.getLayoutSpans(&registry, allocator, 4, .unicode);
+    const second = try chunk.getLayoutSpans(&registry, allocator, 4, .unicode);
+
+    try testing.expectEqual(first.ptr, second.ptr);
+    try testing.expectEqual(@as(usize, 5), first.len);
+
+    try testing.expectEqual(@as(u32, 0), first[0].byte_start);
+    try testing.expectEqual(@as(u32, 3), first[0].byte_len);
+    try testing.expectEqual(@as(u32, 0), first[0].col_start);
+    try testing.expectEqual(@as(u16, 2), first[0].col_width);
+    try testing.expectEqual(utf8.BreakKind.none, first[0].break_after);
+
+    try testing.expectEqual(@as(u32, 3), first[1].byte_start);
+    try testing.expectEqual(@as(u32, 1), first[1].byte_len);
+    try testing.expectEqual(@as(u32, 2), first[1].col_start);
+    try testing.expectEqual(@as(u16, 4), first[1].col_width);
+    try testing.expectEqual(utf8.BreakKind.whitespace, first[1].break_after);
+
+    try testing.expectEqual(utf8.BreakKind.none, first[2].break_after);
+    try testing.expectEqual(utf8.BreakKind.punctuation, first[3].break_after);
+    try testing.expectEqual(utf8.BreakKind.none, first[4].break_after);
 }
 
 test "Metrics.add - two text segments" {

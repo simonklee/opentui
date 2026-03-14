@@ -517,48 +517,19 @@ pub fn scanLayout(
     result.total_bytes = @intCast(text.len);
 }
 
-fn findLayoutSpanIndex(spans: []const GraphemeSpan, byte_offset: u32) ?usize {
-    for (spans, 0..) |span, idx| {
-        if (span.byte_start == byte_offset) return idx;
-    }
-    return null;
-}
-
-fn rebuildLayoutScanCursor(
-    text: []const u8,
+inline fn setLayoutScanCursor(
+    cursor: *LayoutScanCursor,
     byte_offset: u32,
     col_offset: u32,
-    width_method: WidthMethod,
-    cursor: *LayoutScanCursor,
-) LayoutScanError!void {
-    const Decoded = struct {
-        cp: u21,
-        len: usize,
-    };
-
-    if (byte_offset > text.len) return error.InvalidCursorOffset;
-
-    cursor.reset();
+    prev_cp: ?u21,
+    break_state: uucode.grapheme.BreakState,
+    prev_word_class: WordClass,
+) void {
     cursor.byte_offset = byte_offset;
     cursor.col_offset = col_offset;
-
-    var pos: usize = 0;
-    while (pos < byte_offset) {
-        const b0 = text[pos];
-        const dec: Decoded = if (b0 < 0x80)
-            .{ .cp = @as(u21, b0), .len = @as(usize, 1) }
-        else blk: {
-            const decoded = decodeUtf8Unchecked(text, pos);
-            break :blk .{ .cp = decoded.cp, .len = @as(usize, decoded.len) };
-        };
-
-        if (pos + dec.len > byte_offset) return error.InvalidCursorOffset;
-
-        _ = isGraphemeBreak(cursor.prev_cp, dec.cp, &cursor.break_state, width_method);
-        cursor.prev_cp = dec.cp;
-        cursor.prev_word_class = classifyWordClass(dec.cp);
-        pos += dec.len;
-    }
+    cursor.prev_cp = prev_cp;
+    cursor.break_state = break_state;
+    cursor.prev_word_class = prev_word_class;
 }
 
 fn scanLayoutBatchInternal(
@@ -570,53 +541,157 @@ fn scanLayoutBatchInternal(
     scratch: []GraphemeSpan,
     include_breaks: bool,
 ) LayoutScanError!LayoutSpanBatch {
-    var full = LayoutScanResult.init(std.heap.page_allocator);
-    defer full.deinit();
-    try scanLayout(text, tab_width, is_ascii_only, width_method, &full);
-
-    if (cursor.byte_offset > full.total_bytes) return error.InvalidCursorOffset;
-
-    const expected_start_col = blk: {
-        if (cursor.byte_offset == full.total_bytes) break :blk full.total_cols;
-        const start_idx = findLayoutSpanIndex(full.spans.items, cursor.byte_offset) orelse return error.InvalidCursorOffset;
-        break :blk full.spans.items[start_idx].col_start;
+    const Decoded = struct {
+        cp: u21,
+        len: usize,
     };
-    if (cursor.col_offset != expected_start_col) return error.InvalidCursorOffset;
 
-    if (cursor.byte_offset == full.total_bytes or scratch.len == 0) {
-        try rebuildLayoutScanCursor(text, cursor.byte_offset, expected_start_col, width_method, cursor);
+    if (cursor.byte_offset > text.len) return error.InvalidCursorOffset;
+    if (cursor.byte_offset == 0 and cursor.col_offset != 0) return error.InvalidCursorOffset;
+    if (cursor.byte_offset != 0 and cursor.prev_cp == null) return error.InvalidCursorOffset;
+
+    if (cursor.byte_offset == text.len or scratch.len == 0) {
         return .{
             .spans = scratch[0..0],
             .consumed_bytes = 0,
             .consumed_cols = 0,
-            .done = cursor.byte_offset == full.total_bytes,
+            .done = cursor.byte_offset == text.len,
         };
     }
 
-    const start_idx = findLayoutSpanIndex(full.spans.items, cursor.byte_offset) orelse return error.InvalidCursorOffset;
-    const count = @min(scratch.len, full.spans.items.len - start_idx);
+    const start_byte = cursor.byte_offset;
+    const start_col = cursor.col_offset;
 
-    for (0..count) |idx| {
-        scratch[idx] = full.spans.items[start_idx + idx];
-        if (!include_breaks) {
-            scratch[idx].break_after = .none;
+    if (is_ascii_only) {
+        if (cursor.col_offset != cursor.byte_offset) return error.InvalidCursorOffset;
+
+        var pos: u32 = start_byte;
+        var count: usize = 0;
+        while (pos < text.len and count < scratch.len) : ({
+            pos += 1;
+            count += 1;
+        }) {
+            const b = text[pos];
+            scratch[count] = .{
+                .byte_start = pos,
+                .byte_len = 1,
+                .col_start = pos,
+                .col_width = 1,
+                .break_after = if (include_breaks) breakKindForCodepoint(b, b) else .none,
+            };
         }
+
+        const prev_cp: ?u21 = if (pos > 0) @as(u21, text[pos - 1]) else null;
+        const prev_word_class = if (pos > 0) classifyWordClass(text[pos - 1]) else WordClass.other;
+        setLayoutScanCursor(cursor, pos, pos, prev_cp, .default, prev_word_class);
+
+        return .{
+            .spans = scratch[0..count],
+            .consumed_bytes = cursor.byte_offset - start_byte,
+            .consumed_cols = cursor.col_offset - start_col,
+            .done = cursor.byte_offset == text.len,
+        };
     }
 
-    const start_byte = cursor.byte_offset;
-    const start_col = expected_start_col;
-    const last_span = scratch[count - 1];
-    const end_byte = last_span.byteEnd();
-    const end_col = last_span.colEnd();
-    const done = end_byte == full.total_bytes;
+    var pos: usize = start_byte;
+    var col = start_col;
+    var prev_cp = cursor.prev_cp;
+    var break_state = cursor.break_state;
+    var prev_word_class = cursor.prev_word_class;
 
-    try rebuildLayoutScanCursor(text, end_byte, end_col, width_method, cursor);
+    var cluster_started = false;
+    var cluster_start: usize = pos;
+    var cluster_col_start = col;
+    var cluster_width_state: GraphemeWidthState = undefined;
+    var cluster_break_kind: BreakKind = .none;
+    var cluster_class: WordClass = .other;
+    var count: usize = 0;
+
+    while (pos < text.len) {
+        const b0 = text[pos];
+        const decoded: Decoded = if (b0 < 0x80)
+            .{ .cp = @as(u21, b0), .len = 1 }
+        else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            break :blk .{ .cp = dec.cp, .len = @as(usize, dec.len) };
+        };
+
+        const curr_cp = decoded.cp;
+        const cp_len = decoded.len;
+        const curr_class = classifyWordClass(curr_cp);
+        const pre_break_state = break_state;
+        const pre_prev_cp = prev_cp;
+        const pre_prev_word_class = prev_word_class;
+        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+        const cp_width = charWidth(b0, curr_cp, tab_width);
+        const cp_break_kind = breakKindForCodepoint(b0, curr_cp);
+
+        if (!cluster_started) {
+            if (prev_cp != null and !is_break) {
+                return error.InvalidCursorOffset;
+            }
+
+            cluster_started = true;
+            cluster_start = pos;
+            cluster_col_start = col;
+            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
+            cluster_break_kind = cp_break_kind;
+            cluster_class = curr_class;
+        } else if (is_break) {
+            scratch[count] = .{
+                .byte_start = @intCast(cluster_start),
+                .byte_len = @intCast(pos - cluster_start),
+                .col_start = cluster_col_start,
+                .col_width = @intCast(cluster_width_state.width),
+                .break_after = finalizedBreakKind(cluster_break_kind, cluster_class, curr_class, include_breaks),
+            };
+            count += 1;
+            col += cluster_width_state.width;
+
+            if (count == scratch.len) {
+                setLayoutScanCursor(cursor, @intCast(pos), col, pre_prev_cp, pre_break_state, pre_prev_word_class);
+                return .{
+                    .spans = scratch[0..count],
+                    .consumed_bytes = cursor.byte_offset - start_byte,
+                    .consumed_cols = cursor.col_offset - start_col,
+                    .done = false,
+                };
+            }
+
+            cluster_start = pos;
+            cluster_col_start = col;
+            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
+            cluster_break_kind = cp_break_kind;
+            cluster_class = curr_class;
+        } else {
+            cluster_width_state.addCodepoint(curr_cp, cp_width);
+            cluster_break_kind = mergeBreakKind(cluster_break_kind, cp_break_kind);
+        }
+
+        prev_cp = curr_cp;
+        prev_word_class = curr_class;
+        pos += cp_len;
+    }
+
+    if (cluster_started) {
+        scratch[count] = .{
+            .byte_start = @intCast(cluster_start),
+            .byte_len = @intCast(text.len - cluster_start),
+            .col_start = cluster_col_start,
+            .col_width = @intCast(cluster_width_state.width),
+            .break_after = finalizedBreakKind(cluster_break_kind, cluster_class, null, include_breaks),
+        };
+        count += 1;
+        col += cluster_width_state.width;
+    }
+
+    setLayoutScanCursor(cursor, @intCast(text.len), col, prev_cp, break_state, prev_word_class);
 
     return .{
         .spans = scratch[0..count],
-        .consumed_bytes = end_byte - start_byte,
-        .consumed_cols = end_col - start_col,
-        .done = done,
+        .consumed_bytes = cursor.byte_offset - start_byte,
+        .consumed_cols = cursor.col_offset - start_col,
+        .done = true,
     };
 }
 

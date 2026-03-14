@@ -4066,6 +4066,57 @@ const BatchScanCollection = struct {
     }
 };
 
+const OracleFixture = struct {
+    text: []u8,
+    expected_starts: []u32,
+
+    fn deinit(self: *OracleFixture, allocator: std.mem.Allocator) void {
+        allocator.free(self.text);
+        allocator.free(self.expected_starts);
+    }
+};
+
+fn parseOracleFixtureLine(line: []const u8, allocator: std.mem.Allocator) !?OracleFixture {
+    const trimmed = std.mem.trim(u8, line, " \t\r");
+    if (trimmed.len == 0 or trimmed[0] == '#') return null;
+
+    const comment_index = std.mem.indexOfScalar(u8, trimmed, '#') orelse trimmed.len;
+    const body = std.mem.trimRight(u8, trimmed[0..comment_index], " \t");
+    if (body.len == 0) return null;
+
+    var text: std.ArrayListUnmanaged(u8) = .{};
+    errdefer text.deinit(allocator);
+    var starts: std.ArrayListUnmanaged(u32) = .{};
+    errdefer starts.deinit(allocator);
+
+    var tokens = std.mem.tokenizeAny(u8, body, " \t");
+    var next_is_break = false;
+    while (tokens.next()) |token| {
+        if (std.mem.eql(u8, token, "÷")) {
+            next_is_break = true;
+            continue;
+        }
+        if (std.mem.eql(u8, token, "×")) {
+            next_is_break = false;
+            continue;
+        }
+
+        if (next_is_break) {
+            try starts.append(allocator, @intCast(text.items.len));
+        }
+
+        const cp = try std.fmt.parseInt(u21, token, 16);
+        var buf: [4]u8 = undefined;
+        const len = try std.unicode.utf8Encode(cp, &buf);
+        try text.appendSlice(allocator, buf[0..len]);
+    }
+
+    return .{
+        .text = try text.toOwnedSlice(allocator),
+        .expected_starts = try starts.toOwnedSlice(allocator),
+    };
+}
+
 fn expectScanLayoutWrapBreakParity(text: []const u8, tab_width: u8, is_ascii_only: bool, width_method: utf8.WidthMethod) !void {
     var legacy = utf8.WrapBreakResult.init(testing.allocator);
     defer legacy.deinit();
@@ -4291,4 +4342,51 @@ test "scanLayout: break kinds distinguish whitespace punctuation and script tran
 
 test "scanLayout: lookahead stays within bound" {
     try testing.expect(utf8.LAYOUT_SCAN_MAX_LOOKAHEAD_CODEPOINTS <= 2);
+}
+
+test "scanLayout: libgrapheme oracle fixtures match unicode grapheme boundaries" {
+    const fixture_text = @embedFile("fixtures/libgrapheme-grapheme-oracle.fixture");
+    var lines = std.mem.splitScalar(u8, fixture_text, '\n');
+
+    while (lines.next()) |line| {
+        var fixture = (try parseOracleFixtureLine(line, testing.allocator)) orelse continue;
+        defer fixture.deinit(testing.allocator);
+
+        for ([_]utf8.WidthMethod{ .unicode, .wcwidth }) |width_method| {
+            var result = utf8.LayoutScanResult.init(testing.allocator);
+            defer result.deinit();
+            try utf8.scanLayout(fixture.text, 4, utf8.isAsciiOnly(fixture.text), width_method, &result);
+
+            try testing.expectEqual(fixture.expected_starts.len, result.spans.items.len);
+            for (fixture.expected_starts, result.spans.items) |expected_start, span| {
+                try testing.expectEqual(expected_start, span.byte_start);
+            }
+        }
+    }
+}
+
+test "scanLayout: libgrapheme oracle fixtures stream across batch boundaries" {
+    const fixture_text = @embedFile("fixtures/libgrapheme-grapheme-oracle.fixture");
+    var lines = std.mem.splitScalar(u8, fixture_text, '\n');
+
+    while (lines.next()) |line| {
+        var fixture = (try parseOracleFixtureLine(line, testing.allocator)) orelse continue;
+        defer fixture.deinit(testing.allocator);
+
+        var full = utf8.LayoutScanResult.init(testing.allocator);
+        defer full.deinit();
+        try utf8.scanLayout(fixture.text, 4, utf8.isAsciiOnly(fixture.text), .unicode, &full);
+
+        for ([_]usize{ 1, 2 }) |scratch_len| {
+            var batched = try collectScanLayoutBatches(fixture.text, 4, utf8.isAsciiOnly(fixture.text), .unicode, scratch_len, true);
+            defer batched.deinit(testing.allocator);
+
+            try testing.expectEqual(full.total_bytes, batched.total_bytes);
+            try testing.expectEqual(full.total_cols, batched.total_cols);
+            try testing.expectEqual(full.spans.items.len, batched.spans.items.len);
+            for (full.spans.items, 0..) |span, idx| {
+                try testing.expectEqualDeep(span, batched.spans.items[idx]);
+            }
+        }
+    }
 }

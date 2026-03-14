@@ -1,0 +1,10 @@
+# Derived from `/home/simon/extern/libgrapheme/data/GraphemeBreakTest.txt`
+# Unicode 17.0.0 grapheme-cluster break samples copied verbatim.
+
+÷ 000D × 000A ÷	# line 29 CRLF remains one grapheme cluster
+÷ 0061 × 0308 ÷	# line 750 combining mark stays in same cluster
+÷ 0061 × 0308 ÷ 0062 ÷	# line 762 combining mark then ASCII boundary
+÷ AC00 × 11A8 ÷	# line 545 Hangul LV + T stays combined
+÷ 1F1E6 × 1F1E7 ÷ 1F1E8 ÷ 0062 ÷	# line 756 RI pair then standalone RI then ASCII
+÷ 1F6D1 × 200D × 1F6D1 ÷	# line 769 emoji ZWJ sequence remains one cluster
+÷ 0915 × 094D × 200D × 0924 ÷	# line 776 Devanagari conjunct stays one cluster

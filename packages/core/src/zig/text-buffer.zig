@@ -28,6 +28,7 @@ pub const StyleSpan = seg_mod.StyleSpan;
 pub const WrapMode = seg_mod.WrapMode;
 pub const ChunkFitResult = seg_mod.ChunkFitResult;
 pub const GraphemeInfo = seg_mod.GraphemeInfo;
+pub const GraphemeSpan = seg_mod.GraphemeSpan;
 
 pub const SyntaxStyle = ss.SyntaxStyle;
 
@@ -149,6 +150,10 @@ pub const UnifiedTextBuffer = struct {
 
     pub fn getWrapOffsetsFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const utf8.WrapBreak {
         return chunk.getWrapOffsets(&self.mem_registry, self.allocator, self.width_method);
+    }
+
+    pub fn getLayoutSpansFor(self: *const Self, chunk: *const TextChunk) TextBufferError![]const seg_mod.GraphemeSpan {
+        return chunk.getLayoutSpans(&self.mem_registry, self.allocator, self.tab_width, self.width_method);
     }
 
     /// Accessor: walk all lines and segments via callbacks.

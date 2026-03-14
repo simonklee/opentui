@@ -33,6 +33,7 @@ pub const ChunkFitResult = struct {
 };
 
 pub const GraphemeInfo = utf8.GraphemeInfo;
+pub const GraphemeSpan = utf8.GraphemeSpan;
 
 /// A chunk represents a contiguous sequence of UTF-8 bytes from a specific memory buffer
 pub const TextChunk = struct {
@@ -43,6 +44,7 @@ pub const TextChunk = struct {
     flags: u8 = 0,
     graphemes: ?[]GraphemeInfo = null,
     wrap_offsets: ?[]utf8.WrapBreak = null,
+    layout_spans: ?[]const GraphemeSpan = null,
 
     pub const Flags = struct {
         pub const ASCII_ONLY: u8 = 0b00000001; // Printable ASCII only (32..126).
@@ -131,6 +133,32 @@ pub const TextChunk = struct {
         mut_self.wrap_offsets = wrap_offsets;
 
         return wrap_offsets;
+    }
+
+    pub fn getLayoutSpans(
+        self: *const TextChunk,
+        mem_registry: *const MemRegistry,
+        allocator: Allocator,
+        tabwidth: u8,
+        width_method: utf8.WidthMethod,
+    ) TextBufferError![]const GraphemeSpan {
+        const mut_self = @constCast(self);
+        if (self.layout_spans) |cached| {
+            return cached;
+        }
+
+        const chunk_bytes = self.getBytes(mem_registry);
+        var scan_result = utf8.LayoutScanResult.init(allocator);
+        defer scan_result.deinit();
+
+        utf8.scanLayout(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &scan_result) catch |err| switch (err) {
+            error.InvalidCursorOffset => unreachable,
+            error.OutOfMemory => return TextBufferError.OutOfMemory,
+        };
+
+        const layout_spans = try scan_result.spans.toOwnedSlice(allocator);
+        mut_self.layout_spans = layout_spans;
+        return layout_spans;
     }
 };
 
