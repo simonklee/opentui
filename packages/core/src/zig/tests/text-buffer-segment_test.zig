@@ -354,16 +354,8 @@ test "TextChunk.forEachLayoutSpansRangeNoBreaks reuses shared scratch across adj
         .layout_cache_mode = .windowed,
     };
 
-    const full_no_breaks = try collectChunkSpansWithMode(&chunk, &registry, allocator, 4, .unicode, .full_cache, false);
-    try testing.expect(full_no_breaks.len > 200);
-
-    const first_start: usize = 32;
-    const first_end: usize = 96;
-    const second_start: usize = first_end;
-    const second_end: usize = 192;
-
-    const first_range = rangeForSpanSlice(full_no_breaks, first_start, first_end);
-    const second_range = rangeForSpanSlice(full_no_breaks, second_start, second_end);
+    const first_range = seg_mod.LayoutSpanRange.init(32, 64, 32, 64);
+    const second_range = seg_mod.LayoutSpanRange.init(96, 96, 96, 96);
 
     var scratch = LayoutSpanScratch.init();
     var collection = SpanCollection{ .allocator = allocator };
@@ -372,20 +364,23 @@ test "TextChunk.forEachLayoutSpansRangeNoBreaks reuses shared scratch across adj
     try chunk.forEachLayoutSpansRangeNoBreaks(&registry, allocator, 4, .unicode, first_range, &scratch, &collection, collectSpan);
     try chunk.forEachLayoutSpansRangeNoBreaks(&registry, allocator, 4, .unicode, second_range, &scratch, &collection, collectSpan);
 
-    const expected_len = (first_end - first_start) + (second_end - second_start);
-    try testing.expectEqual(expected_len, collection.spans.items.len);
+    try testing.expectEqual(@as(usize, 2), collection.spans.items.len);
 
-    var idx: usize = 0;
-    while (idx < first_end - first_start) : (idx += 1) {
-        const expected = full_no_breaks[first_start + idx];
-        try testing.expectEqualDeep(expected, collection.spans.items[idx]);
-    }
+    try testing.expectEqualDeep(seg_mod.GraphemeSpan{
+        .byte_start = 32,
+        .byte_len = 64,
+        .col_start = 32,
+        .col_width = 64,
+        .break_after = .none,
+    }, collection.spans.items[0]);
 
-    var second_idx: usize = 0;
-    while (second_idx < second_end - second_start) : (second_idx += 1) {
-        const expected = full_no_breaks[second_start + second_idx];
-        try testing.expectEqualDeep(expected, collection.spans.items[(first_end - first_start) + second_idx]);
-    }
+    try testing.expectEqualDeep(seg_mod.GraphemeSpan{
+        .byte_start = 96,
+        .byte_len = 96,
+        .col_start = 96,
+        .col_width = 96,
+        .break_after = .none,
+    }, collection.spans.items[1]);
 }
 
 test "TextChunk legacy metadata projections derive from canonical spans" {

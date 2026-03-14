@@ -4363,6 +4363,51 @@ test "scanLayout: no-break batches preserve spans and clear break markers" {
     }
 }
 
+test "scanLayout: ASCII no-break batches coalesce printable runs" {
+    const text = "Hello - path/file with spaces";
+
+    var batched = try collectScanLayoutBatches(text, 4, true, .unicode, 1, false);
+    defer batched.deinit(testing.allocator);
+
+    try testing.expectEqual(@as(u32, @intCast(text.len)), batched.total_bytes);
+    try testing.expectEqual(@as(u32, @intCast(text.len)), batched.total_cols);
+    try testing.expectEqual(@as(usize, 1), batched.spans.items.len);
+
+    const span = batched.spans.items[0];
+    try testing.expectEqual(@as(u32, 0), span.byte_start);
+    try testing.expectEqual(@as(u32, @intCast(text.len)), span.byte_len);
+    try testing.expectEqual(@as(u32, 0), span.col_start);
+    try testing.expectEqual(@as(u16, @intCast(text.len)), span.col_width);
+    try testing.expectEqual(utf8.BreakKind.none, span.break_after);
+}
+
+test "scanLayout: ASCII no-break window batches coalesce per window" {
+    const text = "abcdefghijklmnopqrstuvwxyz";
+
+    var windowed = try collectScanLayoutWindowBatches(text, 4, true, .unicode, 8, false);
+    defer windowed.deinit(testing.allocator);
+
+    try testing.expectEqual(@as(u32, @intCast(text.len)), windowed.total_bytes);
+    try testing.expectEqual(@as(u32, @intCast(text.len)), windowed.total_cols);
+    try testing.expectEqual(@as(usize, 4), windowed.spans.items.len);
+
+    const expected = [_]struct { start: u32, len: u32 }{
+        .{ .start = 0, .len = 8 },
+        .{ .start = 8, .len = 8 },
+        .{ .start = 16, .len = 8 },
+        .{ .start = 24, .len = 2 },
+    };
+
+    for (expected, 0..) |exp, idx| {
+        const span = windowed.spans.items[idx];
+        try testing.expectEqual(exp.start, span.byte_start);
+        try testing.expectEqual(exp.len, span.byte_len);
+        try testing.expectEqual(exp.start, span.col_start);
+        try testing.expectEqual(@as(u16, @intCast(exp.len)), span.col_width);
+        try testing.expectEqual(utf8.BreakKind.none, span.break_after);
+    }
+}
+
 test "scanLayout: malformed UTF-8 always makes byte progress" {
     const cases = [_][]const u8{
         &[_]u8{0xE2},

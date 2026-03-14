@@ -567,22 +567,46 @@ fn scanLayoutBatchInternal(
 
         var pos: u32 = start_byte;
         var count: usize = 0;
-        while (pos < text.len and count < scratch.len) {
-            const b = text[pos];
-            scratch[count] = .{
-                .byte_start = pos,
-                .byte_len = 1,
-                .col_start = pos,
-                .col_width = 1,
-                .break_after = if (include_breaks) breakKindForCodepoint(b, b) else .none,
-            };
 
-            pos += 1;
-            count += 1;
+        if (!include_breaks) {
+            const text_len_u32: u32 = @intCast(text.len);
+            const batch_end = if (max_bytes) |byte_limit|
+                @min(text_len_u32, start_byte + byte_limit)
+            else
+                text_len_u32;
+            const max_span_len: u32 = std.math.maxInt(u16);
 
-            if (max_bytes) |byte_limit| {
-                if (count > 0 and pos < text.len and pos - start_byte >= byte_limit) {
-                    break;
+            while (pos < batch_end and count < scratch.len) {
+                const span_len = @min(batch_end - pos, max_span_len);
+                scratch[count] = .{
+                    .byte_start = pos,
+                    .byte_len = span_len,
+                    .col_start = pos,
+                    .col_width = @intCast(span_len),
+                    .break_after = .none,
+                };
+
+                pos += span_len;
+                count += 1;
+            }
+        } else {
+            while (pos < text.len and count < scratch.len) {
+                const b = text[pos];
+                scratch[count] = .{
+                    .byte_start = pos,
+                    .byte_len = 1,
+                    .col_start = pos,
+                    .col_width = 1,
+                    .break_after = breakKindForCodepoint(b, b),
+                };
+
+                pos += 1;
+                count += 1;
+
+                if (max_bytes) |byte_limit| {
+                    if (count > 0 and pos < text.len and pos - start_byte >= byte_limit) {
+                        break;
+                    }
                 }
             }
         }
