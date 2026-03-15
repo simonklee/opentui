@@ -368,24 +368,6 @@ inline fn finalizedBreakKind(cluster_kind: BreakKind, cluster_class: WordClass, 
     return .none;
 }
 
-fn appendGraphemeSpan(
-    spans: *std.ArrayListUnmanaged(GraphemeSpan),
-    allocator: std.mem.Allocator,
-    byte_start: usize,
-    byte_end: usize,
-    col_start: u32,
-    col_width: u32,
-    break_after: BreakKind,
-) LayoutScanError!void {
-    try spans.append(allocator, .{
-        .byte_start = @intCast(byte_start),
-        .byte_len = @intCast(byte_end - byte_start),
-        .col_start = col_start,
-        .col_width = @intCast(col_width),
-        .break_after = break_after,
-    });
-}
-
 inline fn nextAsciiLayoutSpan(text: []const u8, start: u32, limit: u32, include_breaks: bool) GraphemeSpan {
     const max_span_len: u32 = std.math.maxInt(u16);
 
@@ -429,128 +411,6 @@ inline fn nextAsciiLayoutSpan(text: []const u8, start: u32, limit: u32, include_
     };
 }
 
-fn scanLayoutInto(
-    text: []const u8,
-    tab_width: u8,
-    is_ascii_only: bool,
-    width_method: WidthMethod,
-    allocator: std.mem.Allocator,
-    spans: *std.ArrayListUnmanaged(GraphemeSpan),
-    include_breaks: bool,
-) LayoutScanError!u32 {
-    if (text.len == 0) return 0;
-
-    if (is_ascii_only) {
-        const text_len_u32: u32 = @intCast(text.len);
-        var pos: u32 = 0;
-        while (pos < text_len_u32) {
-            const span = nextAsciiLayoutSpan(text, pos, text_len_u32, include_breaks);
-            try spans.append(allocator, span);
-            pos = span.byteEnd();
-        }
-        return text_len_u32;
-    }
-
-    var pos: usize = 0;
-    var col: u32 = 0;
-    var prev_cp: ?u21 = null;
-    var break_state: uucode.grapheme.BreakState = .default;
-
-    var cluster_started = false;
-    var cluster_start: usize = 0;
-    var cluster_col_start: u32 = 0;
-    var cluster_width_state: GraphemeWidthState = undefined;
-    var cluster_break_kind: BreakKind = .none;
-    var cluster_class: WordClass = .other;
-
-    while (pos < text.len) {
-        const b0 = text[pos];
-        var curr_cp: u21 = undefined;
-        var cp_len: usize = undefined;
-        var curr_class: WordClass = undefined;
-        var cp_width: u32 = undefined;
-        var cp_break_kind: BreakKind = undefined;
-        var is_break: bool = undefined;
-
-        if (isPrintableAsciiByte(b0)) {
-            curr_cp = b0;
-            cp_len = 1;
-            curr_class = classifyAsciiWordClass(b0);
-            cp_width = 1;
-            cp_break_kind = breakKindForAsciiByte(b0);
-
-            if (prev_cp == null) {
-                is_break = true;
-            } else if (prev_cp.? <= 0x7F and break_state == .default) {
-                is_break = true;
-            } else {
-                is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
-            }
-        } else {
-            const decoded: DecodedUtf8 = if (b0 < 0x80)
-                .{ .cp = @as(u21, b0), .len = 1 }
-            else blk: {
-                const dec = decodeUtf8Unchecked(text, pos);
-                break :blk .{ .cp = dec.cp, .len = dec.len };
-            };
-
-            curr_cp = decoded.cp;
-            cp_len = decoded.len;
-            curr_class = classifyWordClass(curr_cp);
-            is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
-            cp_width = charWidth(b0, curr_cp, tab_width);
-            cp_break_kind = breakKindForCodepoint(b0, curr_cp);
-        }
-
-        if (!cluster_started) {
-            cluster_started = true;
-            cluster_start = pos;
-            cluster_col_start = col;
-            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
-            cluster_break_kind = cp_break_kind;
-            cluster_class = curr_class;
-        } else if (is_break) {
-            try appendGraphemeSpan(
-                spans,
-                allocator,
-                cluster_start,
-                pos,
-                cluster_col_start,
-                cluster_width_state.width,
-                finalizedBreakKind(cluster_break_kind, cluster_class, curr_class, include_breaks),
-            );
-            col += cluster_width_state.width;
-
-            cluster_start = pos;
-            cluster_col_start = col;
-            cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
-            cluster_break_kind = cp_break_kind;
-            cluster_class = curr_class;
-        } else {
-            cluster_width_state.addCodepoint(curr_cp, cp_width);
-            cluster_break_kind = mergeBreakKind(cluster_break_kind, cp_break_kind);
-        }
-
-        prev_cp = curr_cp;
-        pos += cp_len;
-    }
-
-    if (cluster_started) {
-        try appendGraphemeSpan(
-            spans,
-            allocator,
-            cluster_start,
-            text.len,
-            cluster_col_start,
-            cluster_width_state.width,
-            finalizedBreakKind(cluster_break_kind, cluster_class, null, include_breaks),
-        );
-        col += cluster_width_state.width;
-    }
-
-    return col;
-}
-
 pub fn scanLayout(
     text: []const u8,
     tab_width: u8,
@@ -558,11 +418,35 @@ pub fn scanLayout(
     width_method: WidthMethod,
     result: *LayoutScanResult,
 ) LayoutScanError!void {
+    const scratch_capacity: usize = 512;
+
     result.reset();
     errdefer result.reset();
 
-    result.total_cols = try scanLayoutInto(text, tab_width, is_ascii_only, width_method, result.allocator, &result.spans, true);
-    result.total_bytes = @intCast(text.len);
+    var cursor = LayoutScanCursor.init();
+    var scratch: [scratch_capacity]GraphemeSpan = undefined;
+
+    while (true) {
+        const batch = try scanLayoutBatchInternal(
+            text,
+            tab_width,
+            is_ascii_only,
+            width_method,
+            &cursor,
+            scratch[0..],
+            null,
+            true,
+        );
+
+        try result.spans.appendSlice(result.allocator, batch.spans);
+
+        if (batch.done or batch.spans.len == 0) {
+            break;
+        }
+    }
+
+    result.total_bytes = cursor.byte_offset;
+    result.total_cols = cursor.col_offset;
 }
 
 inline fn setLayoutScanCursor(
