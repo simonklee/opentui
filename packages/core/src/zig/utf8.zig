@@ -169,6 +169,25 @@ pub inline fn decodeUtf8Unchecked(text: []const u8, pos: usize) struct { cp: u21
     return .{ .cp = cp4, .len = 4 };
 }
 
+const DecodedUtf8 = struct {
+    cp: u21,
+    len: usize,
+};
+
+inline fn decodeUtf8At(text: []const u8, pos: usize) DecodedUtf8 {
+    const b0 = text[pos];
+    if (b0 < 0x80) {
+        return DecodedUtf8{ .cp = @as(u21, b0), .len = 1 };
+    }
+
+    const dec = decodeUtf8Unchecked(text, pos);
+    if (pos + dec.len > text.len) {
+        return DecodedUtf8{ .cp = 0xFFFD, .len = 1 };
+    }
+
+    return DecodedUtf8{ .cp = dec.cp, .len = dec.len };
+}
+
 // Unicode wrap-break codepoints
 inline fn isUnicodeWrapBreak(cp: u21) bool {
     return switch (cp) {
@@ -425,7 +444,7 @@ inline fn nextAsciiLayoutSpan(text: []const u8, start: u32, limit: u32, include_
     }
 
     const first_byte = text[start];
-    const first_break_kind = breakKindForCodepoint(first_byte, first_byte);
+    const first_break_kind = breakKindForAsciiByte(first_byte);
     if (first_break_kind != .none) {
         return .{
             .byte_start = start,
@@ -440,7 +459,7 @@ inline fn nextAsciiLayoutSpan(text: []const u8, start: u32, limit: u32, include_
     var end = start + 1;
     while (end < run_limit) : (end += 1) {
         const b = text[end];
-        if (breakKindForCodepoint(b, b) != .none) break;
+        if (breakKindForAsciiByte(b) != .none) break;
     }
 
     const span_len = end - start;
@@ -871,7 +890,7 @@ pub fn collectWrapBreaks(text: []const u8, result: *WrapBreakResult, width_metho
 
         // Fast path: all ASCII
         if (!@reduce(.Or, is_non_ascii)) {
-            const first_class = classifyWordClass(text[pos]);
+            const first_class = classifyAsciiWordClass(text[pos]);
             if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, first_class)) {
                 try result.breaks.append(result.allocator, .{
                     .byte_offset = current_grapheme_byte_offset,
@@ -933,7 +952,7 @@ pub fn collectWrapBreaks(text: []const u8, result: *WrapBreakResult, width_metho
             have_current_grapheme = true;
             current_grapheme_byte_offset = @intCast(pos - 1);
             current_grapheme_char_offset = block_start_char_offset + (vector_len - 1);
-            current_grapheme_class = classifyWordClass(text[pos - 1]);
+            current_grapheme_class = classifyAsciiWordClass(text[pos - 1]);
             continue;
         }
 
@@ -952,7 +971,7 @@ pub fn collectWrapBreaks(text: []const u8, result: *WrapBreakResult, width_metho
                 } else true;
 
                 if (is_break) {
-                    const curr_class = classifyWordClass(curr_cp);
+                    const curr_class = classifyAsciiWordClass(b0);
                     if (have_current_grapheme and isCjkAsciiTransition(current_grapheme_class, curr_class)) {
                         try result.breaks.append(result.allocator, .{
                             .byte_offset = current_grapheme_byte_offset,
@@ -2157,23 +2176,32 @@ fn calculateTextWidthUnicode(text: []const u8, tab_width: u8, isASCIIOnly: bool,
 
     while (pos < text.len) {
         const b0 = text[pos];
-        const curr_cp: u21 = if (b0 < 0x80) b0 else blk: {
-            const dec = decodeUtf8Unchecked(text, pos);
-            if (pos + dec.len > text.len) break :blk 0xFFFD;
-            break :blk dec.cp;
-        };
-        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
-        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+        const decoded = if (b0 < 0x80)
+            DecodedUtf8{ .cp = @as(u21, b0), .len = @as(usize, 1) }
+        else
+            decodeUtf8At(text, pos);
+
+        const curr_cp: u21 = decoded.cp;
+        const cp_len: usize = decoded.len;
+        const is_break = if (prev_cp == null)
+            true
+        else if (curr_cp <= 0x7F and prev_cp.? <= 0x7F and break_state == .default and isPrintableAsciiByte(b0))
+            true
+        else
+            isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+
+        const cp_width = if (curr_cp <= 0x7F)
+            asciiCharWidth(b0, tab_width)
+        else
+            charWidth(b0, curr_cp, tab_width);
 
         if (is_break) {
             if (prev_cp != null) {
                 total_width += state.width;
             }
 
-            const cp_width = charWidth(b0, curr_cp, tab_width);
             state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
         } else {
-            const cp_width = charWidth(b0, curr_cp, tab_width);
             state.addCodepoint(curr_cp, cp_width);
         }
 
@@ -2203,12 +2231,13 @@ fn calculateTextWidthWCWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool)
 
     while (pos < text.len) {
         const b0 = text[pos];
-        const curr_cp: u21 = if (b0 < 0x80) b0 else blk: {
-            const dec = decodeUtf8Unchecked(text, pos);
-            if (pos + dec.len > text.len) break :blk 0xFFFD;
-            break :blk dec.cp;
-        };
-        const cp_len: usize = if (b0 < 0x80) 1 else decodeUtf8Unchecked(text, pos).len;
+        const decoded = if (b0 < 0x80)
+            DecodedUtf8{ .cp = @as(u21, b0), .len = @as(usize, 1) }
+        else
+            decodeUtf8At(text, pos);
+
+        const curr_cp: u21 = decoded.cp;
+        const cp_len: usize = decoded.len;
 
         const cp_width = charWidth(b0, curr_cp, tab_width);
         total_width += cp_width;
