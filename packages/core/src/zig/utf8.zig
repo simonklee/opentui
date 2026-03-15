@@ -79,26 +79,6 @@ pub const LineBreakResult = struct {
     }
 };
 
-pub const TabStopResult = struct {
-    positions: std.ArrayListUnmanaged(usize),
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator) TabStopResult {
-        return .{
-            .positions = .{},
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *TabStopResult) void {
-        self.positions.deinit(self.allocator);
-    }
-
-    pub fn reset(self: *TabStopResult) void {
-        self.positions.clearRetainingCapacity();
-    }
-};
-
 pub const WrapBreak = struct {
     // byte_offset points at the grapheme that creates this break opportunity.
     // For whitespace and punctuation, this is the delimiter grapheme.
@@ -1046,37 +1026,6 @@ pub fn collectWrapBreaks(text: []const u8, result: *WrapBreakResult, width_metho
                 char_offset += 1;
             }
             prev_cp = dec.cp;
-        }
-    }
-}
-
-pub fn findTabStops(text: []const u8, result: *TabStopResult) !void {
-    result.reset();
-    const vector_len = 16;
-    const Vec = @Vector(vector_len, u8);
-
-    const vTab: Vec = @splat('\t');
-
-    var pos: usize = 0;
-
-    while (pos + vector_len <= text.len) {
-        const chunk: Vec = text[pos..][0..vector_len].*;
-        const cmp_tab = chunk == vTab;
-
-        if (@reduce(.Or, cmp_tab)) {
-            var i: usize = 0;
-            while (i < vector_len) : (i += 1) {
-                if (text[pos + i] == '\t') {
-                    try result.positions.append(result.allocator, pos + i);
-                }
-            }
-        }
-        pos += vector_len;
-    }
-
-    while (pos < text.len) : (pos += 1) {
-        if (text[pos] == '\t') {
-            try result.positions.append(result.allocator, pos);
         }
     }
 }
