@@ -267,7 +267,6 @@ pub const LayoutScanCursor = struct {
     col_offset: u32 = 0,
     prev_cp: ?u21 = null,
     break_state: uucode.grapheme.BreakState = .default,
-    prev_word_class: WordClass = .other,
 
     pub fn init() LayoutScanCursor {
         return .{};
@@ -600,13 +599,11 @@ inline fn setLayoutScanCursor(
     col_offset: u32,
     prev_cp: ?u21,
     break_state: uucode.grapheme.BreakState,
-    prev_word_class: WordClass,
 ) void {
     cursor.byte_offset = byte_offset;
     cursor.col_offset = col_offset;
     cursor.prev_cp = prev_cp;
     cursor.break_state = break_state;
-    cursor.prev_word_class = prev_word_class;
 }
 
 fn scanLayoutBatchInternal(
@@ -655,8 +652,7 @@ fn scanLayoutBatchInternal(
         }
 
         const prev_cp: ?u21 = if (pos > 0) @as(u21, text[pos - 1]) else null;
-        const prev_word_class = if (pos > 0) classifyWordClass(text[pos - 1]) else WordClass.other;
-        setLayoutScanCursor(cursor, pos, pos, prev_cp, .default, prev_word_class);
+        setLayoutScanCursor(cursor, pos, pos, prev_cp, .default);
 
         return .{
             .spans = scratch[0..count],
@@ -670,7 +666,6 @@ fn scanLayoutBatchInternal(
     var col = start_col;
     var prev_cp = cursor.prev_cp;
     var break_state = cursor.break_state;
-    var prev_word_class = cursor.prev_word_class;
 
     var cluster_started = false;
     var cluster_start: usize = pos;
@@ -690,7 +685,6 @@ fn scanLayoutBatchInternal(
 
         const pre_break_state = break_state;
         const pre_prev_cp = prev_cp;
-        const pre_prev_word_class = prev_word_class;
         var is_break: bool = undefined;
 
         if (isPrintableAsciiByte(b0)) {
@@ -746,7 +740,7 @@ fn scanLayoutBatchInternal(
             col += cluster_width_state.width;
 
             if (count == scratch.len or if (max_bytes) |byte_limit| count > 0 and pos < text.len and @as(u32, @intCast(pos)) - start_byte >= byte_limit else false) {
-                setLayoutScanCursor(cursor, @intCast(pos), col, pre_prev_cp, pre_break_state, pre_prev_word_class);
+                setLayoutScanCursor(cursor, @intCast(pos), col, pre_prev_cp, pre_break_state);
                 return .{
                     .spans = scratch[0..count],
                     .consumed_bytes = cursor.byte_offset - start_byte,
@@ -766,7 +760,6 @@ fn scanLayoutBatchInternal(
         }
 
         prev_cp = curr_cp;
-        prev_word_class = curr_class;
         pos += cp_len;
     }
 
@@ -782,7 +775,7 @@ fn scanLayoutBatchInternal(
         col += cluster_width_state.width;
     }
 
-    setLayoutScanCursor(cursor, @intCast(text.len), col, prev_cp, break_state, prev_word_class);
+    setLayoutScanCursor(cursor, @intCast(text.len), col, prev_cp, break_state);
 
     return .{
         .spans = scratch[0..count],
@@ -2234,24 +2227,6 @@ pub const GraphemeInfo = struct {
     byte_len: u8,
     width: u8,
     col_offset: u32,
-};
-
-pub const GraphemeInfoResult = struct {
-    graphemes: std.ArrayList(GraphemeInfo),
-
-    pub fn init(allocator: std.mem.Allocator) GraphemeInfoResult {
-        return .{
-            .graphemes = std.ArrayList(GraphemeInfo).init(allocator),
-        };
-    }
-
-    pub fn deinit(self: *GraphemeInfoResult) void {
-        self.graphemes.deinit();
-    }
-
-    pub fn reset(self: *GraphemeInfoResult) void {
-        self.graphemes.clearRetainingCapacity();
-    }
 };
 
 /// Find all grapheme clusters in text and return info for multi-byte graphemes and tabs

@@ -27,11 +27,6 @@ pub const WrapMode = enum {
     word,
 };
 
-pub const ChunkFitResult = struct {
-    char_count: u32,
-    width: u32,
-};
-
 pub const GraphemeInfo = utf8.GraphemeInfo;
 pub const GraphemeSpan = utf8.GraphemeSpan;
 
@@ -81,7 +76,6 @@ pub const LayoutSpanScratch = struct {
     };
 
     pub const Slot = struct {
-        index: usize,
         spans: []GraphemeSpan,
     };
 
@@ -102,7 +96,6 @@ pub const LayoutSpanScratch = struct {
         const slot_index = self.next_slot;
         self.next_slot = (self.next_slot + 1) % LAYOUT_WINDOW_SLOTS;
         return .{
-            .index = slot_index,
             .spans = self.slots[slot_index][0..],
         };
     }
@@ -231,16 +224,14 @@ pub const TextChunk = struct {
         allocator: Allocator,
         tabwidth: u8,
         width_method: utf8.WidthMethod,
-        force_mode: ?LayoutCacheMode,
         include_breaks: bool,
         scratch: *LayoutSpanScratch,
         ctx: *anyopaque,
         consumer: SpanConsumer,
     ) anyerror!void {
-        const default_mode = self.ensureLayoutCacheState(tabwidth, width_method);
-        const effective_mode = force_mode orelse default_mode;
+        const cache_mode = self.ensureLayoutCacheState(tabwidth, width_method);
 
-        if (effective_mode == .full_cache) {
+        if (cache_mode == .full_cache) {
             const spans = try self.ensureFullLayoutSpans(mem_registry, allocator, tabwidth, width_method);
             for (spans) |cached_span| {
                 if (include_breaks) {
@@ -580,7 +571,7 @@ pub const TextChunk = struct {
         ctx: *anyopaque,
         consumer: SpanConsumer,
     ) anyerror!void {
-        return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, null, true, scratch, ctx, consumer);
+        return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, true, scratch, ctx, consumer);
     }
 
     pub fn forEachLayoutSpansNoBreaks(
@@ -593,7 +584,7 @@ pub const TextChunk = struct {
         ctx: *anyopaque,
         consumer: SpanConsumer,
     ) anyerror!void {
-        return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, null, false, scratch, ctx, consumer);
+        return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, false, scratch, ctx, consumer);
     }
 
     pub fn forEachLayoutSpansRangeNoBreaks(
@@ -645,7 +636,6 @@ pub const TextChunk = struct {
             consumer,
         );
     }
-
 };
 
 /// A highlight represents a styled region on a line

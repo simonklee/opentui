@@ -26,7 +26,6 @@ pub const TextBufferError = seg_mod.TextBufferError;
 pub const Highlight = seg_mod.Highlight;
 pub const StyleSpan = seg_mod.StyleSpan;
 pub const WrapMode = seg_mod.WrapMode;
-pub const ChunkFitResult = seg_mod.ChunkFitResult;
 pub const GraphemeInfo = seg_mod.GraphemeInfo;
 pub const GraphemeSpan = seg_mod.GraphemeSpan;
 pub const LayoutCacheMode = seg_mod.LayoutCacheMode;
