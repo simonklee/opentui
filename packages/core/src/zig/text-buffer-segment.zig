@@ -468,43 +468,12 @@ pub const TextChunk = struct {
         }
 
         const chunk_bytes = self.getBytes(mem_registry);
-        const ProjectionContext = struct {
-            allocator: Allocator,
-            chunk_bytes: []const u8,
-            graphemes: std.ArrayListUnmanaged(GraphemeInfo) = .{},
+        var grapheme_list: std.ArrayListUnmanaged(GraphemeInfo) = .{};
+        errdefer grapheme_list.deinit(allocator);
 
-            fn deinit(projection_ctx: *@This()) void {
-                projection_ctx.graphemes.deinit(projection_ctx.allocator);
-            }
+        utf8.collectGraphemeInfo(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, allocator, &grapheme_list) catch return TextBufferError.OutOfMemory;
 
-            fn consume(ctx_ptr: *anyopaque, span: GraphemeSpan) anyerror!void {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                const byte_start: usize = @intCast(span.byte_start);
-                const is_tab = span.byte_len == 1 and byte_start < ctx.chunk_bytes.len and ctx.chunk_bytes[byte_start] == '\t';
-                if (!is_tab and span.byte_len == 1) return;
-
-                try ctx.graphemes.append(ctx.allocator, .{
-                    .byte_offset = span.byte_start,
-                    .byte_len = @intCast(span.byte_len),
-                    .width = @intCast(span.col_width),
-                    .col_offset = span.col_start,
-                });
-            }
-        };
-
-        var scratch = LayoutSpanScratch.init();
-        var ctx = ProjectionContext{
-            .allocator = allocator,
-            .chunk_bytes = chunk_bytes,
-        };
-        errdefer ctx.deinit();
-
-        self.forEachLayoutSpans(mem_registry, allocator, tabwidth, width_method, &scratch, &ctx, ProjectionContext.consume) catch |err| switch (err) {
-            error.OutOfMemory => return TextBufferError.OutOfMemory,
-            else => unreachable,
-        };
-
-        return ctx.graphemes.toOwnedSlice(allocator) catch TextBufferError.OutOfMemory;
+        return grapheme_list.toOwnedSlice(allocator) catch TextBufferError.OutOfMemory;
     }
 
     pub fn getWrapOffsets(
@@ -514,41 +483,15 @@ pub const TextChunk = struct {
         tabwidth: u8,
         width_method: utf8.WidthMethod,
     ) TextBufferError![]const utf8.WrapBreak {
-        const ProjectionContext = struct {
-            allocator: Allocator,
-            breaks: std.ArrayListUnmanaged(utf8.WrapBreak) = .{},
-            is_ascii_only: bool,
-            grapheme_index: u32 = 0,
+        _ = tabwidth;
 
-            fn deinit(projection_ctx: *@This()) void {
-                projection_ctx.breaks.deinit(projection_ctx.allocator);
-            }
+        const chunk_bytes = self.getBytes(mem_registry);
+        var wrap_result = utf8.WrapBreakResult.init(allocator);
+        defer wrap_result.deinit();
 
-            fn consume(ctx_ptr: *anyopaque, span: GraphemeSpan) anyerror!void {
-                const ctx = @as(*@This(), @ptrCast(@alignCast(ctx_ptr)));
-                if (span.break_after != .none) {
-                    try ctx.breaks.append(ctx.allocator, .{
-                        .byte_offset = span.byte_start,
-                        .char_offset = ctx.grapheme_index,
-                    });
-                }
-                ctx.grapheme_index += utf8.graphemeCountForLayoutSpan(span, ctx.is_ascii_only);
-            }
-        };
+        utf8.collectWrapBreaks(chunk_bytes, &wrap_result, width_method) catch return TextBufferError.OutOfMemory;
 
-        var scratch = LayoutSpanScratch.init();
-        var ctx = ProjectionContext{
-            .allocator = allocator,
-            .is_ascii_only = self.isAsciiOnly(),
-        };
-        errdefer ctx.deinit();
-
-        self.forEachLayoutSpans(mem_registry, allocator, tabwidth, width_method, &scratch, &ctx, ProjectionContext.consume) catch |err| switch (err) {
-            error.OutOfMemory => return TextBufferError.OutOfMemory,
-            else => unreachable,
-        };
-
-        return ctx.breaks.toOwnedSlice(allocator) catch TextBufferError.OutOfMemory;
+        return wrap_result.breaks.toOwnedSlice(allocator) catch TextBufferError.OutOfMemory;
     }
 
     pub fn getLayoutSpans(

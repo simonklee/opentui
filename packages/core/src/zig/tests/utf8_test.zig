@@ -4135,7 +4135,7 @@ fn expectScanLayoutWrapBreakParity(text: []const u8, tab_width: u8, is_ascii_onl
             try testing.expectEqual(legacy.breaks.items[break_idx].char_offset, grapheme_idx);
             break_idx += 1;
         }
-        grapheme_idx += utf8.graphemeCountForLayoutSpan(span, is_ascii_only);
+        grapheme_idx += if (is_ascii_only and span.byte_len == span.col_width) span.byte_len else 1;
     }
 
     try testing.expectEqual(legacy.breaks.items.len, break_idx);
@@ -4187,10 +4187,11 @@ fn collectScanLayoutBatches(
     defer testing.allocator.free(scratch);
 
     while (true) {
+        const remaining_bytes = @as(u32, @intCast(text.len)) - cursor.byte_offset;
         const batch = if (include_breaks)
-            try utf8.scanLayoutNextBatch(text, tab_width, is_ascii_only, width_method, &cursor, scratch)
+            try utf8.scanLayoutNextWindowBatch(text, tab_width, is_ascii_only, width_method, &cursor, scratch, remaining_bytes)
         else
-            try utf8.scanLayoutNextBatchNoBreaks(text, tab_width, is_ascii_only, width_method, &cursor, scratch);
+            try utf8.scanLayoutNextWindowBatchNoBreaks(text, tab_width, is_ascii_only, width_method, &cursor, scratch, remaining_bytes);
 
         try collection.spans.appendSlice(testing.allocator, batch.spans);
         collection.total_bytes += batch.consumed_bytes;
@@ -4551,10 +4552,6 @@ test "scanLayout: break kinds distinguish whitespace punctuation and script tran
     try testing.expectEqual(utf8.BreakKind.none, result.spans.items[3].break_after);
     try testing.expectEqual(utf8.BreakKind.punctuation, result.spans.items[4].break_after);
     try testing.expectEqual(utf8.BreakKind.none, result.spans.items[5].break_after);
-}
-
-test "scanLayout: lookahead stays within bound" {
-    try testing.expect(utf8.LAYOUT_SCAN_MAX_LOOKAHEAD_CODEPOINTS <= 2);
 }
 
 test "scanLayout: libgrapheme oracle fixtures match unicode grapheme boundaries" {

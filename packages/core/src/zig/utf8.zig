@@ -227,13 +227,6 @@ pub const GraphemeSpan = struct {
     }
 };
 
-pub inline fn graphemeCountForLayoutSpan(span: GraphemeSpan, is_ascii_only: bool) u32 {
-    if (is_ascii_only and span.byte_len == span.col_width) {
-        return span.byte_len;
-    }
-    return 1;
-}
-
 pub const LayoutScanResult = struct {
     spans: std.ArrayListUnmanaged(GraphemeSpan),
     allocator: std.mem.Allocator,
@@ -285,7 +278,6 @@ pub const LayoutSpanBatch = struct {
 };
 
 pub const LayoutScanError = std.mem.Allocator.Error || error{InvalidCursorOffset};
-pub const LAYOUT_SCAN_MAX_LOOKAHEAD_CODEPOINTS: u8 = 1;
 
 inline fn isAsciiWordByte(b: u8) bool {
     return (b >= 'a' and b <= 'z') or
@@ -783,28 +775,6 @@ fn scanLayoutBatchInternal(
         .consumed_cols = cursor.col_offset - start_col,
         .done = true,
     };
-}
-
-pub fn scanLayoutNextBatch(
-    text: []const u8,
-    tab_width: u8,
-    is_ascii_only: bool,
-    width_method: WidthMethod,
-    cursor: *LayoutScanCursor,
-    scratch: []GraphemeSpan,
-) LayoutScanError!LayoutSpanBatch {
-    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, null, true);
-}
-
-pub fn scanLayoutNextBatchNoBreaks(
-    text: []const u8,
-    tab_width: u8,
-    is_ascii_only: bool,
-    width_method: WidthMethod,
-    cursor: *LayoutScanCursor,
-    scratch: []GraphemeSpan,
-) LayoutScanError!LayoutSpanBatch {
-    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, null, false);
 }
 
 pub fn scanLayoutNextWindowBatch(
