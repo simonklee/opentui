@@ -480,11 +480,6 @@ fn scanLayoutInto(
         return text_len_u32;
     }
 
-    const Decoded = struct {
-        cp: u21,
-        len: usize,
-    };
-
     var pos: usize = 0;
     var col: u32 = 0;
     var prev_cp: ?u21 = null;
@@ -521,11 +516,11 @@ fn scanLayoutInto(
                 is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
             }
         } else {
-            const decoded: Decoded = if (b0 < 0x80)
+            const decoded: DecodedUtf8 = if (b0 < 0x80)
                 .{ .cp = @as(u21, b0), .len = 1 }
             else blk: {
                 const dec = decodeUtf8Unchecked(text, pos);
-                break :blk .{ .cp = dec.cp, .len = @as(usize, dec.len) };
+                break :blk .{ .cp = dec.cp, .len = dec.len };
             };
 
             curr_cp = decoded.cp;
@@ -624,11 +619,6 @@ fn scanLayoutBatchInternal(
     max_bytes: ?u32,
     include_breaks: bool,
 ) LayoutScanError!LayoutSpanBatch {
-    const Decoded = struct {
-        cp: u21,
-        len: usize,
-    };
-
     if (cursor.byte_offset > text.len) return error.InvalidCursorOffset;
     if (cursor.byte_offset == 0 and cursor.col_offset != 0) return error.InvalidCursorOffset;
     if (cursor.byte_offset != 0 and cursor.prev_cp == null) return error.InvalidCursorOffset;
@@ -718,11 +708,11 @@ fn scanLayoutBatchInternal(
                 is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
             }
         } else {
-            const decoded: Decoded = if (b0 < 0x80)
+            const decoded: DecodedUtf8 = if (b0 < 0x80)
                 .{ .cp = @as(u21, b0), .len = 1 }
             else blk: {
                 const dec = decodeUtf8Unchecked(text, pos);
-                break :blk .{ .cp = dec.cp, .len = @as(usize, dec.len) };
+                break :blk .{ .cp = dec.cp, .len = dec.len };
             };
 
             curr_cp = decoded.cp;

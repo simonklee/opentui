@@ -924,51 +924,21 @@ pub const UnifiedTextBufferView = struct {
         return .{ .head = head, .tail = tail };
     }
 
-    fn layoutWidthMethodForSpanWrap(width_method: utf8.WidthMethod) utf8.WidthMethod {
-        return switch (width_method) {
-            .wcwidth => .unicode,
-            else => width_method,
-        };
-    }
-
     const WrapSpanSourcePolicy = enum {
         windowed_only,
         prefer_word_full_layout_cache,
     };
 
-    fn shouldUseFullLayoutCache(chunk: *const TextChunk) bool {
-        const byte_len = chunk.byte_end - chunk.byte_start;
-        if (byte_len > 64 * 1024) {
-            return false;
-        }
-        return true;
-    }
-
-    fn nextSpanWithPending(spans: []const utf8.GraphemeSpan, span_idx: *usize, pending_span: *?utf8.GraphemeSpan) ?utf8.GraphemeSpan {
-        if (pending_span.*) |span| {
-            pending_span.* = null;
-            return span;
-        }
-
-        if (span_idx.* >= spans.len) {
-            return null;
-        }
-
-        const span = spans[span_idx.*];
-        span_idx.* += 1;
-        return span;
-    }
-
     fn appendFittingSpanRun(
+        comptime wrap_mode: WrapMode,
         comptime Context: type,
         ctx: *Context,
         chunk: *const TextChunk,
         span: utf8.GraphemeSpan,
         spans: []const utf8.GraphemeSpan,
         span_idx: *usize,
-        require_no_break: bool,
-        track_wrap_breaks: bool,
     ) bool {
+        const is_word_wrap = wrap_mode == .word;
         const available = ctx.wrap_w - ctx.line_position;
         const max_col_width: u32 = std.math.maxInt(u16);
         var run_width: u32 = 0;
@@ -984,7 +954,7 @@ pub const UnifiedTextBufferView = struct {
                 break;
 
             const candidate_width: u32 = candidate.col_width;
-            if (require_no_break and candidate.break_after != .none) break;
+            if (is_word_wrap and candidate.break_after != .none) break;
             if (run_width + candidate_width > available) break;
             if (run_width + candidate_width > max_col_width) break;
 
@@ -1010,7 +980,7 @@ pub const UnifiedTextBufferView = struct {
             .col_start = span.col_start,
             .col_width = @intCast(run_width),
             .break_after = .none,
-        }, track_wrap_breaks);
+        }, is_word_wrap);
 
         return true;
     }
@@ -1028,14 +998,22 @@ pub const UnifiedTextBufferView = struct {
         var pending_span: ?utf8.GraphemeSpan = null;
 
         while (true) {
-            const span = nextSpanWithPending(spans, &span_idx, &pending_span) orelse break;
+            const span = if (pending_span) |queued| blk: {
+                pending_span = null;
+                break :blk queued;
+            } else blk: {
+                if (span_idx >= spans.len) break;
+                const current = spans[span_idx];
+                span_idx += 1;
+                break :blk current;
+            };
 
             const span_width: u32 = span.col_width;
             const fits = ctx.line_position + span_width <= ctx.wrap_w;
 
             if (fits) {
                 const can_run = !is_word_wrap or span.break_after == .none;
-                if (can_run and appendFittingSpanRun(Context, ctx, chunk, span, spans, &span_idx, is_word_wrap, is_word_wrap)) {
+                if (can_run and appendFittingSpanRun(wrap_mode, Context, ctx, chunk, span, spans, &span_idx)) {
                     continue;
                 }
 
@@ -1088,22 +1066,20 @@ pub const UnifiedTextBufferView = struct {
         }
     }
 
-    fn runWordWrapSpans(comptime Context: type, ctx: *Context, chunk: *const TextChunk, spans: []const utf8.GraphemeSpan) void {
-        runWrapSpans(.word, Context, ctx, chunk, spans);
-    }
-
-    fn runCharWrapSpans(comptime Context: type, ctx: *Context, chunk: *const TextChunk, spans: []const utf8.GraphemeSpan) void {
-        runWrapSpans(.char, Context, ctx, chunk, spans);
-    }
-
     fn processWrapChunkSpans(comptime Context: type, ctx: *Context, chunk: *const TextChunk, policy: WrapSpanSourcePolicy) void {
         const chunk_bytes = chunk.getBytes(ctx.text_buffer.memRegistry());
         var cursor = utf8.LayoutScanCursor.init();
 
         const base_width_method = ctx.text_buffer.widthMethod();
-        const word_width_method = layoutWidthMethodForSpanWrap(base_width_method);
+        const word_width_method = switch (base_width_method) {
+            .wcwidth => utf8.WidthMethod.unicode,
+            else => base_width_method,
+        };
 
-        const use_word_full_layout_cache = ctx.wrap_mode == .word and policy == .prefer_word_full_layout_cache and shouldUseFullLayoutCache(chunk);
+        const chunk_byte_len = chunk.byte_end - chunk.byte_start;
+        const use_word_full_layout_cache = ctx.wrap_mode == .word and
+            policy == .prefer_word_full_layout_cache and
+            chunk_byte_len <= 64 * 1024;
 
         if (use_word_full_layout_cache) {
             const spans = chunk.getLayoutSpans(
@@ -1112,7 +1088,7 @@ pub const UnifiedTextBufferView = struct {
                 ctx.text_buffer.tabWidth(),
                 word_width_method,
             ) catch return;
-            runWordWrapSpans(Context, ctx, chunk, spans);
+            runWrapSpans(.word, Context, ctx, chunk, spans);
             return;
         }
 
@@ -1142,9 +1118,9 @@ pub const UnifiedTextBufferView = struct {
                 ) catch break;
 
             if (ctx.wrap_mode == .char) {
-                runCharWrapSpans(Context, ctx, chunk, batch.spans);
+                runWrapSpans(.char, Context, ctx, chunk, batch.spans);
             } else {
-                runWordWrapSpans(Context, ctx, chunk, batch.spans);
+                runWrapSpans(.word, Context, ctx, chunk, batch.spans);
             }
 
             if (batch.done) break;
