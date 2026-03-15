@@ -290,6 +290,22 @@ inline fn isAsciiWordByte(b: u8) bool {
         b == '_';
 }
 
+inline fn isPrintableAsciiByte(b: u8) bool {
+    return b >= 32 and b <= 126;
+}
+
+inline fn classifyAsciiWordClass(byte: u8) WordClass {
+    return if (isAsciiWordByte(byte)) .ascii_word else .other;
+}
+
+inline fn breakKindForAsciiByte(byte: u8) BreakKind {
+    return switch (byte) {
+        ' ', '\t' => .whitespace,
+        '-', '/', '\\', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}' => .punctuation,
+        else => .none,
+    };
+}
+
 inline fn isCjkWordCodepoint(cp: u21) bool {
     return
     // Han ideographs
@@ -318,7 +334,7 @@ inline fn isCjkWordCodepoint(cp: u21) bool {
 
 inline fn classifyWordClass(cp: u21) WordClass {
     if (cp <= 0x7F) {
-        return if (isAsciiWordByte(@intCast(cp))) .ascii_word else .other;
+        return classifyAsciiWordClass(@intCast(cp));
     }
     if (isCjkWordCodepoint(cp)) return .cjk_word;
     return .other;
@@ -342,11 +358,7 @@ inline fn mergeBreakKind(lhs: BreakKind, rhs: BreakKind) BreakKind {
 
 inline fn breakKindForCodepoint(byte: u8, cp: u21) BreakKind {
     if (byte < 0x80) {
-        return switch (byte) {
-            ' ', '\t' => .whitespace,
-            '-', '/', '\\', '.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}' => .punctuation,
-            else => .none,
-        };
+        return breakKindForAsciiByte(byte);
     }
 
     return switch (cp) {
@@ -482,19 +494,42 @@ fn scanLayoutInto(
 
     while (pos < text.len) {
         const b0 = text[pos];
-        const decoded: Decoded = if (b0 < 0x80)
-            .{ .cp = @as(u21, b0), .len = 1 }
-        else blk: {
-            const dec = decodeUtf8Unchecked(text, pos);
-            break :blk .{ .cp = dec.cp, .len = @as(usize, dec.len) };
-        };
+        var curr_cp: u21 = undefined;
+        var cp_len: usize = undefined;
+        var curr_class: WordClass = undefined;
+        var cp_width: u32 = undefined;
+        var cp_break_kind: BreakKind = undefined;
+        var is_break: bool = undefined;
 
-        const curr_cp = decoded.cp;
-        const cp_len = decoded.len;
-        const curr_class = classifyWordClass(curr_cp);
-        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
-        const cp_width = charWidth(b0, curr_cp, tab_width);
-        const cp_break_kind = breakKindForCodepoint(b0, curr_cp);
+        if (isPrintableAsciiByte(b0)) {
+            curr_cp = b0;
+            cp_len = 1;
+            curr_class = classifyAsciiWordClass(b0);
+            cp_width = 1;
+            cp_break_kind = breakKindForAsciiByte(b0);
+
+            if (prev_cp == null) {
+                is_break = true;
+            } else if (prev_cp.? <= 0x7F and break_state == .default) {
+                is_break = true;
+            } else {
+                is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+            }
+        } else {
+            const decoded: Decoded = if (b0 < 0x80)
+                .{ .cp = @as(u21, b0), .len = 1 }
+            else blk: {
+                const dec = decodeUtf8Unchecked(text, pos);
+                break :blk .{ .cp = dec.cp, .len = @as(usize, dec.len) };
+            };
+
+            curr_cp = decoded.cp;
+            cp_len = decoded.len;
+            curr_class = classifyWordClass(curr_cp);
+            is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+            cp_width = charWidth(b0, curr_cp, tab_width);
+            cp_break_kind = breakKindForCodepoint(b0, curr_cp);
+        }
 
         if (!cluster_started) {
             cluster_started = true;
@@ -652,22 +687,46 @@ fn scanLayoutBatchInternal(
 
     while (pos < text.len) {
         const b0 = text[pos];
-        const decoded: Decoded = if (b0 < 0x80)
-            .{ .cp = @as(u21, b0), .len = 1 }
-        else blk: {
-            const dec = decodeUtf8Unchecked(text, pos);
-            break :blk .{ .cp = dec.cp, .len = @as(usize, dec.len) };
-        };
+        var curr_cp: u21 = undefined;
+        var cp_len: usize = undefined;
+        var curr_class: WordClass = undefined;
+        var cp_width: u32 = undefined;
+        var cp_break_kind: BreakKind = undefined;
 
-        const curr_cp = decoded.cp;
-        const cp_len = decoded.len;
-        const curr_class = classifyWordClass(curr_cp);
         const pre_break_state = break_state;
         const pre_prev_cp = prev_cp;
         const pre_prev_word_class = prev_word_class;
-        const is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
-        const cp_width = charWidth(b0, curr_cp, tab_width);
-        const cp_break_kind = breakKindForCodepoint(b0, curr_cp);
+        var is_break: bool = undefined;
+
+        if (isPrintableAsciiByte(b0)) {
+            curr_cp = b0;
+            cp_len = 1;
+            curr_class = classifyAsciiWordClass(b0);
+            cp_width = 1;
+            cp_break_kind = breakKindForAsciiByte(b0);
+
+            if (prev_cp == null) {
+                is_break = true;
+            } else if (prev_cp.? <= 0x7F and break_state == .default) {
+                is_break = true;
+            } else {
+                is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+            }
+        } else {
+            const decoded: Decoded = if (b0 < 0x80)
+                .{ .cp = @as(u21, b0), .len = 1 }
+            else blk: {
+                const dec = decodeUtf8Unchecked(text, pos);
+                break :blk .{ .cp = dec.cp, .len = @as(usize, dec.len) };
+            };
+
+            curr_cp = decoded.cp;
+            cp_len = decoded.len;
+            curr_class = classifyWordClass(curr_cp);
+            is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
+            cp_width = charWidth(b0, curr_cp, tab_width);
+            cp_break_kind = breakKindForCodepoint(b0, curr_cp);
+        }
 
         if (!cluster_started) {
             if (prev_cp != null and !is_break) {
