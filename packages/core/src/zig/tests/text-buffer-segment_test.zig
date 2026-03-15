@@ -225,6 +225,65 @@ test "TextChunk.getLayoutSpans caches canonical spans" {
     try testing.expectEqual(utf8.BreakKind.none, first[4].break_after);
 }
 
+test "TextChunk.getLayoutSpans coalesces ASCII no-break runs while preserving delimiters" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var registry = MemRegistry.init(testing.allocator);
+    defer registry.deinit();
+
+    const text = "alpha beta-gamma";
+    const mem_id = try registry.register(text, false);
+    var chunk = TextChunk{
+        .mem_id = mem_id,
+        .byte_start = 0,
+        .byte_end = @intCast(text.len),
+        .width = @intCast(text.len),
+        .flags = TextChunk.Flags.ASCII_ONLY,
+    };
+
+    const spans = try chunk.getLayoutSpans(&registry, allocator, 4, .unicode);
+    try testing.expectEqual(LayoutCacheMode.full_cache, chunk.layout_cache_mode);
+    try testing.expectEqual(@as(usize, 5), spans.len);
+
+    try testing.expectEqualDeep(utf8.GraphemeSpan{
+        .byte_start = 0,
+        .byte_len = 5,
+        .col_start = 0,
+        .col_width = 5,
+        .break_after = .none,
+    }, spans[0]);
+    try testing.expectEqualDeep(utf8.GraphemeSpan{
+        .byte_start = 5,
+        .byte_len = 1,
+        .col_start = 5,
+        .col_width = 1,
+        .break_after = .whitespace,
+    }, spans[1]);
+    try testing.expectEqualDeep(utf8.GraphemeSpan{
+        .byte_start = 6,
+        .byte_len = 4,
+        .col_start = 6,
+        .col_width = 4,
+        .break_after = .none,
+    }, spans[2]);
+    try testing.expectEqualDeep(utf8.GraphemeSpan{
+        .byte_start = 10,
+        .byte_len = 1,
+        .col_start = 10,
+        .col_width = 1,
+        .break_after = .punctuation,
+    }, spans[3]);
+    try testing.expectEqualDeep(utf8.GraphemeSpan{
+        .byte_start = 11,
+        .byte_len = 5,
+        .col_start = 11,
+        .col_width = 5,
+        .break_after = .none,
+    }, spans[4]);
+}
+
 test "TextChunk.getLayoutSpans invalidates cache on tab width and width method changes" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

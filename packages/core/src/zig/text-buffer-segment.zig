@@ -541,7 +541,8 @@ pub const TextChunk = struct {
         const ProjectionContext = struct {
             allocator: Allocator,
             breaks: std.ArrayListUnmanaged(utf8.WrapBreak) = .{},
-            span_index: u32 = 0,
+            is_ascii_only: bool,
+            grapheme_index: u32 = 0,
 
             fn deinit(projection_ctx: *@This()) void {
                 projection_ctx.breaks.deinit(projection_ctx.allocator);
@@ -552,15 +553,18 @@ pub const TextChunk = struct {
                 if (span.break_after != .none) {
                     try ctx.breaks.append(ctx.allocator, .{
                         .byte_offset = span.byte_start,
-                        .char_offset = ctx.span_index,
+                        .char_offset = ctx.grapheme_index,
                     });
                 }
-                ctx.span_index += 1;
+                ctx.grapheme_index += utf8.graphemeCountForLayoutSpan(span, ctx.is_ascii_only);
             }
         };
 
         var scratch = LayoutSpanScratch.init();
-        var ctx = ProjectionContext{ .allocator = allocator };
+        var ctx = ProjectionContext{
+            .allocator = allocator,
+            .is_ascii_only = self.isAsciiOnly(),
+        };
         errdefer ctx.deinit();
 
         self.forEachLayoutSpans(mem_registry, allocator, tabwidth, width_method, &scratch, &ctx, ProjectionContext.consume) catch |err| switch (err) {

@@ -222,6 +222,13 @@ pub const GraphemeSpan = struct {
     }
 };
 
+pub inline fn graphemeCountForLayoutSpan(span: GraphemeSpan, is_ascii_only: bool) u32 {
+    if (is_ascii_only and span.byte_len == span.col_width) {
+        return span.byte_len;
+    }
+    return 1;
+}
+
 pub const LayoutScanResult = struct {
     spans: std.ArrayListUnmanaged(GraphemeSpan),
     allocator: std.mem.Allocator,
@@ -391,6 +398,49 @@ fn appendGraphemeSpan(
     });
 }
 
+inline fn nextAsciiLayoutSpan(text: []const u8, start: u32, limit: u32, include_breaks: bool) GraphemeSpan {
+    const max_span_len: u32 = std.math.maxInt(u16);
+
+    if (!include_breaks) {
+        const span_len = @min(limit - start, max_span_len);
+        return .{
+            .byte_start = start,
+            .byte_len = span_len,
+            .col_start = start,
+            .col_width = @intCast(span_len),
+            .break_after = .none,
+        };
+    }
+
+    const first_byte = text[start];
+    const first_break_kind = breakKindForCodepoint(first_byte, first_byte);
+    if (first_break_kind != .none) {
+        return .{
+            .byte_start = start,
+            .byte_len = 1,
+            .col_start = start,
+            .col_width = 1,
+            .break_after = first_break_kind,
+        };
+    }
+
+    const run_limit = @min(limit, start + max_span_len);
+    var end = start + 1;
+    while (end < run_limit) : (end += 1) {
+        const b = text[end];
+        if (breakKindForCodepoint(b, b) != .none) break;
+    }
+
+    const span_len = end - start;
+    return .{
+        .byte_start = start,
+        .byte_len = span_len,
+        .col_start = start,
+        .col_width = @intCast(span_len),
+        .break_after = .none,
+    };
+}
+
 fn scanLayoutInto(
     text: []const u8,
     tab_width: u8,
@@ -403,21 +453,14 @@ fn scanLayoutInto(
     if (text.len == 0) return 0;
 
     if (is_ascii_only) {
-        var col: u32 = 0;
-        for (text, 0..) |b, idx| {
-            const width = asciiCharWidth(b, tab_width);
-            try appendGraphemeSpan(
-                spans,
-                allocator,
-                idx,
-                idx + 1,
-                col,
-                width,
-                if (include_breaks) breakKindForCodepoint(b, b) else .none,
-            );
-            col += width;
+        const text_len_u32: u32 = @intCast(text.len);
+        var pos: u32 = 0;
+        while (pos < text_len_u32) {
+            const span = nextAsciiLayoutSpan(text, pos, text_len_u32, include_breaks);
+            try spans.append(allocator, span);
+            pos = span.byteEnd();
         }
-        return col;
+        return text_len_u32;
     }
 
     const Decoded = struct {
@@ -565,50 +608,20 @@ fn scanLayoutBatchInternal(
     if (is_ascii_only) {
         if (cursor.col_offset != cursor.byte_offset) return error.InvalidCursorOffset;
 
+        const text_len_u32: u32 = @intCast(text.len);
+        const batch_end = if (max_bytes) |byte_limit|
+            @min(text_len_u32, start_byte + byte_limit)
+        else
+            text_len_u32;
+
         var pos: u32 = start_byte;
         var count: usize = 0;
 
-        if (!include_breaks) {
-            const text_len_u32: u32 = @intCast(text.len);
-            const batch_end = if (max_bytes) |byte_limit|
-                @min(text_len_u32, start_byte + byte_limit)
-            else
-                text_len_u32;
-            const max_span_len: u32 = std.math.maxInt(u16);
-
-            while (pos < batch_end and count < scratch.len) {
-                const span_len = @min(batch_end - pos, max_span_len);
-                scratch[count] = .{
-                    .byte_start = pos,
-                    .byte_len = span_len,
-                    .col_start = pos,
-                    .col_width = @intCast(span_len),
-                    .break_after = .none,
-                };
-
-                pos += span_len;
-                count += 1;
-            }
-        } else {
-            while (pos < text.len and count < scratch.len) {
-                const b = text[pos];
-                scratch[count] = .{
-                    .byte_start = pos,
-                    .byte_len = 1,
-                    .col_start = pos,
-                    .col_width = 1,
-                    .break_after = breakKindForCodepoint(b, b),
-                };
-
-                pos += 1;
-                count += 1;
-
-                if (max_bytes) |byte_limit| {
-                    if (count > 0 and pos < text.len and pos - start_byte >= byte_limit) {
-                        break;
-                    }
-                }
-            }
+        while (pos < batch_end and count < scratch.len) {
+            const span = nextAsciiLayoutSpan(text, pos, batch_end, include_breaks);
+            scratch[count] = span;
+            pos = span.byteEnd();
+            count += 1;
         }
 
         const prev_cp: ?u21 = if (pos > 0) @as(u21, text[pos - 1]) else null;

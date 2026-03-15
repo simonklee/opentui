@@ -4127,13 +4127,15 @@ fn expectScanLayoutWrapBreakParity(text: []const u8, tab_width: u8, is_ascii_onl
     try utf8.scanLayout(text, tab_width, is_ascii_only, width_method, &scan);
 
     var break_idx: usize = 0;
-    for (scan.spans.items, 0..) |span, span_idx| {
-        if (span.break_after == .none) continue;
-
-        try testing.expect(break_idx < legacy.breaks.items.len);
-        try testing.expectEqual(legacy.breaks.items[break_idx].byte_offset, span.byte_start);
-        try testing.expectEqual(legacy.breaks.items[break_idx].char_offset, @as(u32, @intCast(span_idx)));
-        break_idx += 1;
+    var grapheme_idx: u32 = 0;
+    for (scan.spans.items) |span| {
+        if (span.break_after != .none) {
+            try testing.expect(break_idx < legacy.breaks.items.len);
+            try testing.expectEqual(legacy.breaks.items[break_idx].byte_offset, span.byte_start);
+            try testing.expectEqual(legacy.breaks.items[break_idx].char_offset, grapheme_idx);
+            break_idx += 1;
+        }
+        grapheme_idx += utf8.graphemeCountForLayoutSpan(span, is_ascii_only);
     }
 
     try testing.expectEqual(legacy.breaks.items.len, break_idx);
@@ -4236,6 +4238,33 @@ fn collectScanLayoutWindowBatches(
     return collection;
 }
 
+fn normalizeAsciiNoBreakRunsForComparison(spans: []const utf8.GraphemeSpan, is_ascii_only: bool) ![]utf8.GraphemeSpan {
+    var normalized: std.ArrayListUnmanaged(utf8.GraphemeSpan) = .{};
+    errdefer normalized.deinit(testing.allocator);
+
+    for (spans) |span| {
+        if (is_ascii_only and normalized.items.len > 0) {
+            const prev = &normalized.items[normalized.items.len - 1];
+            const prev_byte_end = prev.byte_start + prev.byte_len;
+            const prev_col_end = prev.col_start + prev.col_width;
+            if (prev.break_after == .none and
+                span.break_after == .none and
+                prev_byte_end == span.byte_start and
+                prev_col_end == span.col_start and
+                @as(u32, prev.col_width) + span.col_width <= std.math.maxInt(u16))
+            {
+                prev.byte_len += span.byte_len;
+                prev.col_width += @intCast(span.col_width);
+                continue;
+            }
+        }
+
+        try normalized.append(testing.allocator, span);
+    }
+
+    return normalized.toOwnedSlice(testing.allocator);
+}
+
 test "scanLayout: full scan matches legacy wrap-break and grapheme scanners" {
     const wrap_break_cases = [_]struct {
         text: []const u8,
@@ -4328,12 +4357,17 @@ test "scanLayout: explicit byte windows match full scan across width methods" {
                 var windowed = try collectScanLayoutWindowBatches(case.text, 4, case.is_ascii_only, width_method, window_bytes, true);
                 defer windowed.deinit(testing.allocator);
 
+                const normalized_full = try normalizeAsciiNoBreakRunsForComparison(full.spans.items, case.is_ascii_only);
+                defer testing.allocator.free(normalized_full);
+                const normalized_windowed = try normalizeAsciiNoBreakRunsForComparison(windowed.spans.items, case.is_ascii_only);
+                defer testing.allocator.free(normalized_windowed);
+
                 try testing.expectEqual(full.total_bytes, windowed.total_bytes);
                 try testing.expectEqual(full.total_cols, windowed.total_cols);
-                try testing.expectEqual(full.spans.items.len, windowed.spans.items.len);
+                try testing.expectEqual(normalized_full.len, normalized_windowed.len);
 
-                for (full.spans.items, 0..) |span, idx| {
-                    try testing.expectEqualDeep(span, windowed.spans.items[idx]);
+                for (normalized_full, 0..) |span, idx| {
+                    try testing.expectEqualDeep(span, normalized_windowed[idx]);
                 }
             }
         }
@@ -4405,6 +4439,67 @@ test "scanLayout: ASCII no-break window batches coalesce per window" {
         try testing.expectEqual(exp.start, span.col_start);
         try testing.expectEqual(@as(u16, @intCast(exp.len)), span.col_width);
         try testing.expectEqual(utf8.BreakKind.none, span.break_after);
+    }
+}
+
+test "scanLayout: ASCII include-breaks full scan coalesces no-break runs" {
+    const text = "alpha beta-gamma";
+
+    var result = utf8.LayoutScanResult.init(testing.allocator);
+    defer result.deinit();
+    try utf8.scanLayout(text, 4, true, .unicode, &result);
+
+    try testing.expectEqual(@as(u32, @intCast(text.len)), result.total_bytes);
+    try testing.expectEqual(@as(u32, @intCast(text.len)), result.total_cols);
+    try testing.expectEqual(@as(usize, 5), result.spans.items.len);
+
+    const expected = [_]utf8.GraphemeSpan{
+        .{ .byte_start = 0, .byte_len = 5, .col_start = 0, .col_width = 5, .break_after = .none },
+        .{ .byte_start = 5, .byte_len = 1, .col_start = 5, .col_width = 1, .break_after = .whitespace },
+        .{ .byte_start = 6, .byte_len = 4, .col_start = 6, .col_width = 4, .break_after = .none },
+        .{ .byte_start = 10, .byte_len = 1, .col_start = 10, .col_width = 1, .break_after = .punctuation },
+        .{ .byte_start = 11, .byte_len = 5, .col_start = 11, .col_width = 5, .break_after = .none },
+    };
+
+    for (expected, 0..) |span, idx| {
+        try testing.expectEqualDeep(span, result.spans.items[idx]);
+    }
+}
+
+test "scanLayout: ASCII include-breaks batches coalesce no-break runs" {
+    const text = "alpha beta-gamma";
+
+    var batched = try collectScanLayoutBatches(text, 4, true, .unicode, 1, true);
+    defer batched.deinit(testing.allocator);
+
+    try testing.expectEqual(@as(u32, @intCast(text.len)), batched.total_bytes);
+    try testing.expectEqual(@as(u32, @intCast(text.len)), batched.total_cols);
+    try testing.expectEqual(@as(usize, 5), batched.spans.items.len);
+
+    try testing.expectEqual(@as(u32, 5), batched.spans.items[0].byte_len);
+    try testing.expectEqual(utf8.BreakKind.whitespace, batched.spans.items[1].break_after);
+    try testing.expectEqual(@as(u32, 4), batched.spans.items[2].byte_len);
+    try testing.expectEqual(utf8.BreakKind.punctuation, batched.spans.items[3].break_after);
+    try testing.expectEqual(@as(u32, 5), batched.spans.items[4].byte_len);
+}
+
+test "scanLayout: ASCII include-breaks window batches split runs at windows but keep delimiters" {
+    const text = "alphabet soup";
+
+    var windowed = try collectScanLayoutWindowBatches(text, 4, true, .unicode, 4, true);
+    defer windowed.deinit(testing.allocator);
+
+    const expected = [_]utf8.GraphemeSpan{
+        .{ .byte_start = 0, .byte_len = 4, .col_start = 0, .col_width = 4, .break_after = .none },
+        .{ .byte_start = 4, .byte_len = 4, .col_start = 4, .col_width = 4, .break_after = .none },
+        .{ .byte_start = 8, .byte_len = 1, .col_start = 8, .col_width = 1, .break_after = .whitespace },
+        .{ .byte_start = 9, .byte_len = 3, .col_start = 9, .col_width = 3, .break_after = .none },
+        .{ .byte_start = 12, .byte_len = 1, .col_start = 12, .col_width = 1, .break_after = .none },
+    };
+
+    try testing.expectEqual(expected.len, windowed.spans.items.len);
+    for (expected, 0..) |span, idx| {
+        try testing.expectEqualDeep(span, windowed.spans.items[idx]);
     }
 }
 
