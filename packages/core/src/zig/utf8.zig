@@ -428,6 +428,7 @@ pub fn scanLayout(
 
     while (true) {
         const batch = try scanLayoutBatchInternal(
+            true,
             text,
             tab_width,
             is_ascii_only,
@@ -435,7 +436,6 @@ pub fn scanLayout(
             &cursor,
             scratch[0..],
             null,
-            true,
         );
 
         try result.spans.appendSlice(result.allocator, batch.spans);
@@ -463,6 +463,7 @@ inline fn setLayoutScanCursor(
 }
 
 fn scanLayoutBatchInternal(
+    comptime include_breaks: bool,
     text: []const u8,
     tab_width: u8,
     is_ascii_only: bool,
@@ -470,7 +471,6 @@ fn scanLayoutBatchInternal(
     cursor: *LayoutScanCursor,
     scratch: []GraphemeSpan,
     max_bytes: ?u32,
-    include_breaks: bool,
 ) LayoutScanError!LayoutSpanBatch {
     if (cursor.byte_offset > text.len) return error.InvalidCursorOffset;
     if (cursor.byte_offset == 0 and cursor.col_offset != 0) return error.InvalidCursorOffset;
@@ -487,15 +487,15 @@ fn scanLayoutBatchInternal(
 
     const start_byte = cursor.byte_offset;
     const start_col = cursor.col_offset;
+    const text_len_u32: u32 = @intCast(text.len);
+    const batch_limit_byte = if (max_bytes) |byte_limit|
+        @min(text_len_u32, start_byte + byte_limit)
+    else
+        text_len_u32;
 
     if (is_ascii_only) {
         if (cursor.col_offset != cursor.byte_offset) return error.InvalidCursorOffset;
-
-        const text_len_u32: u32 = @intCast(text.len);
-        const batch_end = if (max_bytes) |byte_limit|
-            @min(text_len_u32, start_byte + byte_limit)
-        else
-            text_len_u32;
+        const batch_end = batch_limit_byte;
 
         var pos: u32 = start_byte;
         var count: usize = 0;
@@ -533,11 +533,12 @@ fn scanLayoutBatchInternal(
 
     while (pos < text.len) {
         const b0 = text[pos];
+
         var curr_cp: u21 = undefined;
         var cp_len: usize = undefined;
-        var curr_class: WordClass = undefined;
         var cp_width: u32 = undefined;
-        var cp_break_kind: BreakKind = undefined;
+        var curr_class: WordClass = .other;
+        var cp_break_kind: BreakKind = .none;
 
         const pre_break_state = break_state;
         const pre_prev_cp = prev_cp;
@@ -546,9 +547,12 @@ fn scanLayoutBatchInternal(
         if (isPrintableAsciiByte(b0)) {
             curr_cp = b0;
             cp_len = 1;
-            curr_class = classifyAsciiWordClass(b0);
             cp_width = 1;
-            cp_break_kind = breakKindForAsciiByte(b0);
+
+            if (include_breaks) {
+                curr_class = classifyAsciiWordClass(b0);
+                cp_break_kind = breakKindForAsciiByte(b0);
+            }
 
             if (prev_cp == null) {
                 is_break = true;
@@ -567,10 +571,13 @@ fn scanLayoutBatchInternal(
 
             curr_cp = decoded.cp;
             cp_len = decoded.len;
-            curr_class = classifyWordClass(curr_cp);
             is_break = isGraphemeBreak(prev_cp, curr_cp, &break_state, width_method);
             cp_width = charWidth(b0, curr_cp, tab_width);
-            cp_break_kind = breakKindForCodepoint(b0, curr_cp);
+
+            if (include_breaks) {
+                curr_class = classifyWordClass(curr_cp);
+                cp_break_kind = breakKindForCodepoint(b0, curr_cp);
+            }
         }
 
         if (!cluster_started) {
@@ -582,20 +589,26 @@ fn scanLayoutBatchInternal(
             cluster_start = pos;
             cluster_col_start = col;
             cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
-            cluster_break_kind = cp_break_kind;
-            cluster_class = curr_class;
+
+            if (include_breaks) {
+                cluster_break_kind = cp_break_kind;
+                cluster_class = curr_class;
+            }
         } else if (is_break) {
             scratch[count] = .{
                 .byte_start = @intCast(cluster_start),
                 .byte_len = @intCast(pos - cluster_start),
                 .col_start = cluster_col_start,
                 .col_width = @intCast(cluster_width_state.width),
-                .break_after = finalizedBreakKind(cluster_break_kind, cluster_class, curr_class, include_breaks),
+                .break_after = if (include_breaks)
+                    finalizedBreakKind(cluster_break_kind, cluster_class, curr_class, true)
+                else
+                    .none,
             };
             count += 1;
             col += cluster_width_state.width;
 
-            if (count == scratch.len or if (max_bytes) |byte_limit| count > 0 and pos < text.len and @as(u32, @intCast(pos)) - start_byte >= byte_limit else false) {
+            if (count == scratch.len or (count > 0 and @as(u32, @intCast(pos)) >= batch_limit_byte and pos < text.len)) {
                 setLayoutScanCursor(cursor, @intCast(pos), col, pre_prev_cp, pre_break_state);
                 return .{
                     .spans = scratch[0..count],
@@ -608,11 +621,17 @@ fn scanLayoutBatchInternal(
             cluster_start = pos;
             cluster_col_start = col;
             cluster_width_state = GraphemeWidthState.init(curr_cp, cp_width, width_method);
-            cluster_break_kind = cp_break_kind;
-            cluster_class = curr_class;
+
+            if (include_breaks) {
+                cluster_break_kind = cp_break_kind;
+                cluster_class = curr_class;
+            }
         } else {
             cluster_width_state.addCodepoint(curr_cp, cp_width);
-            cluster_break_kind = mergeBreakKind(cluster_break_kind, cp_break_kind);
+
+            if (include_breaks) {
+                cluster_break_kind = mergeBreakKind(cluster_break_kind, cp_break_kind);
+            }
         }
 
         prev_cp = curr_cp;
@@ -625,7 +644,10 @@ fn scanLayoutBatchInternal(
             .byte_len = @intCast(text.len - cluster_start),
             .col_start = cluster_col_start,
             .col_width = @intCast(cluster_width_state.width),
-            .break_after = finalizedBreakKind(cluster_break_kind, cluster_class, null, include_breaks),
+            .break_after = if (include_breaks)
+                finalizedBreakKind(cluster_break_kind, cluster_class, null, true)
+            else
+                .none,
         };
         count += 1;
         col += cluster_width_state.width;
@@ -650,7 +672,7 @@ pub fn scanLayoutNextWindowBatch(
     scratch: []GraphemeSpan,
     max_bytes: u32,
 ) LayoutScanError!LayoutSpanBatch {
-    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, max_bytes, true);
+    return scanLayoutBatchInternal(true, text, tab_width, is_ascii_only, width_method, cursor, scratch, max_bytes);
 }
 
 pub fn scanLayoutNextWindowBatchNoBreaks(
@@ -662,7 +684,7 @@ pub fn scanLayoutNextWindowBatchNoBreaks(
     scratch: []GraphemeSpan,
     max_bytes: u32,
 ) LayoutScanError!LayoutSpanBatch {
-    return scanLayoutBatchInternal(text, tab_width, is_ascii_only, width_method, cursor, scratch, max_bytes, false);
+    return scanLayoutBatchInternal(false, text, tab_width, is_ascii_only, width_method, cursor, scratch, max_bytes);
 }
 
 // Nothing needed here - using uucode.grapheme.isBreak directly
