@@ -174,20 +174,6 @@ const DecodedUtf8 = struct {
     len: usize,
 };
 
-inline fn decodeUtf8At(text: []const u8, pos: usize) DecodedUtf8 {
-    const b0 = text[pos];
-    if (b0 < 0x80) {
-        return DecodedUtf8{ .cp = @as(u21, b0), .len = 1 };
-    }
-
-    const dec = decodeUtf8Unchecked(text, pos);
-    if (pos + dec.len > text.len) {
-        return DecodedUtf8{ .cp = 0xFFFD, .len = 1 };
-    }
-
-    return DecodedUtf8{ .cp = dec.cp, .len = dec.len };
-}
-
 // Unicode wrap-break codepoints
 inline fn isUnicodeWrapBreak(cp: u21) bool {
     return switch (cp) {
@@ -2178,8 +2164,10 @@ fn calculateTextWidthUnicode(text: []const u8, tab_width: u8, isASCIIOnly: bool,
         const b0 = text[pos];
         const decoded = if (b0 < 0x80)
             DecodedUtf8{ .cp = @as(u21, b0), .len = @as(usize, 1) }
-        else
-            decodeUtf8At(text, pos);
+        else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            break :blk DecodedUtf8{ .cp = dec.cp, .len = dec.len };
+        };
 
         const curr_cp: u21 = decoded.cp;
         const cp_len: usize = decoded.len;
@@ -2233,8 +2221,10 @@ fn calculateTextWidthWCWidth(text: []const u8, tab_width: u8, isASCIIOnly: bool)
         const b0 = text[pos];
         const decoded = if (b0 < 0x80)
             DecodedUtf8{ .cp = @as(u21, b0), .len = @as(usize, 1) }
-        else
-            decodeUtf8At(text, pos);
+        else blk: {
+            const dec = decodeUtf8Unchecked(text, pos);
+            break :blk DecodedUtf8{ .cp = dec.cp, .len = dec.len };
+        };
 
         const curr_cp: u21 = decoded.cp;
         const cp_len: usize = decoded.len;
