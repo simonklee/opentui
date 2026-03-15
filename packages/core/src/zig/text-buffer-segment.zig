@@ -86,7 +86,6 @@ pub const LayoutSpanScratch = struct {
     };
 
     slots: [LAYOUT_WINDOW_SLOTS][LAYOUT_WINDOW_MAX_SPANS]GraphemeSpan = undefined,
-    lens: [LAYOUT_WINDOW_SLOTS]usize = [_]usize{0} ** LAYOUT_WINDOW_SLOTS,
     next_slot: usize = 0,
     range_cursor: RangeCursor = .{},
 
@@ -95,19 +94,13 @@ pub const LayoutSpanScratch = struct {
     }
 
     pub fn reset(self: *LayoutSpanScratch) void {
-        self.lens = [_]usize{0} ** LAYOUT_WINDOW_SLOTS;
         self.next_slot = 0;
-        self.range_cursor = .{};
-    }
-
-    pub fn clearRangeCursor(self: *LayoutSpanScratch) void {
         self.range_cursor = .{};
     }
 
     pub fn acquire(self: *LayoutSpanScratch) Slot {
         const slot_index = self.next_slot;
         self.next_slot = (self.next_slot + 1) % LAYOUT_WINDOW_SLOTS;
-        self.lens[slot_index] = 0;
         return .{
             .index = slot_index,
             .spans = self.slots[slot_index][0..],
@@ -123,7 +116,6 @@ pub const TextChunk = struct {
     width: u16,
     flags: u8 = 0,
     layout_spans: ?[]const GraphemeSpan = null,
-    layout_cache_allocator: ?Allocator = null,
     layout_cache_tab_width: u8 = 0,
     layout_cache_width_method: utf8.WidthMethod = .unicode,
     layout_cache_valid: bool = false,
@@ -174,7 +166,6 @@ pub const TextChunk = struct {
 
     fn resetLayoutCache(self: *TextChunk) void {
         self.layout_spans = null;
-        self.layout_cache_allocator = null;
         self.layout_cache_valid = false;
         self.layout_cache_mode = .windowed;
     }
@@ -227,7 +218,6 @@ pub const TextChunk = struct {
 
         const layout_spans = try self.buildOwnedLayoutSpans(mem_registry, allocator, tabwidth, width_method);
         mut_self.layout_spans = layout_spans;
-        mut_self.layout_cache_allocator = allocator;
         mut_self.layout_cache_tab_width = tabwidth;
         mut_self.layout_cache_width_method = width_method;
         mut_self.layout_cache_valid = true;
@@ -276,7 +266,6 @@ pub const TextChunk = struct {
             else
                 try utf8.scanLayoutNextWindowBatchNoBreaks(chunk_bytes, tabwidth, self.isAsciiOnly(), width_method, &cursor, slot.spans, LAYOUT_WINDOW_BYTES);
 
-            scratch.lens[slot.index] = batch.spans.len;
             for (batch.spans) |span| {
                 try consumer(ctx, span);
             }
@@ -424,8 +413,6 @@ pub const TextChunk = struct {
                 window_bytes,
             );
 
-            scratch.lens[slot.index] = batch.spans.len;
-
             if (state.cursor.byte_offset == before) {
                 break;
             }
@@ -465,8 +452,6 @@ pub const TextChunk = struct {
                 slot.spans,
                 window_bytes,
             );
-
-            scratch.lens[slot.index] = batch.spans.len;
 
             for (batch.spans) |batch_span| {
                 if (clipSpanToRangeNoBreaks(batch_span, range)) |span| {
@@ -661,18 +646,6 @@ pub const TextChunk = struct {
         );
     }
 
-    pub fn forEachLayoutSpansCached(
-        self: *const TextChunk,
-        mem_registry: *const MemRegistry,
-        allocator: Allocator,
-        tabwidth: u8,
-        width_method: utf8.WidthMethod,
-        scratch: *LayoutSpanScratch,
-        ctx: *anyopaque,
-        consumer: SpanConsumer,
-    ) anyerror!void {
-        return self.forEachLayoutSpansInternal(mem_registry, allocator, tabwidth, width_method, .full_cache, true, scratch, ctx, consumer);
-    }
 };
 
 /// A highlight represents a styled region on a line
@@ -844,7 +817,6 @@ pub const Segment = union(enum) {
                 .width = left_chunk.width + right_chunk.width,
                 .flags = left_chunk.flags,
                 .layout_spans = null,
-                .layout_cache_allocator = null,
                 .layout_cache_tab_width = 0,
                 .layout_cache_width_method = .unicode,
                 .layout_cache_valid = false,

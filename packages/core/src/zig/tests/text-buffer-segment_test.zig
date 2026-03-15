@@ -47,7 +47,6 @@ fn collectChunkSpansWithMode(
 ) ![]const seg_mod.GraphemeSpan {
     var chunk_copy = chunk.*;
     chunk_copy.layout_spans = null;
-    chunk_copy.layout_cache_allocator = null;
     chunk_copy.layout_cache_valid = true;
     chunk_copy.layout_cache_tab_width = tab_width;
     chunk_copy.layout_cache_width_method = width_method;
@@ -77,7 +76,6 @@ fn collectChunkRangeSpansWithMode(
 ) ![]const seg_mod.GraphemeSpan {
     var chunk_copy = chunk.*;
     chunk_copy.layout_spans = null;
-    chunk_copy.layout_cache_allocator = null;
     chunk_copy.layout_cache_valid = true;
     chunk_copy.layout_cache_tab_width = tab_width;
     chunk_copy.layout_cache_width_method = width_method;

@@ -132,7 +132,6 @@ fn benchForEachLayoutSpans(
         const arena_alloc = arena.allocator();
 
         chunk.layout_spans = null;
-        chunk.layout_cache_allocator = null;
         chunk.layout_cache_valid = true;
         chunk.layout_cache_tab_width = 4;
         chunk.layout_cache_width_method = .unicode;

@@ -18,7 +18,6 @@ fn forceAllTextChunksLayoutMode(tb: *TextBuffer, mode: LayoutCacheMode) void {
         if (seg.asText()) |chunk| {
             const mut_chunk = @constCast(chunk);
             mut_chunk.layout_spans = null;
-            mut_chunk.layout_cache_allocator = null;
             mut_chunk.layout_cache_valid = true;
             mut_chunk.layout_cache_tab_width = tb.tabWidth();
             mut_chunk.layout_cache_width_method = tb.widthMethod();

@@ -180,36 +180,6 @@ pub const UnifiedTextBuffer = struct {
         return chunk.forEachLayoutSpans(&self.mem_registry, self.allocator, self.tab_width, self.width_method, &scratch, ctx, consumer);
     }
 
-    pub fn forEachLayoutSpansForWithScratch(
-        self: *const Self,
-        chunk: *const TextChunk,
-        scratch: *LayoutSpanScratch,
-        ctx: *anyopaque,
-        consumer: SpanConsumer,
-    ) anyerror!void {
-        return chunk.forEachLayoutSpans(&self.mem_registry, self.allocator, self.tab_width, self.width_method, scratch, ctx, consumer);
-    }
-
-    pub fn forEachLayoutSpansForWithScratchCached(
-        self: *const Self,
-        chunk: *const TextChunk,
-        scratch: *LayoutSpanScratch,
-        ctx: *anyopaque,
-        consumer: SpanConsumer,
-    ) anyerror!void {
-        return chunk.forEachLayoutSpansCached(&self.mem_registry, self.allocator, self.tab_width, self.width_method, scratch, ctx, consumer);
-    }
-
-    pub fn forEachLayoutSpansForWithScratchNoBreaks(
-        self: *const Self,
-        chunk: *const TextChunk,
-        scratch: *LayoutSpanScratch,
-        ctx: *anyopaque,
-        consumer: SpanConsumer,
-    ) anyerror!void {
-        return chunk.forEachLayoutSpansNoBreaks(&self.mem_registry, self.allocator, self.tab_width, self.width_method, scratch, ctx, consumer);
-    }
-
     pub fn forEachLayoutSpansRangeNoBreaksForWithScratch(
         self: *const Self,
         chunk: *const TextChunk,
