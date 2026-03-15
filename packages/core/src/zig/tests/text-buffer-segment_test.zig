@@ -523,7 +523,12 @@ test "TextChunk.forEachLayoutSpans keeps large ASCII chunks windowed by default"
 
     try testing.expectEqual(LayoutCacheMode.windowed, chunk.layout_cache_mode);
     try testing.expectEqual(@as(?[]const seg_mod.GraphemeSpan, null), chunk.layout_spans);
-    try testing.expectEqual(text.len, collection.spans.items.len);
+    try testing.expectEqual(@as(usize, 1), collection.spans.items.len);
+    const span = collection.spans.items[0];
+    try testing.expectEqual(@as(u32, 0), span.byte_start);
+    try testing.expectEqual(@as(u32, @intCast(text.len)), span.byte_len);
+    try testing.expectEqual(@as(u32, 0), span.col_start);
+    try testing.expectEqual(@as(u16, @intCast(text.len)), span.col_width);
 }
 
 test "Metrics.add - two text segments" {

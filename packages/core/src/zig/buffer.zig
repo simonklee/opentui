@@ -1319,6 +1319,32 @@ pub const OptimizedBuffer = struct {
 
                         const grapheme_bytes = ctx.chunk_bytes[start..end];
 
+                        if (span.byte_len == span.col_width and span.byte_len > 1) {
+                            var all_printable_ascii = true;
+                            for (grapheme_bytes) |b| {
+                                if (b < 32 or b > 126) {
+                                    all_printable_ascii = false;
+                                    break;
+                                }
+                            }
+
+                            if (all_printable_ascii) {
+                                var rel: u32 = 0;
+                                while (rel < span.byte_len) : (rel += 1) {
+                                    var sub_span = span;
+                                    sub_span.byte_start += rel;
+                                    sub_span.byte_len = 1;
+                                    sub_span.col_start += rel;
+                                    sub_span.col_width = 1;
+                                    try consume(ctx_ptr, sub_span);
+                                    if (ctx.skip_rest_of_chunk.*) {
+                                        break;
+                                    }
+                                }
+                                return;
+                            }
+                        }
+
                         if (ctx.column_in_line.* < ctx.horizontal_offset) {
                             ctx.global_char_pos.* += g_width;
                             ctx.column_in_line.* += g_width;
