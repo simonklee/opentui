@@ -59,6 +59,7 @@ import * as textWrapExample from "./text-wrap.js"
 import * as editorDemo from "./editor-demo.js"
 import * as sliderDemo from "./slider-demo.js"
 import * as terminalDemo from "./terminal.js"
+import * as rgbaaIndexedDemo from "./rgbaa-indexed-demo.js"
 import * as diffDemo from "./diff-demo.js"
 import * as keypressDebugDemo from "./keypress-debug-demo.js"
 import * as extmarksDemo from "./extmarks-demo.js"
@@ -411,6 +412,13 @@ const examples: Example[] = [
     description: "Terminal color palette detection and visualization - fetch and display all 256 terminal colors",
     run: terminalDemo.run,
     destroy: terminalDemo.destroy,
+  },
+  {
+    name: "RGBA+A Indexed Color Demo",
+    description:
+      "Simulate RGB-to-indexed mapping with cache behavior, palette detection, and palette-epoch invalidation controls",
+    run: rgbaaIndexedDemo.run,
+    destroy: rgbaaIndexedDemo.destroy,
   },
   {
     name: "Editor Demo",
