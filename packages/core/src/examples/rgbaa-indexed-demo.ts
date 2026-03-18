@@ -58,7 +58,16 @@ const SOLARIZED_DARK_16_HEX = [
   "#93a1a1",
   "#fdf6e3",
 ] as const
-const REUSED_BASE_HEX = ["#ef4444", "#f59e0b", "#84cc16", "#06b6d4", "#3b82f6", "#a855f7", "#ec4899", "#f8fafc"] as const
+const REUSED_BASE_HEX = [
+  "#ef4444",
+  "#f59e0b",
+  "#84cc16",
+  "#06b6d4",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
+  "#f8fafc",
+] as const
 
 const COLOR_BG = RGBA.fromHex("#0b1220")
 const COLOR_TITLE = RGBA.fromHex("#7dd3fc")
@@ -88,7 +97,10 @@ let fullPalette: RGBA[] = normalizeTerminalPalette(null).palette
 let visiblePalette: RGBA[] = fullPalette.slice(0, 16)
 let lastStatsLabel = ""
 
-function chunk(text: string, options: { fg?: ColorValueInput; bg?: ColorValueInput; attributes?: number } = {}): TextChunk {
+function chunk(
+  text: string,
+  options: { fg?: ColorValueInput; bg?: ColorValueInput; attributes?: number } = {},
+): TextChunk {
   return {
     __isChunk: true,
     text,
@@ -201,16 +213,24 @@ function buildIndexedIntentLine(label: string, colors: RGBA[]): StyledText {
 }
 
 function buildDefaultIntentLine(): StyledText {
+  const surface = visiblePalette[0] ?? RGBA.fromHex(XTERM_16_HEX[0])
+  const primary = visiblePalette[4] ?? RGBA.fromHex(XTERM_16_HEX[4])
+  const accent = visiblePalette[6] ?? RGBA.fromHex(XTERM_16_HEX[6])
+  const warning = visiblePalette[3] ?? RGBA.fromHex(XTERM_16_HEX[3])
+  const bright = visiblePalette[15] ?? RGBA.fromHex(XTERM_16_HEX[15])
+  const warningFg = getContrastForBackground(warning)
+  const defaultSurfaceFg = getContrastForBackground(surface)
+
   return new StyledText([
-    chunk("Intent modes".padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
+    chunk("Theme usage".padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
-    chunk("rgb", { fg: COLOR_SUCCESS, attributes: TextAttributes.BOLD }),
+    chunk(" Header ", { fg: indexedColor(15, bright), bg: indexedColor(4, primary), attributes: TextAttributes.BOLD }),
     chunk("  "),
-    chunk("fg default", { fg: defaultColor(COLOR_MUTED), attributes: TextAttributes.BOLD }),
+    chunk(" Button ", { fg: indexedColor(15, bright), bg: indexedColor(6, accent), attributes: TextAttributes.BOLD }),
     chunk("  "),
-    chunk("bg default", { fg: COLOR_LABEL, bg: defaultColor(COLOR_BG) }),
+    chunk(" Warning ", { fg: warningFg, bg: indexedColor(3, warning), attributes: TextAttributes.BOLD }),
     chunk("  "),
-    chunk("indexed 6", { fg: indexedColor(6, visiblePalette[6] ?? COLOR_TITLE) }),
+    chunk(" defaults ", { fg: defaultColor(defaultSurfaceFg), bg: defaultColor(surface) }),
   ])
 }
 
@@ -269,9 +289,9 @@ function updateStatsLabel(renderer: CliRenderer): void {
 
   const stats = renderer.getColorDebugStats()
   const label =
-    `Scenario=${scenarioMode} glyph=${swatchGlyph} palette=${palettePreset} mode=${colorModeLabel(renderer)} | ` +
-    `palette_epoch=${stats.palette_epoch} cache_size=${stats.cache_size} conversions=${stats.conversions} ` +
-    `hits=${stats.cache_hits} misses=${stats.cache_misses}`
+    `palette=${palettePreset} mode=${colorModeLabel(renderer)} scenario=${scenarioMode}` +
+    `\n` +
+    `epoch=${stats.palette_epoch} cache=${stats.cache_size} conv=${stats.conversions} hits=${stats.cache_hits} misses=${stats.cache_misses}`
 
   if (label === lastStatsLabel) return
   lastStatsLabel = label
@@ -445,7 +465,7 @@ export function run(renderer: CliRenderer): void {
     content: "",
     fg: COLOR_MUTED,
     height: 2,
-    wrapMode: "none",
+    wrapMode: "word",
   })
   rootContainer.add(cacheStatsText)
 
