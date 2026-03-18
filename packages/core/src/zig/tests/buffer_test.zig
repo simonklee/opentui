@@ -103,6 +103,107 @@ test "OptimizedBuffer - drawText with ASCII" {
     try std.testing.expectEqual(@as(u32, 'e'), cell_e.char);
 }
 
+test "OptimizedBuffer - alpha blending downgrades blended tags to rgb" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var buf = try OptimizedBuffer.init(
+        std.testing.allocator,
+        4,
+        1,
+        .{ .pool = pool, .id = "tag-blend-buffer" },
+    );
+    defer buf.deinit();
+
+    const base_fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
+    const base_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try buf.clear(base_bg, null);
+
+    try buf.setCellWithAlphaBlendingWithTags(
+        0,
+        0,
+        'B',
+        RGBA{ 1.0, 0.0, 0.0, 0.5 },
+        base_bg,
+        0,
+        ansi.indexedColorTag(3),
+        ansi.indexedColorTag(4),
+    );
+
+    const fg_blended_cell = buf.get(0, 0).?;
+    try std.testing.expectEqual(ansi.COLOR_TAG_RGB, fg_blended_cell.fg_tag);
+    try std.testing.expectEqual(ansi.indexedColorTag(4), fg_blended_cell.bg_tag);
+
+    // Establish a destination foreground, then blend background alpha over it.
+    buf.set(0, 0, .{
+        .char = 'A',
+        .fg = base_fg,
+        .bg = base_bg,
+        .fg_tag = ansi.indexedColorTag(1),
+        .bg_tag = ansi.indexedColorTag(2),
+        .attributes = 0,
+    });
+
+    try buf.setCellWithAlphaBlendingWithTags(
+        0,
+        0,
+        'C',
+        RGBA{ 1.0, 0.0, 0.0, 1.0 },
+        RGBA{ 0.0, 1.0, 0.0, 0.5 },
+        0,
+        ansi.indexedColorTag(5),
+        ansi.indexedColorTag(6),
+    );
+
+    const bg_blended_cell = buf.get(0, 0).?;
+    try std.testing.expectEqual(ansi.indexedColorTag(5), bg_blended_cell.fg_tag);
+    try std.testing.expectEqual(ansi.COLOR_TAG_RGB, bg_blended_cell.bg_tag);
+}
+
+test "OptimizedBuffer - drawFrameBuffer preserves explicit tags on opaque copy" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var src = try OptimizedBuffer.init(
+        std.testing.allocator,
+        2,
+        1,
+        .{ .pool = pool, .id = "src-tag-copy-buffer" },
+    );
+    defer src.deinit();
+
+    var dst = try OptimizedBuffer.init(
+        std.testing.allocator,
+        2,
+        1,
+        .{ .pool = pool, .id = "dst-tag-copy-buffer" },
+    );
+    defer dst.deinit();
+
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+    try src.clear(bg, null);
+    try dst.clear(bg, null);
+
+    src.set(0, 0, .{
+        .char = 'X',
+        .fg = RGBA{ 1.0, 1.0, 1.0, 1.0 },
+        .bg = RGBA{ 0.0, 0.5, 0.5, 1.0 },
+        .fg_tag = ansi.COLOR_TAG_DEFAULT,
+        .bg_tag = ansi.indexedColorTag(6),
+        .attributes = 0,
+    });
+
+    dst.drawFrameBuffer(0, 0, src, null, null, null, null);
+
+    const copied = dst.get(0, 0).?;
+    try std.testing.expectEqual(ansi.COLOR_TAG_DEFAULT, copied.fg_tag);
+    try std.testing.expectEqual(ansi.indexedColorTag(6), copied.bg_tag);
+}
+
 test "OptimizedBuffer - repeated emoji rendering should not exhaust pool" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

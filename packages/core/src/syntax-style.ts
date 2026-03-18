@@ -120,7 +120,7 @@ export class SyntaxStyle {
       dim: style.dim,
     })
 
-    const id = this.lib.syntaxStyleRegister(this.stylePtr, name, style.fg || null, style.bg || null, attributes)
+    const id = this.lib.syntaxStyleRegister(this.stylePtr, name, style.fg ?? null, style.bg ?? null, attributes)
 
     this.nameCache.set(name, id)
     this.styleDefs.set(name, style)

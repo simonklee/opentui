@@ -478,6 +478,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _paletteDetectionSize = 0
   private _paletteEpoch = 0
   private _publishedPaletteSignature: string | null = null
+  private _palettePublishGeneration = 0
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
   private _terminalFocusState: boolean | null = null
@@ -1990,6 +1991,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._paletteDetectionSize = 0
     this._cachedPalette = null
     this._publishedPaletteSignature = null
+    this._palettePublishGeneration = 0
 
     this.emit(CliRenderEvents.DESTROY)
 
@@ -2447,10 +2449,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
   private ensureNativePaletteState(): void {
     if (!this._terminalIsSetup || this._isDestroyed) return
+    const publishGeneration = this._palettePublishGeneration
 
     void this.getPalette({ size: 256 })
       .then((colors) => {
-        this.syncNativePaletteState(colors)
+        if (this._palettePublishGeneration === publishGeneration) {
+          this.syncNativePaletteState(colors)
+        }
         this.requestRender()
       })
       .catch(() => {})
@@ -2466,6 +2471,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.clearPaletteCache()
     }
 
+    this._palettePublishGeneration = (this._palettePublishGeneration + 1) >>> 0
     this.syncNativePaletteState(colors)
     if (colors) {
       this._paletteCache.set(colors.palette.length, colors)
@@ -2530,6 +2536,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     const detector = this.ensurePaletteDetector()
+    const publishGeneration = this._palettePublishGeneration
     this._paletteDetectionSize = requestedSize
     this._paletteDetectionPromise = detector
       .detect({ ...options, timeout: detectionTimeout })
@@ -2539,10 +2546,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         this._paletteDetectionPromise = null
         this._paletteDetectionSize = 0
 
-        if (result.palette.length >= 256) {
-          this.syncNativePaletteState(result)
-        } else if (this._terminalIsSetup && !this._paletteCache.has(256)) {
-          this.ensureNativePaletteState()
+        if (this._palettePublishGeneration === publishGeneration) {
+          if (result.palette.length >= 256) {
+            this.syncNativePaletteState(result)
+          } else if (this._terminalIsSetup && !this._paletteCache.has(256)) {
+            this.ensureNativePaletteState()
+          }
         }
 
         return result

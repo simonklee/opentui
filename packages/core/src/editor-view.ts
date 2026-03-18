@@ -80,12 +80,12 @@ export class EditorView {
 
   public setSelection(start: number, end: number, bgColor?: ColorValueInput, fgColor?: ColorValueInput): void {
     this.guard()
-    this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor || null, fgColor || null)
+    this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor ?? null, fgColor ?? null)
   }
 
   public updateSelection(end: number, bgColor?: ColorValueInput, fgColor?: ColorValueInput): void {
     this.guard()
-    this.lib.editorViewUpdateSelection(this.viewPtr, end, bgColor || null, fgColor || null)
+    this.lib.editorViewUpdateSelection(this.viewPtr, end, bgColor ?? null, fgColor ?? null)
   }
 
   public resetSelection(): void {
@@ -120,8 +120,8 @@ export class EditorView {
       anchorY,
       focusX,
       focusY,
-      bgColor || null,
-      fgColor || null,
+      bgColor ?? null,
+      fgColor ?? null,
       updateCursor ?? false,
       followCursor ?? false,
     )
@@ -144,8 +144,8 @@ export class EditorView {
       anchorY,
       focusX,
       focusY,
-      bgColor || null,
-      fgColor || null,
+      bgColor ?? null,
+      fgColor ?? null,
       updateCursor ?? false,
       followCursor ?? false,
     )
@@ -247,7 +247,9 @@ export class EditorView {
     return this._extmarksController
   }
 
-  public setPlaceholderStyledText(chunks: { text: string; fg?: ColorValueInput; bg?: ColorValueInput; attributes?: number }[]): void {
+  public setPlaceholderStyledText(
+    chunks: { text: string; fg?: ColorValueInput; bg?: ColorValueInput; attributes?: number }[],
+  ): void {
     this.guard()
     this.lib.editorViewSetPlaceholderStyledText(this.viewPtr, chunks)
   }

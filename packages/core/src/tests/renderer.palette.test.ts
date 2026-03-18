@@ -6,6 +6,7 @@ import { Readable } from "node:stream"
 import tty from "tty"
 import { ManualClock } from "../testing/manual-clock"
 import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette"
+import { buildTerminalPaletteSignature } from "../lib/color-value.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 
@@ -460,6 +461,44 @@ describe("Palette cache invalidation", () => {
 
     expect(redetected).not.toBe(detected)
     expect(renderer.paletteDetectionStatus).toBe("cached")
+
+    renderer.destroy()
+  })
+
+  test("in-flight detection does not overwrite a newer published palette", async () => {
+    const { renderer, clock } = await createPaletteRenderer()
+
+    const manualPalette: TerminalColors = {
+      palette: ["#ff0000"],
+      defaultForeground: "#eeeeee",
+      defaultBackground: "#111111",
+      cursorColor: null,
+      mouseForeground: null,
+      mouseBackground: null,
+      tekForeground: null,
+      tekBackground: null,
+      highlightBackground: null,
+      highlightForeground: null,
+    }
+    const expectedSignature = buildTerminalPaletteSignature(manualPalette)
+
+    const detectPromise = renderer.getPalette({ size: 256, timeout: 300 })
+    expect(renderer.paletteDetectionStatus).toBe("detecting")
+
+    renderer.publishPalette(manualPalette)
+
+    // @ts-expect-error - accessing private property for testing
+    const epochAfterPublish = renderer._paletteEpoch
+    // @ts-expect-error - accessing private property for testing
+    expect(renderer._publishedPaletteSignature).toBe(expectedSignature)
+
+    await advancePaletteClock(clock, 300)
+    await detectPromise
+
+    // @ts-expect-error - accessing private property for testing
+    expect(renderer._publishedPaletteSignature).toBe(expectedSignature)
+    // @ts-expect-error - accessing private property for testing
+    expect(renderer._paletteEpoch).toBe(epochAfterPublish)
 
     renderer.destroy()
   })
