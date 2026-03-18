@@ -439,6 +439,30 @@ describe("Palette cache invalidation", () => {
 
     renderer.destroy()
   })
+
+  test("publishPalette(null) clears cached palette state", async () => {
+    const { renderer, clock, mockStdin, mockStdout } = await createPaletteRenderer()
+
+    const detected = await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
+    expect(renderer.paletteDetectionStatus).toBe("cached")
+
+    renderer.publishPalette(null)
+
+    expect(renderer.paletteDetectionStatus).toBe("idle")
+    // @ts-expect-error - accessing private property for testing
+    expect(renderer._cachedPalette).toBeNull()
+
+    const redetectedPromise = renderer.getPalette({ timeout: 300 })
+    expect(renderer.paletteDetectionStatus).toBe("detecting")
+
+    await advancePaletteClock(clock, 300)
+    const redetected = await redetectedPromise
+
+    expect(redetected).not.toBe(detected)
+    expect(renderer.paletteDetectionStatus).toBe("cached")
+
+    renderer.destroy()
+  })
 })
 
 describe("Palette detection with suspended renderer", () => {

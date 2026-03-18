@@ -2448,10 +2448,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private ensureNativePaletteState(): void {
     if (!this._terminalIsSetup || this._isDestroyed) return
 
-    void this.getPalette({ size: 256 }).then((colors) => {
-      this.syncNativePaletteState(colors)
-      this.requestRender()
-    }).catch(() => {})
+    void this.getPalette({ size: 256 })
+      .then((colors) => {
+        this.syncNativePaletteState(colors)
+        this.requestRender()
+      })
+      .catch(() => {})
   }
 
   public clearPaletteCache(): void {
@@ -2460,6 +2462,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public publishPalette(colors: TerminalColors | null): void {
+    if (!colors) {
+      this.clearPaletteCache()
+    }
+
     this.syncNativePaletteState(colors)
     if (colors) {
       this._paletteCache.set(colors.palette.length, colors)
@@ -2525,24 +2531,27 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const detector = this.ensurePaletteDetector()
     this._paletteDetectionSize = requestedSize
-    this._paletteDetectionPromise = detector.detect({ ...options, timeout: detectionTimeout }).then((result) => {
-      this._paletteCache.set(result.palette.length, result)
-      this._cachedPalette = result
-      this._paletteDetectionPromise = null
-      this._paletteDetectionSize = 0
+    this._paletteDetectionPromise = detector
+      .detect({ ...options, timeout: detectionTimeout })
+      .then((result) => {
+        this._paletteCache.set(result.palette.length, result)
+        this._cachedPalette = result
+        this._paletteDetectionPromise = null
+        this._paletteDetectionSize = 0
 
-      if (result.palette.length >= 256) {
-        this.syncNativePaletteState(result)
-      } else if (this._terminalIsSetup && !this._paletteCache.has(256)) {
-        this.ensureNativePaletteState()
-      }
+        if (result.palette.length >= 256) {
+          this.syncNativePaletteState(result)
+        } else if (this._terminalIsSetup && !this._paletteCache.has(256)) {
+          this.ensureNativePaletteState()
+        }
 
-      return result
-    }).catch((error) => {
-      this._paletteDetectionPromise = null
-      this._paletteDetectionSize = 0
-      throw error
-    })
+        return result
+      })
+      .catch((error) => {
+        this._paletteDetectionPromise = null
+        this._paletteDetectionSize = 0
+        throw error
+      })
 
     const detected = await this._paletteDetectionPromise
     const projected = this.getCachedPaletteBySize(requestedSize) ?? detected

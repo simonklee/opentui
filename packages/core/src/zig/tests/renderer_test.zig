@@ -978,6 +978,43 @@ test "renderer - palette epoch changes force repaint without buffer diffs" {
     try std.testing.expect(std.mem.indexOf(u8, third_output, "A") != null);
 }
 
+test "renderer - palette epoch change clears rgb fallback cache" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, RGBA{ 0.3, 0.6, 0.9, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 0);
+    cli_renderer.render(false);
+
+    const before = cli_renderer.getColorDebugStats();
+    try std.testing.expect(before.cache_size > 0);
+
+    var palette: [256]RGBA = undefined;
+    for (palette[0..], 0..) |*color, index| {
+        const value = @as(f32, @floatFromInt(index)) / 255.0;
+        color.* = .{ value, value, value, 1.0 };
+    }
+
+    cli_renderer.setPaletteState(palette[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 1);
+
+    const after = cli_renderer.getColorDebugStats();
+    try std.testing.expectEqual(@as(u32, 0), after.cache_size);
+}
+
 // ============================================================================
 // GRAPHEME CURSOR POSITIONING TESTS
 // ============================================================================

@@ -600,6 +600,7 @@ pub const CliRenderer = struct {
         if (self.palette_epoch != palette_epoch) {
             self.palette_epoch = palette_epoch;
             self.force_full_repaint = true;
+            self.palette_index_cache.clearRetainingCapacity();
         }
     }
 
