@@ -2,6 +2,7 @@ import { ANSI } from "./ansi.js"
 import { Renderable, RootRenderable } from "./Renderable.js"
 import {
   DebugOverlayCorner,
+  type ColorDebugStats,
   type CursorStyleOptions,
   type MousePointerStyle,
   type RenderContext,
@@ -131,6 +132,7 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "OPENTUI_FORCE_WCWIDTH",
   "OPENTUI_FORCE_UNICODE",
   "OPENTUI_FORCE_NOZWJ",
+  "OPENTUI_FORCE_COLOR_MODE",
   "OPENTUI_FORCE_EXPLICIT_WIDTH",
   "WT_SESSION",
   "STY",
@@ -2455,6 +2457,23 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public clearPaletteCache(): void {
     this._paletteCache.clear()
     this._cachedPalette = null
+  }
+
+  public publishPalette(colors: TerminalColors | null): void {
+    this.syncNativePaletteState(colors)
+    if (colors) {
+      this._paletteCache.set(colors.palette.length, colors)
+      this._cachedPalette = colors
+    }
+    this.requestRender()
+  }
+
+  public resetColorDebugStats(options: { clearCache?: boolean } = {}): void {
+    this.lib.resetColorDebugStats(this.rendererPtr, options.clearCache ?? false)
+  }
+
+  public getColorDebugStats(): ColorDebugStats {
+    return this.lib.getColorDebugStats(this.rendererPtr)
   }
 
   /**

@@ -430,6 +430,14 @@ pub const ExternalCursorState = extern struct {
     a: f32,
 };
 
+pub const ExternalColorDebugStats = extern struct {
+    conversions: u32,
+    cache_hits: u32,
+    cache_misses: u32,
+    cache_size: u32,
+    palette_epoch: u32,
+};
+
 export fn getCursorState(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalCursorState) void {
     const pos = rendererPtr.terminal.getCursorPosition();
     const style = rendererPtr.terminal.getCursorStyle();
@@ -464,6 +472,21 @@ export fn setDebugOverlay(rendererPtr: *renderer.CliRenderer, enabled: bool, cor
     };
 
     rendererPtr.setDebugOverlay(enabled, cornerEnum);
+}
+
+export fn resetColorDebugStats(rendererPtr: *renderer.CliRenderer, clearCache: bool) void {
+    rendererPtr.resetColorDebugStats(clearCache);
+}
+
+export fn getColorDebugStats(rendererPtr: *renderer.CliRenderer, outPtr: *ExternalColorDebugStats) void {
+    const stats = rendererPtr.getColorDebugStats();
+    outPtr.* = .{
+        .conversions = stats.conversions,
+        .cache_hits = stats.cache_hits,
+        .cache_misses = stats.cache_misses,
+        .cache_size = stats.cache_size,
+        .palette_epoch = stats.palette_epoch,
+    };
 }
 
 export fn clearTerminal(rendererPtr: *renderer.CliRenderer) void {

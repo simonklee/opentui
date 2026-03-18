@@ -158,3 +158,11 @@ export interface CapturedFrame {
   cursor: [number, number]
   lines: CapturedLine[]
 }
+
+export interface ColorDebugStats {
+  conversions: number
+  cache_hits: number
+  cache_misses: number
+  cache_size: number
+  palette_epoch: number
+}

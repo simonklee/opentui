@@ -416,7 +416,7 @@ const examples: Example[] = [
   {
     name: "RGBA+A Indexed Color Demo",
     description:
-      "Simulate RGB-to-indexed mapping with cache behavior, palette detection, and palette-epoch invalidation controls",
+      "Native RGBA+A routing demo with RGB fallback cache stats, explicit indexed/default colors, and palette preset switching",
     run: rgbaaIndexedDemo.run,
     destroy: rgbaaIndexedDemo.destroy,
   },

@@ -425,6 +425,19 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         }
     }
 
+    if (env_map.get("OPENTUI_FORCE_COLOR_MODE")) |forced_color_mode| {
+        if (std.mem.eql(u8, forced_color_mode, "truecolor")) {
+            self.caps.rgb = true;
+            self.caps.ansi256 = true;
+        } else if (std.mem.eql(u8, forced_color_mode, "256")) {
+            self.caps.rgb = false;
+            self.caps.ansi256 = true;
+        } else if (std.mem.eql(u8, forced_color_mode, "none")) {
+            self.caps.rgb = false;
+            self.caps.ansi256 = false;
+        }
+    }
+
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TERMUX_VERSION")) |_| {
             self.caps.unicode = .wcwidth;

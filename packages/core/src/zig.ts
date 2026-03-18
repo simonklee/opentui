@@ -5,13 +5,14 @@ import {
   type CursorStyle,
   type CursorStyleOptions,
   type TargetChannel,
+  type ColorDebugStats,
   type DebugOverlayCorner,
   type WidthMethod,
   type Highlight,
   type LineInfo,
   type MousePointerStyle,
 } from "./types.js"
-export type { LineInfo, AllocatorStats, BuildOptions }
+export type { LineInfo, AllocatorStats, BuildOptions, ColorDebugStats }
 
 import { RGBA } from "./lib/RGBA.js"
 import {
@@ -34,6 +35,7 @@ import {
   LineInfoStruct,
   MeasureResultStruct,
   CursorStateStruct,
+  ColorDebugStatsStruct,
   CursorStyleOptionsStruct,
   GridDrawOptionsStruct,
   NativeSpanFeedOptionsStruct,
@@ -101,6 +103,12 @@ registerEnvVar({
   description: "Use no_zwj width method (Unicode without ZWJ joining)",
   type: "boolean",
   default: false,
+})
+registerEnvVar({
+  name: "OPENTUI_FORCE_COLOR_MODE",
+  description: "Force terminal color mode detection to truecolor, 256, or none",
+  type: "string",
+  default: "",
 })
 
 // Cursor & mouse pointer style mappings (avoid recreation on each call)
@@ -341,6 +349,14 @@ function getOpenTUILib(libPath?: string) {
     // Debug overlay
     setDebugOverlay: {
       args: ["ptr", "bool", "u8"],
+      returns: "void",
+    },
+    resetColorDebugStats: {
+      args: ["ptr", "bool"],
+      returns: "void",
+    },
+    getColorDebugStats: {
+      args: ["ptr", "ptr"],
       returns: "void",
     },
 
@@ -1548,6 +1564,8 @@ export interface RenderLib {
   getCursorState: (renderer: Pointer) => CursorState
   setCursorStyleOptions: (renderer: Pointer, options: CursorStyleOptions) => void
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
+  resetColorDebugStats: (renderer: Pointer, clearCache: boolean) => void
+  getColorDebugStats: (renderer: Pointer) => ColorDebugStats
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
   copyToClipboardOSC52: (renderer: Pointer, target: number, payload: Uint8Array) => boolean
@@ -2624,6 +2642,16 @@ class FFIRenderLib implements RenderLib {
 
   public setDebugOverlay(renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) {
     this.opentui.symbols.setDebugOverlay(renderer, enabled, corner)
+  }
+
+  public resetColorDebugStats(renderer: Pointer, clearCache: boolean): void {
+    this.opentui.symbols.resetColorDebugStats(renderer, clearCache)
+  }
+
+  public getColorDebugStats(renderer: Pointer): ColorDebugStats {
+    const statsBuffer = new ArrayBuffer(ColorDebugStatsStruct.size)
+    this.opentui.symbols.getColorDebugStats(renderer, ptr(statsBuffer))
+    return ColorDebugStatsStruct.unpack(statsBuffer) as ColorDebugStats
   }
 
   public clearTerminal(renderer: Pointer) {
