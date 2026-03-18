@@ -1,11 +1,12 @@
 import type { TextRenderable } from "../renderables/Text.js"
 import type { TextBuffer, TextChunk } from "../text-buffer.js"
 import { createTextAttributes } from "../utils.js"
-import { parseColor, type ColorInput } from "./RGBA.js"
+import { parseColor } from "./RGBA.js"
+import { isColorValue, prepareColorValueInput, type ColorValueInput } from "./color-value.js"
 
 const BrandedStyledText: unique symbol = Symbol.for("@opentui/core/StyledText")
 
-export type Color = ColorInput
+export type Color = ColorValueInput
 
 export interface StyleAttrs {
   fg?: Color
@@ -44,11 +45,18 @@ export function stringToStyledText(content: string): StyledText {
 export type StylableInput = string | number | boolean | TextChunk
 
 function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
+  const styleFg = style.fg
+    ? (isColorValue(style.fg) ? prepareColorValueInput(style.fg) ?? undefined : parseColor(style.fg))
+    : undefined
+  const styleBg = style.bg
+    ? (isColorValue(style.bg) ? prepareColorValueInput(style.bg) ?? undefined : parseColor(style.bg))
+    : undefined
+
   if (typeof input === "object" && "__isChunk" in input) {
     const existingChunk = input as TextChunk
 
-    const fg = style.fg ? parseColor(style.fg) : existingChunk.fg
-    const bg = style.bg ? parseColor(style.bg) : existingChunk.bg
+    const fg = styleFg ?? existingChunk.fg
+    const bg = styleBg ?? existingChunk.bg
 
     const newAttrs = createTextAttributes(style)
     const mergedAttrs = existingChunk.attributes ? existingChunk.attributes | newAttrs : newAttrs
@@ -63,15 +71,13 @@ function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
     }
   } else {
     const plainTextStr = String(input)
-    const fg = style.fg ? parseColor(style.fg) : undefined
-    const bg = style.bg ? parseColor(style.bg) : undefined
     const attributes = createTextAttributes(style)
 
     return {
       __isChunk: true,
       text: plainTextStr,
-      fg,
-      bg,
+      fg: styleFg,
+      bg: styleBg,
       attributes,
     }
   }

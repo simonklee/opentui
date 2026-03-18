@@ -129,6 +129,22 @@ test "setHostEnvVar applies env overrides in shared library mode" {
     try testing.expect(term.skip_graphics_query);
 }
 
+test "setHostEnvVar detects ansi256 separately from rgb" {
+    var env = std.process.EnvMap.init(testing.allocator);
+    defer env.deinit();
+    try env.put("TERM", "screen-256color");
+
+    var term = Terminal.init(.{ .env_map = &env });
+    defer term.deinit();
+
+    try testing.expect(term.caps.ansi256);
+    try testing.expect(!term.caps.rgb);
+
+    try term.setHostEnvVar(testing.allocator, "COLORTERM", "truecolor");
+    try testing.expect(term.caps.rgb);
+    try testing.expect(term.caps.ansi256);
+}
+
 test "parseXtversion - terminal name only" {
     var term = Terminal.init(.{});
     const response = "\x1bP>|wezterm\x1b\\";

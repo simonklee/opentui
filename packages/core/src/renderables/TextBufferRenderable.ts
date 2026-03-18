@@ -3,6 +3,7 @@ import { convertGlobalToLocalSelection, Selection, type LocalSelectionBounds } f
 import { TextBuffer, type TextChunk } from "../text-buffer.js"
 import { TextBufferView } from "../text-buffer-view.js"
 import { RGBA, parseColor } from "../lib/RGBA.js"
+import { prepareColorValueInput, type ColorValueInput } from "../lib/color-value.js"
 import { type RenderContext, type LineInfoProvider } from "../types.js"
 import type { OptimizedBuffer } from "../buffer.js"
 import { MeasureMode } from "yoga-layout"
@@ -10,10 +11,10 @@ import type { LineInfo } from "../zig.js"
 import { SyntaxStyle } from "../syntax-style.js"
 
 export interface TextBufferOptions extends RenderableOptions<TextBufferRenderable> {
-  fg?: string | RGBA
-  bg?: string | RGBA
-  selectionBg?: string | RGBA
-  selectionFg?: string | RGBA
+  fg?: ColorValueInput
+  bg?: ColorValueInput
+  selectionBg?: ColorValueInput
+  selectionFg?: ColorValueInput
   selectable?: boolean
   attributes?: number
   wrapMode?: "none" | "char" | "word"
@@ -25,11 +26,11 @@ export interface TextBufferOptions extends RenderableOptions<TextBufferRenderabl
 export abstract class TextBufferRenderable extends Renderable implements LineInfoProvider {
   public selectable: boolean = true
 
-  protected _defaultFg: RGBA
-  protected _defaultBg: RGBA
+  protected _defaultFg: ColorValueInput
+  protected _defaultBg: ColorValueInput
   protected _defaultAttributes: number
-  protected _selectionBg: RGBA | undefined
-  protected _selectionFg: RGBA | undefined
+  protected _selectionBg: ColorValueInput | undefined
+  protected _selectionFg: ColorValueInput | undefined
   protected _wrapMode: "none" | "char" | "word" = "word"
   protected lastLocalSelection: LocalSelectionBounds | null = null
   protected _tabIndicator?: string | number
@@ -58,11 +59,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
   constructor(ctx: RenderContext, options: TextBufferOptions) {
     super(ctx, options)
 
-    this._defaultFg = parseColor(options.fg ?? this._defaultOptions.fg)
-    this._defaultBg = parseColor(options.bg ?? this._defaultOptions.bg)
+    this._defaultFg = prepareColorValueInput(options.fg ?? this._defaultOptions.fg)!
+    this._defaultBg = prepareColorValueInput(options.bg ?? this._defaultOptions.bg)!
     this._defaultAttributes = options.attributes ?? this._defaultOptions.attributes
-    this._selectionBg = options.selectionBg ? parseColor(options.selectionBg) : this._defaultOptions.selectionBg
-    this._selectionFg = options.selectionFg ? parseColor(options.selectionFg) : this._defaultOptions.selectionFg
+    this._selectionBg = options.selectionBg ? prepareColorValueInput(options.selectionBg) ?? undefined : this._defaultOptions.selectionBg
+    this._selectionFg = options.selectionFg ? prepareColorValueInput(options.selectionFg) ?? undefined : this._defaultOptions.selectionFg
     this.selectable = options.selectable ?? this._defaultOptions.selectable
     this._wrapMode = options.wrapMode ?? this._defaultOptions.wrapMode
     this._tabIndicator = options.tabIndicator ?? this._defaultOptions.tabIndicator
@@ -201,12 +202,12 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     return this.textBuffer.length
   }
 
-  get fg(): RGBA {
+  get fg(): ColorValueInput {
     return this._defaultFg
   }
 
-  set fg(value: RGBA | string | undefined) {
-    const newColor = parseColor(value ?? this._defaultOptions.fg)
+  set fg(value: ColorValueInput | undefined) {
+    const newColor = prepareColorValueInput(value ?? this._defaultOptions.fg)!
     if (this._defaultFg !== newColor) {
       this._defaultFg = newColor
       this.textBuffer.setDefaultFg(this._defaultFg)
@@ -215,12 +216,12 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  get selectionBg(): RGBA | undefined {
+  get selectionBg(): ColorValueInput | undefined {
     return this._selectionBg
   }
 
-  set selectionBg(value: RGBA | string | undefined) {
-    const newColor = value ? parseColor(value) : this._defaultOptions.selectionBg
+  set selectionBg(value: ColorValueInput | undefined) {
+    const newColor = value ? prepareColorValueInput(value) ?? undefined : this._defaultOptions.selectionBg
     if (this._selectionBg !== newColor) {
       this._selectionBg = newColor
       if (this.lastLocalSelection) {
@@ -230,12 +231,12 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  get selectionFg(): RGBA | undefined {
+  get selectionFg(): ColorValueInput | undefined {
     return this._selectionFg
   }
 
-  set selectionFg(value: RGBA | string | undefined) {
-    const newColor = value ? parseColor(value) : this._defaultOptions.selectionFg
+  set selectionFg(value: ColorValueInput | undefined) {
+    const newColor = value ? prepareColorValueInput(value) ?? undefined : this._defaultOptions.selectionFg
     if (this._selectionFg !== newColor) {
       this._selectionFg = newColor
       if (this.lastLocalSelection) {
@@ -245,12 +246,12 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     }
   }
 
-  get bg(): RGBA {
+  get bg(): ColorValueInput {
     return this._defaultBg
   }
 
-  set bg(value: RGBA | string | undefined) {
-    const newColor = parseColor(value ?? this._defaultOptions.bg)
+  set bg(value: ColorValueInput | undefined) {
+    const newColor = prepareColorValueInput(value ?? this._defaultOptions.bg)!
     if (this._defaultBg !== newColor) {
       this._defaultBg = newColor
       this.textBuffer.setDefaultBg(this._defaultBg)
@@ -504,11 +505,11 @@ export abstract class TextBufferRenderable extends Renderable implements LineInf
     super.destroy()
   }
 
-  protected onFgChanged(newColor: RGBA): void {
+  protected onFgChanged(newColor: ColorValueInput): void {
     // Override in subclasses if needed
   }
 
-  protected onBgChanged(newColor: RGBA): void {
+  protected onBgChanged(newColor: ColorValueInput): void {
     // Override in subclasses if needed
   }
 

@@ -33,6 +33,66 @@ fn rgbaComponentToU8(component: f32) u8 {
     return @intFromFloat(@round(clamped * 255.0));
 }
 
+fn u8RgbToRgba(r: u8, g: u8, b: u8) RGBA {
+    return .{
+        @as(f32, @floatFromInt(r)) / 255.0,
+        @as(f32, @floatFromInt(g)) / 255.0,
+        @as(f32, @floatFromInt(b)) / 255.0,
+        1.0,
+    };
+}
+
+fn fallbackAnsi256Color(index: usize) RGBA {
+    const base = [_][3]u8{
+        .{ 0x00, 0x00, 0x00 },
+        .{ 0x80, 0x00, 0x00 },
+        .{ 0x00, 0x80, 0x00 },
+        .{ 0x80, 0x80, 0x00 },
+        .{ 0x00, 0x00, 0x80 },
+        .{ 0x80, 0x00, 0x80 },
+        .{ 0x00, 0x80, 0x80 },
+        .{ 0xc0, 0xc0, 0xc0 },
+        .{ 0x80, 0x80, 0x80 },
+        .{ 0xff, 0x00, 0x00 },
+        .{ 0x00, 0xff, 0x00 },
+        .{ 0xff, 0xff, 0x00 },
+        .{ 0x00, 0x00, 0xff },
+        .{ 0xff, 0x00, 0xff },
+        .{ 0x00, 0xff, 0xff },
+        .{ 0xff, 0xff, 0xff },
+    };
+    const cube_levels = [_]u8{ 0, 95, 135, 175, 215, 255 };
+
+    if (index < base.len) {
+        return u8RgbToRgba(base[index][0], base[index][1], base[index][2]);
+    }
+
+    if (index < 232) {
+        const cube_index = index - 16;
+        const r = cube_levels[(cube_index / 36) % 6];
+        const g = cube_levels[(cube_index / 6) % 6];
+        const b = cube_levels[cube_index % 6];
+        return u8RgbToRgba(r, g, b);
+    }
+
+    const gray_value: u8 = @intCast(8 + (index - 232) * 10);
+    return u8RgbToRgba(gray_value, gray_value, gray_value);
+}
+
+fn colorDistanceSquared(a: RGBA, b: RGBA) f32 {
+    const dr = a[0] - b[0];
+    const dg = a[1] - b[1];
+    const db = a[2] - b[2];
+    return dr * dr + dg * dg + db * db;
+}
+
+fn rgbaToRgb24(rgba: RGBA) u32 {
+    const r = @as(u32, rgbaComponentToU8(rgba[0]));
+    const g = @as(u32, rgbaComponentToU8(rgba[1]));
+    const b = @as(u32, rgbaComponentToU8(rgba[2]));
+    return (r << 16) | (g << 8) | b;
+}
+
 pub const DebugOverlayCorner = enum {
     topLeft,
     topRight,
@@ -128,6 +188,13 @@ pub const CliRenderer = struct {
     lastCursorBlinking: ?bool = null,
     lastCursorColorRGB: ?[3]u8 = null,
     lastMousePointerStyle: Terminal.MousePointerStyle = .default,
+    palette_rgba: [256]RGBA,
+    default_fg_rgba: RGBA,
+    default_bg_rgba: RGBA,
+    palette_epoch: u32,
+    last_rendered_palette_epoch: ?u32 = null,
+    force_full_repaint: bool = false,
+    palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
 
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
@@ -258,8 +325,13 @@ pub const CliRenderer = struct {
             .hitGridWidth = width,
             .hitGridHeight = height,
             .hitScissorStack = hitScissorStack,
+            .palette_rgba = undefined,
+            .default_fg_rgba = .{ 1.0, 1.0, 1.0, 1.0 },
+            .default_bg_rgba = .{ 0.0, 0.0, 0.0, 1.0 },
+            .palette_epoch = 0,
         };
 
+        self.resetFallbackPaletteState();
         nextBuffer.setBlendBackdropColor(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 });
 
         try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, CLEAR_CHAR);
@@ -301,6 +373,7 @@ pub const CliRenderer = struct {
         self.allocator.free(self.currentHitGrid);
         self.allocator.free(self.nextHitGrid);
         self.hitScissorStack.deinit(self.allocator);
+        self.palette_index_cache.deinit(self.allocator);
 
         self.allocator.destroy(self);
     }
@@ -502,6 +575,107 @@ pub const CliRenderer = struct {
         self.nextRenderBuffer.setBlendBackdropColor(.{ rgba[0], rgba[1], rgba[2], 1.0 });
     }
 
+    fn resetFallbackPaletteState(self: *CliRenderer) void {
+        for (0..self.palette_rgba.len) |index| {
+            self.palette_rgba[index] = fallbackAnsi256Color(index);
+        }
+        self.default_fg_rgba = .{ 1.0, 1.0, 1.0, 1.0 };
+        self.default_bg_rgba = .{ 0.0, 0.0, 0.0, 1.0 };
+    }
+
+    pub fn setPaletteState(self: *CliRenderer, palette: []const RGBA, default_fg: RGBA, default_bg: RGBA, palette_epoch: u32) void {
+        self.resetFallbackPaletteState();
+
+        const copy_len = @min(palette.len, self.palette_rgba.len);
+        for (palette[0..copy_len], 0..) |color, index| {
+            self.palette_rgba[index] = color;
+        }
+
+        self.default_fg_rgba = default_fg;
+        self.default_bg_rgba = default_bg;
+
+        if (self.palette_epoch != palette_epoch) {
+            self.palette_epoch = palette_epoch;
+            self.force_full_repaint = true;
+        }
+    }
+
+    fn cachedNearestPaletteIndex(self: *CliRenderer, rgba: RGBA) u8 {
+        const rgb24 = rgbaToRgb24(rgba);
+        const key = (@as(u64, self.palette_epoch) << 24) | @as(u64, rgb24);
+
+        if (self.palette_index_cache.get(key)) |cached| {
+            return cached;
+        }
+
+        var best_index: u8 = 0;
+        var best_distance = std.math.inf(f32);
+
+        for (self.palette_rgba, 0..) |candidate, index| {
+            const distance = colorDistanceSquared(rgba, candidate);
+            if (distance < best_distance) {
+                best_distance = distance;
+                best_index = @intCast(index);
+            }
+        }
+
+        self.palette_index_cache.put(self.allocator, key, best_index) catch {};
+        return best_index;
+    }
+
+    fn emitColor(self: *CliRenderer, writer: anytype, rgba: RGBA, tag: ansi.ColorTag, is_background: bool) void {
+        const caps = self.terminal.getCapabilities();
+        const decoded = ansi.decodeColorTag(tag);
+
+        if (decoded.kind == .default) {
+            if (is_background) {
+                ansi.ANSI.bgDefaultOutput(writer) catch {};
+            } else {
+                ansi.ANSI.fgDefaultOutput(writer) catch {};
+            }
+            return;
+        }
+
+        if (is_background and decoded.kind == .rgb and rgba[3] < 0.001) {
+            ansi.ANSI.bgDefaultOutput(writer) catch {};
+            return;
+        }
+
+        if (decoded.kind == .indexed and caps.ansi256) {
+            const index = decoded.index orelse 0;
+            if (is_background) {
+                ansi.ANSI.bgIndexedColorOutput(writer, index) catch {};
+            } else {
+                ansi.ANSI.fgIndexedColorOutput(writer, index) catch {};
+            }
+            return;
+        }
+
+        if (!caps.rgb and caps.ansi256) {
+            const index: u8 = if (decoded.kind == .indexed)
+                decoded.index orelse 0
+            else
+                self.cachedNearestPaletteIndex(rgba);
+
+            if (is_background) {
+                ansi.ANSI.bgIndexedColorOutput(writer, index) catch {};
+            } else {
+                ansi.ANSI.fgIndexedColorOutput(writer, index) catch {};
+            }
+            return;
+        }
+
+        const r = rgbaComponentToU8(rgba[0]);
+        const g = rgbaComponentToU8(rgba[1]);
+        const b = rgbaComponentToU8(rgba[2]);
+
+        if (is_background) {
+            ansi.ANSI.bgColorOutput(writer, r, g, b) catch {};
+        } else {
+            ansi.ANSI.fgColorOutput(writer, r, g, b) catch {};
+        }
+    }
+
     pub fn setRenderOffset(self: *CliRenderer, offset: u32) void {
         self.renderOffset = offset;
     }
@@ -609,6 +783,8 @@ pub const CliRenderer = struct {
     fn prepareRenderFrame(self: *CliRenderer, force: bool) void {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
+        const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
+        const should_force = force or self.force_full_repaint or palette_force;
 
         if (activeBuffer == .A) {
             outputBufferLen = 0;
@@ -623,6 +799,8 @@ pub const CliRenderer = struct {
 
         var currentFg: ?RGBA = null;
         var currentBg: ?RGBA = null;
+        var currentFgTag: ?ansi.ColorTag = null;
+        var currentBgTag: ?ansi.ColorTag = null;
         var currentAttributes: i32 = -1;
         var currentLinkId: u32 = 0;
         var utf8Buf: [4]u8 = undefined;
@@ -643,11 +821,13 @@ pub const CliRenderer = struct {
 
                 if (currentCell == null or nextCell == null) continue;
 
-                if (!force) {
+                if (!should_force) {
                     const charEqual = currentCell.?.char == nextCell.?.char;
                     const attrEqual = currentCell.?.attributes == nextCell.?.attributes;
+                    const fgTagEqual = currentCell.?.fg_tag == nextCell.?.fg_tag;
+                    const bgTagEqual = currentCell.?.bg_tag == nextCell.?.bg_tag;
 
-                    if (charEqual and attrEqual and
+                    if (charEqual and attrEqual and fgTagEqual and bgTagEqual and
                         buf.rgbaEqual(currentCell.?.fg, nextCell.?.fg, colorEpsilon) and
                         buf.rgbaEqual(currentCell.?.bg, nextCell.?.bg, colorEpsilon))
                     {
@@ -662,8 +842,8 @@ pub const CliRenderer = struct {
 
                 const cell = nextCell.?;
 
-                const fgMatch = currentFg != null and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
-                const bgMatch = currentBg != null and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
+                const fgMatch = currentFg != null and currentFgTag != null and currentFgTag.? == cell.fg_tag and buf.rgbaEqual(currentFg.?, cell.fg, colorEpsilon);
+                const bgMatch = currentBg != null and currentBgTag != null and currentBgTag.? == cell.bg_tag and buf.rgbaEqual(currentBg.?, cell.bg, colorEpsilon);
                 const sameAttributes = fgMatch and bgMatch and @as(i32, @intCast(cell.attributes)) == currentAttributes;
 
                 const linkId = if (hyperlinksEnabled) ansi.TextAttributes.getLinkId(cell.attributes) else 0;
@@ -694,27 +874,14 @@ pub const CliRenderer = struct {
 
                     currentFg = cell.fg;
                     currentBg = cell.bg;
+                    currentFgTag = cell.fg_tag;
+                    currentBgTag = cell.bg_tag;
                     currentAttributes = @as(i32, @intCast(cell.attributes));
 
                     ansi.ANSI.moveToOutput(writer, x + 1, y + 1 + self.renderOffset) catch {};
 
-                    const fgR = rgbaComponentToU8(cell.fg[0]);
-                    const fgG = rgbaComponentToU8(cell.fg[1]);
-                    const fgB = rgbaComponentToU8(cell.fg[2]);
-
-                    const bgR = rgbaComponentToU8(cell.bg[0]);
-                    const bgG = rgbaComponentToU8(cell.bg[1]);
-                    const bgB = rgbaComponentToU8(cell.bg[2]);
-                    const bgA = cell.bg[3];
-
-                    ansi.ANSI.fgColorOutput(writer, fgR, fgG, fgB) catch {};
-
-                    // If alpha is 0 (transparent), use terminal default background instead of black
-                    if (bgA < 0.001) {
-                        writer.writeAll("\x1b[49m") catch {};
-                    } else {
-                        ansi.ANSI.bgColorOutput(writer, bgR, bgG, bgB) catch {};
-                    }
+                    self.emitColor(writer, cell.fg, cell.fg_tag, false);
+                    self.emitColor(writer, cell.bg, cell.bg_tag, true);
 
                     ansi.TextAttributes.applyAttributesOutputWriter(writer, cell.attributes) catch {};
                 }
@@ -837,6 +1004,8 @@ pub const CliRenderer = struct {
 
         self.renderStats.cellsUpdated = cellsUpdated;
         self.renderStats.renderTime = renderTime;
+        self.last_rendered_palette_epoch = self.palette_epoch;
+        self.force_full_repaint = false;
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
 

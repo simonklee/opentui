@@ -1,13 +1,17 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ansi = @import("ansi.zig");
 const buffer = @import("buffer.zig");
 const events = @import("event-emitter.zig");
 
 pub const RGBA = buffer.RGBA;
+pub const ColorTag = buffer.ColorTag;
 
 pub const StyleDefinition = struct {
     fg: ?RGBA,
     bg: ?RGBA,
+    fg_tag: ColorTag = ansi.COLOR_TAG_RGB,
+    bg_tag: ColorTag = ansi.COLOR_TAG_RGB,
     attributes: u32,
 };
 
@@ -65,10 +69,24 @@ pub const SyntaxStyle = struct {
     }
 
     pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u32) SyntaxStyleError!u32 {
+        return self.registerStyleWithTags(name, fg, bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB, attributes);
+    }
+
+    pub fn registerStyleWithTags(
+        self: *SyntaxStyle,
+        name: []const u8,
+        fg: ?RGBA,
+        bg: ?RGBA,
+        fg_tag: ColorTag,
+        bg_tag: ColorTag,
+        attributes: u32,
+    ) SyntaxStyleError!u32 {
         if (self.name_to_id.get(name)) |existing_id| {
             try self.id_to_style.put(self.allocator, existing_id, StyleDefinition{
                 .fg = fg,
                 .bg = bg,
+                .fg_tag = fg_tag,
+                .bg_tag = bg_tag,
                 .attributes = attributes,
             });
             return existing_id;
@@ -83,6 +101,8 @@ pub const SyntaxStyle = struct {
         try self.id_to_style.put(self.allocator, id, StyleDefinition{
             .fg = fg,
             .bg = bg,
+            .fg_tag = fg_tag,
+            .bg_tag = bg_tag,
             .attributes = attributes,
         });
 
@@ -126,8 +146,14 @@ pub const SyntaxStyle = struct {
 
         for (ids) |id| {
             if (self.resolveById(id)) |style| {
-                if (style.fg) |fg| merged.fg = fg;
-                if (style.bg) |bg| merged.bg = bg;
+                if (style.fg) |fg| {
+                    merged.fg = fg;
+                    merged.fg_tag = style.fg_tag;
+                }
+                if (style.bg) |bg| {
+                    merged.bg = bg;
+                    merged.bg_tag = style.bg_tag;
+                }
                 // Attributes are OR'd together
                 merged.attributes |= style.attributes;
             }

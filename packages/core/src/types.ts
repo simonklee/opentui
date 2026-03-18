@@ -142,6 +142,8 @@ export interface CapturedSpan {
   text: string
   fg: RGBA
   bg: RGBA
+  fgTag: number
+  bgTag: number
   attributes: number
   width: number
 }

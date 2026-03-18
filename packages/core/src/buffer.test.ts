@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { OptimizedBuffer } from "./buffer.js"
 import { RGBA } from "./lib/RGBA.js"
+import { defaultColor } from "./lib/color-value.js"
 
 describe("OptimizedBuffer", () => {
   let buffer: OptimizedBuffer
@@ -135,6 +136,22 @@ describe("OptimizedBuffer", () => {
       expect(frameText).toContain("👋")
 
       buffer.freeUnicode(encoded!)
+    })
+
+    it("should preserve raw color tags and split captured spans when tags differ", () => {
+      const fgSnapshot = RGBA.fromHex("#ffffff")
+      const bg = RGBA.fromHex("#000000")
+
+      buffer.clear(bg)
+      buffer.setCell(0, 0, "A", fgSnapshot, bg)
+      buffer.setCell(1, 0, "B", defaultColor(fgSnapshot), bg)
+
+      const firstLine = buffer.getSpanLines()[0]
+      const taggedSpans = firstLine.spans.filter((span) => span.text.includes("A") || span.text.includes("B"))
+
+      expect(taggedSpans).toHaveLength(2)
+      expect(taggedSpans[0].fgTag).not.toBe(taggedSpans[1].fgTag)
+      expect(buffer.buffers.fgTag[0]).not.toBe(buffer.buffers.fgTag[1])
     })
   })
 

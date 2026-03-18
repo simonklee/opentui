@@ -15,6 +15,7 @@ pub const Capabilities = struct {
     kitty_keyboard: bool = false,
     kitty_graphics: bool = false,
     rgb: bool = false,
+    ansi256: bool = false,
     unicode: WidthMethod = .unicode,
     sgr_pixels: bool = false,
     color_scheme_updates: bool = false,
@@ -281,6 +282,7 @@ pub fn enableDetectedFeatures(self: *Terminal, tty: anytype, use_kitty_keyboard:
     if (builtin.os.tag == .windows) {
         // Windows-specific defaults for ConPTY
         self.caps.rgb = true;
+        self.caps.ansi256 = true;
         self.caps.bracketed_paste = true;
     }
 
@@ -324,6 +326,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
     self.caps.bracketed_paste = true;
 
     if (self.caps.rgb) {
+        self.caps.ansi256 = true;
         self.caps.hyperlinks = true;
     }
 
@@ -356,8 +359,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.caps.unicode = .wcwidth;
                 self.caps.explicit_cursor_positioning = true;
             }
+            if (std.mem.indexOf(u8, term, "256color") != null) {
+                self.caps.ansi256 = true;
+            }
             if (std.mem.indexOf(u8, term, "alacritty") != null) {
                 self.caps.explicit_cursor_positioning = true;
+                self.caps.ansi256 = true;
             }
         }
     }
@@ -388,15 +395,19 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.caps.kitty_keyboard = false;
                 self.caps.kitty_graphics = false;
                 self.caps.unicode = .unicode;
+                self.caps.ansi256 = true;
             } else if (std.mem.eql(u8, prog, "Apple_Terminal")) {
                 self.caps.unicode = .wcwidth;
+                self.caps.ansi256 = true;
             } else if (std.mem.eql(u8, prog, "Alacritty")) {
                 self.caps.explicit_cursor_positioning = true;
+                self.caps.ansi256 = true;
             }
         }
 
         if (env_map.get("ALACRITTY_SOCKET") != null or env_map.get("ALACRITTY_LOG") != null) {
             self.caps.explicit_cursor_positioning = true;
+            self.caps.ansi256 = true;
             if (self.term_info.name_len == 0) {
                 const name = "Alacritty";
                 @memcpy(self.term_info.name[0..name.len], name);
@@ -410,6 +421,7 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
             std.mem.eql(u8, colorterm, "24bit"))
         {
             self.caps.rgb = true;
+            self.caps.ansi256 = true;
         }
     }
 
@@ -684,6 +696,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         self.caps.kitty_graphics = true;
         self.caps.unicode = .unicode;
         self.caps.rgb = true;
+        self.caps.ansi256 = true;
         self.caps.sixel = true;
         self.caps.bracketed_paste = true;
         self.caps.hyperlinks = true;
@@ -714,6 +727,7 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 
     if (std.mem.indexOf(u8, response, "alacritty")) |_| {
         self.caps.explicit_cursor_positioning = true;
+        self.caps.ansi256 = true;
     }
 
     // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')

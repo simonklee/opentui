@@ -1,11 +1,12 @@
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
+import type { ColorValueInput } from "./lib/color-value.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
 import { type Pointer } from "bun:ffi"
 import { createTextAttributes } from "./utils.js"
 
 export interface StyleDefinition {
-  fg?: RGBA
-  bg?: RGBA
+  fg?: ColorValueInput
+  bg?: ColorValueInput
   bold?: boolean
   italic?: boolean
   underline?: boolean
@@ -13,8 +14,8 @@ export interface StyleDefinition {
 }
 
 export interface MergedStyle {
-  fg?: RGBA
-  bg?: RGBA
+  fg?: ColorValueInput
+  bg?: ColorValueInput
   attributes: number
 }
 

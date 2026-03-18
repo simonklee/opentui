@@ -1,4 +1,5 @@
 import { RGBA } from "./lib/RGBA.js"
+import type { ColorValueInput } from "./lib/color-value.js"
 import { resolveRenderLib, type RenderLib, type VisualCursor, type LineInfo } from "./zig.js"
 import { type Pointer } from "bun:ffi"
 import type { EditBuffer } from "./edit-buffer.js"
@@ -77,12 +78,12 @@ export class EditorView {
     return this.lib.editorViewGetTotalVirtualLineCount(this.viewPtr)
   }
 
-  public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+  public setSelection(start: number, end: number, bgColor?: ColorValueInput, fgColor?: ColorValueInput): void {
     this.guard()
     this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor || null, fgColor || null)
   }
 
-  public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void {
+  public updateSelection(end: number, bgColor?: ColorValueInput, fgColor?: ColorValueInput): void {
     this.guard()
     this.lib.editorViewUpdateSelection(this.viewPtr, end, bgColor || null, fgColor || null)
   }
@@ -107,8 +108,8 @@ export class EditorView {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor?: RGBA,
-    fgColor?: RGBA,
+    bgColor?: ColorValueInput,
+    fgColor?: ColorValueInput,
     updateCursor?: boolean,
     followCursor?: boolean,
   ): boolean {
@@ -131,8 +132,8 @@ export class EditorView {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor?: RGBA,
-    fgColor?: RGBA,
+    bgColor?: ColorValueInput,
+    fgColor?: ColorValueInput,
     updateCursor?: boolean,
     followCursor?: boolean,
   ): boolean {
@@ -246,7 +247,7 @@ export class EditorView {
     return this._extmarksController
   }
 
-  public setPlaceholderStyledText(chunks: { text: string; fg?: RGBA; bg?: RGBA; attributes?: number }[]): void {
+  public setPlaceholderStyledText(chunks: { text: string; fg?: ColorValueInput; bg?: ColorValueInput; attributes?: number }[]): void {
     this.guard()
     this.lib.editorViewSetPlaceholderStyledText(this.viewPtr, chunks)
   }

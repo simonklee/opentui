@@ -1,7 +1,7 @@
 import { BaseRenderable } from "../Renderable.js"
+import type { ColorValueInput } from "../lib/color-value.js"
 import { stringToStyledText, StyledText } from "../lib/styled-text.js"
 import { type TextChunk } from "../text-buffer.js"
-import { RGBA } from "../lib/RGBA.js"
 import { type RenderContext } from "../types.js"
 import { RootTextNodeRenderable, TextNodeRenderable } from "./TextNode.js"
 import { TextBufferRenderable, type TextBufferOptions } from "./TextBufferRenderable.js"
@@ -128,11 +128,11 @@ export class TextRenderable extends TextBufferRenderable {
     this.updateTextFromNodes()
   }
 
-  protected onFgChanged(newColor: RGBA): void {
+  protected onFgChanged(newColor: ColorValueInput): void {
     this.rootTextNode.fg = newColor
   }
 
-  protected onBgChanged(newColor: RGBA): void {
+  protected onBgChanged(newColor: ColorValueInput): void {
     this.rootTextNode.bg = newColor
   }
 

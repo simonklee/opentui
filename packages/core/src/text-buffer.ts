@@ -1,5 +1,5 @@
 import type { StyledText } from "./lib/styled-text.js"
-import { RGBA } from "./lib/RGBA.js"
+import type { ColorValueInput } from "./lib/color-value.js"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
 import { type Pointer } from "bun:ffi"
 import { type WidthMethod, type Highlight } from "./types.js"
@@ -8,8 +8,8 @@ import type { SyntaxStyle } from "./syntax-style.js"
 export interface TextChunk {
   __isChunk: true
   text: string
-  fg?: RGBA
-  bg?: RGBA
+  fg?: ColorValueInput
+  bg?: ColorValueInput
   attributes?: number
   link?: { url: string }
 }
@@ -93,12 +93,12 @@ export class TextBuffer {
     this._lineInfo = undefined
   }
 
-  public setDefaultFg(fg: RGBA | null): void {
+  public setDefaultFg(fg: ColorValueInput | null): void {
     this.guard()
     this.lib.textBufferSetDefaultFg(this.bufferPtr, fg)
   }
 
-  public setDefaultBg(bg: RGBA | null): void {
+  public setDefaultBg(bg: ColorValueInput | null): void {
     this.guard()
     this.lib.textBufferSetDefaultBg(this.bufferPtr, bg)
   }

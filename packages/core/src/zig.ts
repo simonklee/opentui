@@ -14,6 +14,13 @@ import {
 export type { LineInfo, AllocatorStats, BuildOptions }
 
 import { RGBA } from "./lib/RGBA.js"
+import {
+  COLOR_TAG_RGB,
+  normalizeColorValue,
+  normalizeTerminalPalette,
+  type ColorValueInput,
+  type ColorTag,
+} from "./lib/color-value.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { TextBuffer } from "./text-buffer.js"
 import { env, registerEnvVar } from "./lib/env.js"
@@ -43,6 +50,7 @@ import type {
   AllocatorStats,
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
+import type { TerminalColors } from "./lib/terminal-palette.js"
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -178,6 +186,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
+    rendererSetPaletteState: {
+      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u32"],
+      returns: "void",
+    },
 
     queryPixelResolution: {
       args: ["ptr"],
@@ -206,7 +218,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     bufferClear: {
-      args: ["ptr", "ptr"],
+      args: ["ptr", "ptr", "u16"],
       returns: "void",
     },
     bufferGetCharPtr: {
@@ -218,6 +230,14 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     bufferGetBgPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    bufferGetFgTagPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    bufferGetBgTagPtr: {
       args: ["ptr"],
       returns: "ptr",
     },
@@ -247,19 +267,19 @@ function getOpenTUILib(libPath?: string) {
     },
 
     bufferDrawText: {
-      args: ["ptr", "ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
+      args: ["ptr", "ptr", "u32", "u32", "u32", "ptr", "u16", "ptr", "u16", "u32"],
       returns: "void",
     },
     bufferSetCellWithAlphaBlending: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "u16", "ptr", "u16", "u32"],
       returns: "void",
     },
     bufferSetCell: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "u16", "ptr", "u16", "u32"],
       returns: "void",
     },
     bufferFillRect: {
-      args: ["ptr", "u32", "u32", "u32", "u32", "ptr"],
+      args: ["ptr", "u32", "u32", "u32", "u32", "ptr", "u16"],
       returns: "void",
     },
     bufferColorMatrix: {
@@ -351,19 +371,19 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawGrayscaleBuffer: {
-      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "u16", "ptr", "u16"],
       returns: "void",
     },
     bufferDrawGrayscaleBufferSupersampled: {
-      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "u16", "ptr", "u16"],
       returns: "void",
     },
     bufferDrawGrid: {
-      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32", "ptr"],
+      args: ["ptr", "ptr", "ptr", "u16", "ptr", "u16", "ptr", "u32", "ptr", "u32", "ptr"],
       returns: "void",
     },
     bufferDrawBox: {
-      args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
+      args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "u16", "ptr", "u16", "ptr", "u32"],
       returns: "void",
     },
     bufferPushScissorRect: {
@@ -511,11 +531,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferSetDefaultFg: {
-      args: ["ptr", "ptr"],
+      args: ["ptr", "ptr", "u16"],
       returns: "void",
     },
     textBufferSetDefaultBg: {
-      args: ["ptr", "ptr"],
+      args: ["ptr", "ptr", "u16"],
       returns: "void",
     },
     textBufferSetDefaultAttributes: {
@@ -629,7 +649,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferViewSetSelection: {
-      args: ["ptr", "u32", "u32", "ptr", "ptr"],
+      args: ["ptr", "u32", "u32", "ptr", "u16", "ptr", "u16"],
       returns: "void",
     },
     textBufferViewResetSelection: {
@@ -641,15 +661,15 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     textBufferViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "u16", "ptr", "u16"],
       returns: "bool",
     },
     textBufferViewUpdateSelection: {
-      args: ["ptr", "u32", "ptr", "ptr"],
+      args: ["ptr", "u32", "ptr", "u16", "ptr", "u16"],
       returns: "void",
     },
     textBufferViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "u16", "ptr", "u16"],
       returns: "bool",
     },
     textBufferViewResetLocalSelection: {
@@ -931,7 +951,7 @@ function getOpenTUILib(libPath?: string) {
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
-      args: ["ptr", "u32", "u32", "ptr", "ptr"],
+      args: ["ptr", "u32", "u32", "ptr", "u16", "ptr", "u16"],
       returns: "void",
     },
     editorViewResetSelection: {
@@ -943,15 +963,15 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "u16", "ptr", "u16", "bool", "bool"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
-      args: ["ptr", "u32", "ptr", "ptr"],
+      args: ["ptr", "u32", "ptr", "u16", "ptr", "u16"],
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "u16", "ptr", "u16", "bool", "bool"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -1049,7 +1069,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     syntaxStyleRegister: {
-      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u8"],
+      args: ["ptr", "ptr", "usize", "ptr", "u16", "ptr", "u16", "u32"],
       returns: "u32",
     },
     syntaxStyleResolveByName: {
@@ -1081,7 +1101,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawChar: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "u16", "ptr", "u16", "u32"],
       returns: "void",
     },
 
@@ -1390,6 +1410,7 @@ export interface RenderLib {
   render: (renderer: Pointer, force: boolean) => void
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
+  rendererSetPaletteState: (renderer: Pointer, colors: TerminalColors | null | undefined, paletteEpoch: number) => void
   createOptimizedBuffer: (
     width: number,
     height: number,
@@ -1410,10 +1431,12 @@ export interface RenderLib {
   ) => void
   getBufferWidth: (buffer: Pointer) => number
   getBufferHeight: (buffer: Pointer) => number
-  bufferClear: (buffer: Pointer, color: RGBA) => void
+  bufferClear: (buffer: Pointer, color: ColorValueInput) => void
   bufferGetCharPtr: (buffer: Pointer) => Pointer
   bufferGetFgPtr: (buffer: Pointer) => Pointer
   bufferGetBgPtr: (buffer: Pointer) => Pointer
+  bufferGetFgTagPtr: (buffer: Pointer) => Pointer
+  bufferGetBgTagPtr: (buffer: Pointer) => Pointer
   bufferGetAttributesPtr: (buffer: Pointer) => Pointer
   bufferGetRespectAlpha: (buffer: Pointer) => boolean
   bufferSetRespectAlpha: (buffer: Pointer, respectAlpha: boolean) => void
@@ -1425,8 +1448,8 @@ export interface RenderLib {
     text: string,
     x: number,
     y: number,
-    color: RGBA,
-    bgColor?: RGBA,
+    color: ColorValueInput,
+    bgColor?: ColorValueInput,
     attributes?: number,
   ) => void
   bufferSetCellWithAlphaBlending: (
@@ -1434,8 +1457,8 @@ export interface RenderLib {
     x: number,
     y: number,
     char: string,
-    color: RGBA,
-    bgColor: RGBA,
+    color: ColorValueInput,
+    bgColor: ColorValueInput,
     attributes?: number,
   ) => void
   bufferSetCell: (
@@ -1443,11 +1466,11 @@ export interface RenderLib {
     x: number,
     y: number,
     char: string,
-    color: RGBA,
-    bgColor: RGBA,
+    color: ColorValueInput,
+    bgColor: ColorValueInput,
     attributes?: number,
   ) => void
-  bufferFillRect: (buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) => void
+  bufferFillRect: (buffer: Pointer, x: number, y: number, width: number, height: number, color: ColorValueInput) => void
   bufferColorMatrix: (
     buffer: Pointer,
     matrixPtr: Pointer,
@@ -1482,8 +1505,8 @@ export interface RenderLib {
     intensitiesPtr: Pointer,
     srcWidth: number,
     srcHeight: number,
-    fg: RGBA | null,
-    bg: RGBA | null,
+    fg: ColorValueInput | null,
+    bg: ColorValueInput | null,
   ) => void
   bufferDrawGrayscaleBufferSupersampled: (
     buffer: Pointer,
@@ -1492,14 +1515,14 @@ export interface RenderLib {
     intensitiesPtr: Pointer,
     srcWidth: number,
     srcHeight: number,
-    fg: RGBA | null,
-    bg: RGBA | null,
+    fg: ColorValueInput | null,
+    bg: ColorValueInput | null,
   ) => void
   bufferDrawGrid: (
     buffer: Pointer,
     borderChars: Uint32Array,
-    borderFg: RGBA,
-    borderBg: RGBA,
+    borderFg: ColorValueInput,
+    borderBg: ColorValueInput,
     columnOffsets: Int32Array,
     columnCount: number,
     rowOffsets: Int32Array,
@@ -1514,8 +1537,8 @@ export interface RenderLib {
     height: number,
     borderChars: Uint32Array,
     packedOptions: number,
-    borderColor: RGBA,
-    backgroundColor: RGBA,
+    borderColor: ColorValueInput,
+    backgroundColor: ColorValueInput,
     title: string | null,
   ) => void
   bufferResize: (buffer: Pointer, width: number, height: number) => void
@@ -1577,10 +1600,16 @@ export interface RenderLib {
   textBufferLoadFile: (buffer: Pointer, path: string) => boolean
   textBufferSetStyledText: (
     buffer: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
+    chunks: Array<{
+      text: string
+      fg?: ColorValueInput | null
+      bg?: ColorValueInput | null
+      attributes?: number
+      link?: { url: string }
+    }>,
   ) => void
-  textBufferSetDefaultFg: (buffer: Pointer, fg: RGBA | null) => void
-  textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
+  textBufferSetDefaultFg: (buffer: Pointer, fg: ColorValueInput | null) => void
+  textBufferSetDefaultBg: (buffer: Pointer, bg: ColorValueInput | null) => void
   textBufferSetDefaultAttributes: (buffer: Pointer, attributes: number | null) => void
   textBufferResetDefaults: (buffer: Pointer) => void
   textBufferGetTabWidth: (buffer: Pointer) => number
@@ -1609,8 +1638,8 @@ export interface RenderLib {
     view: Pointer,
     start: number,
     end: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
   ) => void
   textBufferViewResetSelection: (view: Pointer) => void
   textBufferViewGetSelection: (view: Pointer) => { start: number; end: number } | null
@@ -1620,18 +1649,23 @@ export interface RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
   ) => boolean
-  textBufferViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
+  textBufferViewUpdateSelection: (
+    view: Pointer,
+    end: number,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
+  ) => void
   textBufferViewUpdateLocalSelection: (
     view: Pointer,
     anchorX: number,
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
   ) => boolean
   textBufferViewResetLocalSelection: (view: Pointer) => void
   textBufferViewSetWrapWidth: (view: Pointer, width: number) => void
@@ -1733,8 +1767,8 @@ export interface RenderLib {
     view: Pointer,
     start: number,
     end: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
   ) => void
   editorViewResetSelection: (view: Pointer) => void
   editorViewGetSelection: (view: Pointer) => { start: number; end: number } | null
@@ -1744,21 +1778,26 @@ export interface RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
     updateCursor: boolean,
     followCursor: boolean,
   ) => boolean
 
-  editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
+  editorViewUpdateSelection: (
+    view: Pointer,
+    end: number,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
+  ) => void
   editorViewUpdateLocalSelection: (
     view: Pointer,
     anchorX: number,
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
     updateCursor: boolean,
     followCursor: boolean,
   ) => boolean
@@ -1781,7 +1820,7 @@ export interface RenderLib {
   editorViewGetLogicalLineInfo: (view: Pointer) => LineInfo
   editorViewSetPlaceholderStyledText: (
     view: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+    chunks: Array<{ text: string; fg?: ColorValueInput | null; bg?: ColorValueInput | null; attributes?: number }>,
   ) => void
   editorViewSetTabIndicator: (view: Pointer, indicator: number) => void
   editorViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
@@ -1808,7 +1847,13 @@ export interface RenderLib {
 
   createSyntaxStyle: () => Pointer
   destroySyntaxStyle: (style: Pointer) => void
-  syntaxStyleRegister: (style: Pointer, name: string, fg: RGBA | null, bg: RGBA | null, attributes: number) => number
+  syntaxStyleRegister: (
+    style: Pointer,
+    name: string,
+    fg: ColorValueInput | null,
+    bg: ColorValueInput | null,
+    attributes: number,
+  ) => number
   syntaxStyleResolveByName: (style: Pointer, name: string) => number | null
   syntaxStyleGetStyleCount: (style: Pointer) => number
 
@@ -1820,7 +1865,15 @@ export interface RenderLib {
     widthMethod: WidthMethod,
   ) => { ptr: Pointer; data: Array<{ width: number; char: number }> } | null
   freeUnicode: (encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }) => void
-  bufferDrawChar: (buffer: Pointer, char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes?: number) => void
+  bufferDrawChar: (
+    buffer: Pointer,
+    char: number,
+    x: number,
+    y: number,
+    fg: ColorValueInput,
+    bg: ColorValueInput,
+    attributes?: number,
+  ) => void
 
   registerNativeSpanFeedStream: (stream: Pointer, handler: NativeSpanFeedEventHandler) => void
   unregisterNativeSpanFeedStream: (stream: Pointer) => void
@@ -1857,6 +1910,21 @@ class FFIRenderLib implements RenderLib {
     this.opentui = getOpenTUILib(libPath)
     this.setupLogging()
     this.setupEventBus()
+  }
+
+  private normalizeColor(
+    value: ColorValueInput | null | undefined,
+    role: "fg" | "bg",
+  ): { rgba: RGBA; tag: ColorTag } | null {
+    return normalizeColorValue(value, { role })
+  }
+
+  private colorBuffer(value: { rgba: RGBA; tag: ColorTag } | null): Float32Array | null {
+    return value?.rgba.buffer ?? null
+  }
+
+  private colorTag(value: { rgba: RGBA; tag: ColorTag } | null): ColorTag {
+    return value?.tag ?? COLOR_TAG_RGB
   }
 
   private setupLogging() {
@@ -2059,6 +2127,33 @@ class FFIRenderLib implements RenderLib {
     return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod: "unicode" })
   }
 
+  public rendererSetPaletteState(
+    renderer: Pointer,
+    colors: TerminalColors | null | undefined,
+    paletteEpoch: number,
+  ): void {
+    const normalized = normalizeTerminalPalette(colors)
+    const paletteBuffer = new Float32Array(normalized.palette.length * 4)
+
+    for (let index = 0; index < normalized.palette.length; index++) {
+      const color = normalized.palette[index]
+      const base = index * 4
+      paletteBuffer[base] = color.r
+      paletteBuffer[base + 1] = color.g
+      paletteBuffer[base + 2] = color.b
+      paletteBuffer[base + 3] = color.a
+    }
+
+    this.opentui.symbols.rendererSetPaletteState(
+      renderer,
+      paletteBuffer,
+      paletteBuffer.length,
+      normalized.defaultForeground.buffer,
+      normalized.defaultBackground.buffer,
+      paletteEpoch >>> 0,
+    )
+  }
+
   public bufferGetCharPtr(buffer: Pointer): Pointer {
     const ptr = this.opentui.symbols.bufferGetCharPtr(buffer)
     if (!ptr) {
@@ -2081,6 +2176,22 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to get bg pointer")
     }
     return ptr
+  }
+
+  public bufferGetFgTagPtr(buffer: Pointer): Pointer {
+    const fgTagPtr = this.opentui.symbols.bufferGetFgTagPtr(buffer)
+    if (!fgTagPtr) {
+      throw new Error("Failed to get fg tag pointer")
+    }
+    return fgTagPtr
+  }
+
+  public bufferGetBgTagPtr(buffer: Pointer): Pointer {
+    const bgTagPtr = this.opentui.symbols.bufferGetBgTagPtr(buffer)
+    if (!bgTagPtr) {
+      throw new Error("Failed to get bg tag pointer")
+    }
+    return bgTagPtr
   }
 
   public bufferGetAttributesPtr(buffer: Pointer): Pointer {
@@ -2129,8 +2240,9 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.getBufferHeight(buffer)
   }
 
-  public bufferClear(buffer: Pointer, color: RGBA) {
-    this.opentui.symbols.bufferClear(buffer, color.buffer)
+  public bufferClear(buffer: Pointer, color: ColorValueInput) {
+    const normalizedBg = this.normalizeColor(color, "bg")
+    this.opentui.symbols.bufferClear(buffer, this.colorBuffer(normalizedBg), this.colorTag(normalizedBg))
   }
 
   public bufferDrawText(
@@ -2138,16 +2250,27 @@ class FFIRenderLib implements RenderLib {
     text: string,
     x: number,
     y: number,
-    color: RGBA,
-    bgColor?: RGBA,
+    color: ColorValueInput,
+    bgColor?: ColorValueInput,
     attributes?: number,
   ) {
     const textBytes = this.encoder.encode(text)
     const textLength = textBytes.byteLength
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = color.buffer
+    const fg = this.normalizeColor(color, "fg")
+    const bg = this.normalizeColor(bgColor ?? null, "bg")
 
-    this.opentui.symbols.bufferDrawText(buffer, textBytes, textLength, x, y, fg, bg, attributes ?? 0)
+    this.opentui.symbols.bufferDrawText(
+      buffer,
+      textBytes,
+      textLength,
+      x,
+      y,
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      attributes ?? 0,
+    )
   }
 
   public bufferSetCellWithAlphaBlending(
@@ -2155,15 +2278,25 @@ class FFIRenderLib implements RenderLib {
     x: number,
     y: number,
     char: string,
-    color: RGBA,
-    bgColor: RGBA,
+    color: ColorValueInput,
+    bgColor: ColorValueInput,
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const bg = bgColor.buffer
-    const fg = color.buffer
+    const fg = this.normalizeColor(color, "fg")
+    const bg = this.normalizeColor(bgColor, "bg")
 
-    this.opentui.symbols.bufferSetCellWithAlphaBlending(buffer, x, y, charPtr, fg, bg, attributes ?? 0)
+    this.opentui.symbols.bufferSetCellWithAlphaBlending(
+      buffer,
+      x,
+      y,
+      charPtr,
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      attributes ?? 0,
+    )
   }
 
   public bufferSetCell(
@@ -2171,20 +2304,30 @@ class FFIRenderLib implements RenderLib {
     x: number,
     y: number,
     char: string,
-    color: RGBA,
-    bgColor: RGBA,
+    color: ColorValueInput,
+    bgColor: ColorValueInput,
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const bg = bgColor.buffer
-    const fg = color.buffer
+    const fg = this.normalizeColor(color, "fg")
+    const bg = this.normalizeColor(bgColor, "bg")
 
-    this.opentui.symbols.bufferSetCell(buffer, x, y, charPtr, fg, bg, attributes ?? 0)
+    this.opentui.symbols.bufferSetCell(
+      buffer,
+      x,
+      y,
+      charPtr,
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      attributes ?? 0,
+    )
   }
 
-  public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) {
-    const bg = color.buffer
-    this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, bg)
+  public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: ColorValueInput) {
+    const bg = this.normalizeColor(color, "bg")
+    this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, this.colorBuffer(bg), this.colorTag(bg))
   }
 
   public bufferColorMatrix(
@@ -2250,9 +2393,12 @@ class FFIRenderLib implements RenderLib {
     intensitiesPtr: Pointer,
     srcWidth: number,
     srcHeight: number,
-    fg: RGBA | null,
-    bg: RGBA | null,
+    fg: ColorValueInput | null,
+    bg: ColorValueInput | null,
   ): void {
+    const normalizedFg = this.normalizeColor(fg, "fg")
+    const normalizedBg = this.normalizeColor(bg, "bg")
+
     this.opentui.symbols.bufferDrawGrayscaleBuffer(
       buffer,
       posX,
@@ -2260,8 +2406,10 @@ class FFIRenderLib implements RenderLib {
       intensitiesPtr,
       srcWidth,
       srcHeight,
-      fg?.buffer ?? null,
-      bg?.buffer ?? null,
+      this.colorBuffer(normalizedFg),
+      this.colorTag(normalizedFg),
+      this.colorBuffer(normalizedBg),
+      this.colorTag(normalizedBg),
     )
   }
 
@@ -2272,9 +2420,12 @@ class FFIRenderLib implements RenderLib {
     intensitiesPtr: Pointer,
     srcWidth: number,
     srcHeight: number,
-    fg: RGBA | null,
-    bg: RGBA | null,
+    fg: ColorValueInput | null,
+    bg: ColorValueInput | null,
   ): void {
+    const normalizedFg = this.normalizeColor(fg, "fg")
+    const normalizedBg = this.normalizeColor(bg, "bg")
+
     this.opentui.symbols.bufferDrawGrayscaleBufferSupersampled(
       buffer,
       posX,
@@ -2282,22 +2433,26 @@ class FFIRenderLib implements RenderLib {
       intensitiesPtr,
       srcWidth,
       srcHeight,
-      fg?.buffer ?? null,
-      bg?.buffer ?? null,
+      this.colorBuffer(normalizedFg),
+      this.colorTag(normalizedFg),
+      this.colorBuffer(normalizedBg),
+      this.colorTag(normalizedBg),
     )
   }
 
   public bufferDrawGrid(
     buffer: Pointer,
     borderChars: Uint32Array,
-    borderFg: RGBA,
-    borderBg: RGBA,
+    borderFg: ColorValueInput,
+    borderBg: ColorValueInput,
     columnOffsets: Int32Array,
     columnCount: number,
     rowOffsets: Int32Array,
     rowCount: number,
     options: { drawInner: boolean; drawOuter: boolean },
   ): void {
+    const normalizedBorderFg = this.normalizeColor(borderFg, "fg")
+    const normalizedBorderBg = this.normalizeColor(borderBg, "bg")
     const optionsBuffer = GridDrawOptionsStruct.pack({
       drawInner: options.drawInner,
       drawOuter: options.drawOuter,
@@ -2306,8 +2461,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferDrawGrid(
       buffer,
       borderChars,
-      borderFg.buffer,
-      borderBg.buffer,
+      this.colorBuffer(normalizedBorderFg),
+      this.colorTag(normalizedBorderFg),
+      this.colorBuffer(normalizedBorderBg),
+      this.colorTag(normalizedBorderBg),
       columnOffsets,
       columnCount,
       rowOffsets,
@@ -2324,10 +2481,12 @@ class FFIRenderLib implements RenderLib {
     height: number,
     borderChars: Uint32Array,
     packedOptions: number,
-    borderColor: RGBA,
-    backgroundColor: RGBA,
+    borderColor: ColorValueInput,
+    backgroundColor: ColorValueInput,
     title: string | null,
   ): void {
+    const normalizedBorderColor = this.normalizeColor(borderColor, "fg")
+    const normalizedBackgroundColor = this.normalizeColor(backgroundColor, "bg")
     const titleBytes = title ? this.encoder.encode(title) : null
     const titleLen = title ? titleBytes!.length : 0
     const titlePtr = title ? titleBytes : null
@@ -2340,8 +2499,10 @@ class FFIRenderLib implements RenderLib {
       height,
       borderChars,
       packedOptions,
-      borderColor.buffer,
-      backgroundColor.buffer,
+      this.colorBuffer(normalizedBorderColor),
+      this.colorTag(normalizedBorderColor),
+      this.colorBuffer(normalizedBackgroundColor),
+      this.colorTag(normalizedBackgroundColor),
       titlePtr,
       titleLen,
     )
@@ -2621,14 +2782,14 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferClear(buffer)
   }
 
-  public textBufferSetDefaultFg(buffer: Pointer, fg: RGBA | null): void {
-    const fgPtr = fg ? fg.buffer : null
-    this.opentui.symbols.textBufferSetDefaultFg(buffer, fgPtr)
+  public textBufferSetDefaultFg(buffer: Pointer, fg: ColorValueInput | null): void {
+    const normalizedFg = this.normalizeColor(fg, "fg")
+    this.opentui.symbols.textBufferSetDefaultFg(buffer, this.colorBuffer(normalizedFg), this.colorTag(normalizedFg))
   }
 
-  public textBufferSetDefaultBg(buffer: Pointer, bg: RGBA | null): void {
-    const bgPtr = bg ? bg.buffer : null
-    this.opentui.symbols.textBufferSetDefaultBg(buffer, bgPtr)
+  public textBufferSetDefaultBg(buffer: Pointer, bg: ColorValueInput | null): void {
+    const normalizedBg = this.normalizeColor(bg, "bg")
+    this.opentui.symbols.textBufferSetDefaultBg(buffer, this.colorBuffer(normalizedBg), this.colorTag(normalizedBg))
   }
 
   public textBufferSetDefaultAttributes(buffer: Pointer, attributes: number | null): void {
@@ -2688,7 +2849,13 @@ class FFIRenderLib implements RenderLib {
 
   public textBufferSetStyledText(
     buffer: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number; link?: { url: string } }>,
+    chunks: Array<{
+      text: string
+      fg?: ColorValueInput | null
+      bg?: ColorValueInput | null
+      attributes?: number
+      link?: { url: string }
+    }>,
   ): void {
     if (chunks.length === 0) {
       this.textBufferClear(buffer)
@@ -2791,12 +2958,20 @@ class FFIRenderLib implements RenderLib {
     view: Pointer,
     start: number,
     end: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
   ): void {
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = fgColor ? fgColor.buffer : null
-    this.opentui.symbols.textBufferViewSetSelection(view, start, end, bg, fg)
+    const bg = this.normalizeColor(bgColor, "bg")
+    const fg = this.normalizeColor(fgColor, "fg")
+    this.opentui.symbols.textBufferViewSetSelection(
+      view,
+      start,
+      end,
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+    )
   }
 
   public textBufferViewResetSelection(view: Pointer): void {
@@ -2827,18 +3002,40 @@ class FFIRenderLib implements RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
   ): boolean {
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.textBufferViewSetLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    const bg = this.normalizeColor(bgColor, "bg")
+    const fg = this.normalizeColor(fgColor, "fg")
+    return this.opentui.symbols.textBufferViewSetLocalSelection(
+      view,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+    )
   }
 
-  public textBufferViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = fgColor ? fgColor.buffer : null
-    this.opentui.symbols.textBufferViewUpdateSelection(view, end, bg, fg)
+  public textBufferViewUpdateSelection(
+    view: Pointer,
+    end: number,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
+  ): void {
+    const bg = this.normalizeColor(bgColor, "bg")
+    const fg = this.normalizeColor(fgColor, "fg")
+    this.opentui.symbols.textBufferViewUpdateSelection(
+      view,
+      end,
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+    )
   }
 
   public textBufferViewUpdateLocalSelection(
@@ -2847,12 +3044,22 @@ class FFIRenderLib implements RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
   ): boolean {
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = fgColor ? fgColor.buffer : null
-    return this.opentui.symbols.textBufferViewUpdateLocalSelection(view, anchorX, anchorY, focusX, focusY, bg, fg)
+    const bg = this.normalizeColor(bgColor, "bg")
+    const fg = this.normalizeColor(fgColor, "fg")
+    return this.opentui.symbols.textBufferViewUpdateLocalSelection(
+      view,
+      anchorX,
+      anchorY,
+      focusX,
+      focusY,
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+    )
   }
 
   public textBufferViewResetLocalSelection(view: Pointer): void {
@@ -3414,12 +3621,20 @@ class FFIRenderLib implements RenderLib {
     view: Pointer,
     start: number,
     end: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
   ): void {
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = fgColor ? fgColor.buffer : null
-    this.opentui.symbols.editorViewSetSelection(view, start, end, bg, fg)
+    const bg = this.normalizeColor(bgColor, "bg")
+    const fg = this.normalizeColor(fgColor, "fg")
+    this.opentui.symbols.editorViewSetSelection(
+      view,
+      start,
+      end,
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+    )
   }
 
   public editorViewResetSelection(view: Pointer): void {
@@ -3442,30 +3657,44 @@ class FFIRenderLib implements RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = fgColor ? fgColor.buffer : null
+    const bg = this.normalizeColor(bgColor, "bg")
+    const fg = this.normalizeColor(fgColor, "fg")
     return this.opentui.symbols.editorViewSetLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      bg,
-      fg,
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      this.colorBuffer(fg),
+      this.colorTag(fg),
       updateCursor,
       followCursor,
     )
   }
 
-  public editorViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = fgColor ? fgColor.buffer : null
-    this.opentui.symbols.editorViewUpdateSelection(view, end, bg, fg)
+  public editorViewUpdateSelection(
+    view: Pointer,
+    end: number,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
+  ): void {
+    const bg = this.normalizeColor(bgColor, "bg")
+    const fg = this.normalizeColor(fgColor, "fg")
+    this.opentui.symbols.editorViewUpdateSelection(
+      view,
+      end,
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      this.colorBuffer(fg),
+      this.colorTag(fg),
+    )
   }
 
   public editorViewUpdateLocalSelection(
@@ -3474,21 +3703,23 @@ class FFIRenderLib implements RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: RGBA | null,
-    fgColor: RGBA | null,
+    bgColor: ColorValueInput | null,
+    fgColor: ColorValueInput | null,
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bg = bgColor ? bgColor.buffer : null
-    const fg = fgColor ? fgColor.buffer : null
+    const bg = this.normalizeColor(bgColor, "bg")
+    const fg = this.normalizeColor(fgColor, "fg")
     return this.opentui.symbols.editorViewUpdateLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      bg,
-      fg,
+      this.colorBuffer(bg),
+      this.colorTag(bg),
+      this.colorBuffer(fg),
+      this.colorTag(fg),
       updateCursor,
       followCursor,
     )
@@ -3611,6 +3842,7 @@ class FFIRenderLib implements RenderLib {
       kitty_keyboard: caps.kitty_keyboard,
       kitty_graphics: caps.kitty_graphics,
       rgb: caps.rgb,
+      ansi256: caps.ansi256,
       unicode: caps.unicode,
       sgr_pixels: caps.sgr_pixels,
       color_scheme_updates: caps.color_scheme_updates,
@@ -3685,11 +3917,24 @@ class FFIRenderLib implements RenderLib {
     char: number,
     x: number,
     y: number,
-    fg: RGBA,
-    bg: RGBA,
+    fg: ColorValueInput,
+    bg: ColorValueInput,
     attributes: number = 0,
   ): void {
-    this.opentui.symbols.bufferDrawChar(buffer, char, x, y, fg.buffer, bg.buffer, attributes)
+    const normalizedFg = this.normalizeColor(fg, "fg")
+    const normalizedBg = this.normalizeColor(bg, "bg")
+
+    this.opentui.symbols.bufferDrawChar(
+      buffer,
+      char,
+      x,
+      y,
+      this.colorBuffer(normalizedFg),
+      this.colorTag(normalizedFg),
+      this.colorBuffer(normalizedBg),
+      this.colorTag(normalizedBg),
+      attributes,
+    )
   }
 
   public registerNativeSpanFeedStream(stream: Pointer, handler: NativeSpanFeedEventHandler): void {
@@ -3787,14 +4032,23 @@ class FFIRenderLib implements RenderLib {
   public syntaxStyleRegister(
     style: Pointer,
     name: string,
-    fg: RGBA | null,
-    bg: RGBA | null,
+    fg: ColorValueInput | null,
+    bg: ColorValueInput | null,
     attributes: number,
   ): number {
     const nameBytes = this.encoder.encode(name)
-    const fgPtr = fg ? fg.buffer : null
-    const bgPtr = bg ? bg.buffer : null
-    return this.opentui.symbols.syntaxStyleRegister(style, nameBytes, nameBytes.length, fgPtr, bgPtr, attributes)
+    const normalizedFg = this.normalizeColor(fg, "fg")
+    const normalizedBg = this.normalizeColor(bg, "bg")
+    return this.opentui.symbols.syntaxStyleRegister(
+      style,
+      nameBytes,
+      nameBytes.length,
+      this.colorBuffer(normalizedFg),
+      this.colorTag(normalizedFg),
+      this.colorBuffer(normalizedBg),
+      this.colorTag(normalizedBg),
+      attributes,
+    )
   }
 
   public syntaxStyleResolveByName(style: Pointer, name: string): number | null {
@@ -3810,7 +4064,7 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewSetPlaceholderStyledText(
     view: Pointer,
-    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
+    chunks: Array<{ text: string; fg?: ColorValueInput | null; bg?: ColorValueInput | null; attributes?: number }>,
   ): void {
     const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
     if (nonEmptyChunks.length === 0) {

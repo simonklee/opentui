@@ -1,4 +1,5 @@
 import { RGBA } from "./lib"
+import { normalizeColorValue, type ColorValueInput } from "./lib/color-value.js"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
@@ -52,6 +53,8 @@ export class OptimizedBuffer {
     char: Uint32Array
     fg: Float32Array
     bg: Float32Array
+    fgTag: Uint16Array
+    bgTag: Uint16Array
     attributes: Uint32Array
   } | null = null
   private _destroyed: boolean = false
@@ -71,6 +74,8 @@ export class OptimizedBuffer {
     char: Uint32Array
     fg: Float32Array
     bg: Float32Array
+    fgTag: Uint16Array
+    bgTag: Uint16Array
     attributes: Uint32Array
   } {
     this.guard()
@@ -79,12 +84,16 @@ export class OptimizedBuffer {
       const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
       const fgPtr = this.lib.bufferGetFgPtr(this.bufferPtr)
       const bgPtr = this.lib.bufferGetBgPtr(this.bufferPtr)
+      const fgTagPtr = this.lib.bufferGetFgTagPtr(this.bufferPtr)
+      const bgTagPtr = this.lib.bufferGetBgTagPtr(this.bufferPtr)
       const attributesPtr = this.lib.bufferGetAttributesPtr(this.bufferPtr)
 
       this._rawBuffers = {
         char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
         fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)),
         bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)),
+        fgTag: new Uint16Array(toArrayBuffer(fgTagPtr, 0, size * 2)),
+        bgTag: new Uint16Array(toArrayBuffer(bgTagPtr, 0, size * 2)),
         attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
       }
     }
@@ -154,7 +163,7 @@ export class OptimizedBuffer {
 
   public getSpanLines(): CapturedLine[] {
     this.guard()
-    const { char, fg, bg, attributes } = this.buffers
+    const { char, fg, bg, fgTag, bgTag, attributes } = this.buffers
     const lines: CapturedLine[] = []
 
     const CHAR_FLAG_CONTINUATION = 0xc0000000 | 0
@@ -175,6 +184,8 @@ export class OptimizedBuffer {
         const cp = char[i]
         const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
         const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
+        const cellFgTag = fgTag[i]
+        const cellBgTag = bgTag[i]
         const cellAttrs = attributes[i] & 0xff
 
         // Continuation cells are placeholders for wide characters (emojis, CJK)
@@ -186,6 +197,8 @@ export class OptimizedBuffer {
           currentSpan &&
           currentSpan.fg.equals(cellFg) &&
           currentSpan.bg.equals(cellBg) &&
+          currentSpan.fgTag === cellFgTag &&
+          currentSpan.bgTag === cellBgTag &&
           currentSpan.attributes === cellAttrs
         ) {
           currentSpan.text += cellChar
@@ -199,6 +212,8 @@ export class OptimizedBuffer {
             text: cellChar,
             fg: cellFg,
             bg: cellBg,
+            fgTag: cellFgTag,
+            bgTag: cellBgTag,
             attributes: cellAttrs,
             width: 1,
           }
@@ -216,12 +231,19 @@ export class OptimizedBuffer {
     return lines
   }
 
-  public clear(bg: RGBA = RGBA.fromValues(0, 0, 0, 1)): void {
+  public clear(bg: ColorValueInput = RGBA.fromValues(0, 0, 0, 1)): void {
     this.guard()
     this.lib.bufferClear(this.bufferPtr, bg)
   }
 
-  public setCell(x: number, y: number, char: string, fg: RGBA, bg: RGBA, attributes: number = 0): void {
+  public setCell(
+    x: number,
+    y: number,
+    char: string,
+    fg: ColorValueInput,
+    bg: ColorValueInput,
+    attributes: number = 0,
+  ): void {
     this.guard()
     this.lib.bufferSetCell(this.bufferPtr, x, y, char, fg, bg, attributes)
   }
@@ -230,8 +252,8 @@ export class OptimizedBuffer {
     x: number,
     y: number,
     char: string,
-    fg: RGBA,
-    bg: RGBA,
+    fg: ColorValueInput,
+    bg: ColorValueInput,
     attributes: number = 0,
   ): void {
     this.guard()
@@ -242,10 +264,10 @@ export class OptimizedBuffer {
     text: string,
     x: number,
     y: number,
-    fg: RGBA,
-    bg?: RGBA,
+    fg: ColorValueInput,
+    bg?: ColorValueInput,
     attributes: number = 0,
-    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA } | null,
+    selection?: { start: number; end: number; bgColor?: ColorValueInput; fgColor?: ColorValueInput } | null,
   ): void {
     this.guard()
     if (!selection) {
@@ -255,16 +277,17 @@ export class OptimizedBuffer {
 
     const { start, end } = selection
 
-    let selectionBg: RGBA
-    let selectionFg: RGBA
+    let selectionBg: ColorValueInput
+    let selectionFg: ColorValueInput
 
     if (selection.bgColor) {
       selectionBg = selection.bgColor
       selectionFg = selection.fgColor || fg
     } else {
-      const defaultBg = bg || RGBA.fromValues(0, 0, 0, 0)
+      const defaultBg = normalizeColorValue(bg ?? null, { role: "bg" })?.rgba ?? RGBA.fromValues(0, 0, 0, 0)
+      const defaultFg = normalizeColorValue(fg, { role: "fg" })!.rgba
       selectionFg = defaultBg.a > 0 ? defaultBg : RGBA.fromValues(0, 0, 0, 1)
-      selectionBg = fg
+      selectionBg = defaultFg
     }
 
     if (start > 0) {
@@ -283,7 +306,7 @@ export class OptimizedBuffer {
     }
   }
 
-  public fillRect(x: number, y: number, width: number, height: number, bg: RGBA): void {
+  public fillRect(x: number, y: number, width: number, height: number, bg: ColorValueInput): void {
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
   }
 
@@ -386,8 +409,8 @@ export class OptimizedBuffer {
     intensities: Float32Array,
     srcWidth: number,
     srcHeight: number,
-    fg: RGBA | null = null,
-    bg: RGBA | null = null,
+    fg: ColorValueInput | null = null,
+    bg: ColorValueInput | null = null,
   ): void {
     this.guard()
     this.lib.bufferDrawGrayscaleBuffer(this.bufferPtr, posX, posY, ptr(intensities), srcWidth, srcHeight, fg, bg)
@@ -399,8 +422,8 @@ export class OptimizedBuffer {
     intensities: Float32Array,
     srcWidth: number,
     srcHeight: number,
-    fg: RGBA | null = null,
-    bg: RGBA | null = null,
+    fg: ColorValueInput | null = null,
+    bg: ColorValueInput | null = null,
   ): void {
     this.guard()
     this.lib.bufferDrawGrayscaleBufferSupersampled(
@@ -434,8 +457,8 @@ export class OptimizedBuffer {
     borderStyle?: BorderStyle
     customBorderChars?: Uint32Array
     border: boolean | BorderSides[]
-    borderColor: RGBA
-    backgroundColor: RGBA
+    borderColor: ColorValueInput
+    backgroundColor: ColorValueInput
     shouldFill?: boolean
     title?: string
     titleAlignment?: "left" | "center" | "right"
@@ -507,8 +530,8 @@ export class OptimizedBuffer {
 
   public drawGrid(options: {
     borderChars: Uint32Array
-    borderFg: RGBA
-    borderBg: RGBA
+    borderFg: ColorValueInput
+    borderBg: ColorValueInput
     columnOffsets: Int32Array
     rowOffsets: Int32Array
     drawInner: boolean
@@ -535,7 +558,14 @@ export class OptimizedBuffer {
     )
   }
 
-  public drawChar(char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes: number = 0): void {
+  public drawChar(
+    char: number,
+    x: number,
+    y: number,
+    fg: ColorValueInput,
+    bg: ColorValueInput,
+    attributes: number = 0,
+  ): void {
     this.guard()
     this.lib.bufferDrawChar(this.bufferPtr, char, x, y, fg, bg, attributes)
   }

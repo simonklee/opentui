@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ansi = @import("ansi.zig");
 const tb = @import("text-buffer.zig");
 const seg_mod = @import("text-buffer-segment.zig");
 const iter_mod = @import("text-buffer-iterators.zig");
@@ -491,21 +492,48 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setSelection(self: *Self, start: u32, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
+        self.setSelectionWithTags(start, end, bgColor, fgColor, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
+    }
+
+    pub fn setSelectionWithTags(
+        self: *Self,
+        start: u32,
+        end: u32,
+        bgColor: ?RGBA,
+        fgColor: ?RGBA,
+        bgTag: ansi.ColorTag,
+        fgTag: ansi.ColorTag,
+    ) void {
         self.selection = TextSelection{
             .start = start,
             .end = end,
             .bgColor = bgColor,
             .fgColor = fgColor,
+            .bgTag = bgTag,
+            .fgTag = fgTag,
         };
     }
 
     pub fn updateSelection(self: *Self, end: u32, bgColor: ?RGBA, fgColor: ?RGBA) void {
+        self.updateSelectionWithTags(end, bgColor, fgColor, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
+    }
+
+    pub fn updateSelectionWithTags(
+        self: *Self,
+        end: u32,
+        bgColor: ?RGBA,
+        fgColor: ?RGBA,
+        bgTag: ansi.ColorTag,
+        fgTag: ansi.ColorTag,
+    ) void {
         if (self.selection) |sel| {
             self.selection = TextSelection{
                 .start = sel.start,
                 .end = end,
                 .bgColor = bgColor,
                 .fgColor = fgColor,
+                .bgTag = bgTag,
+                .fgTag = fgTag,
             };
         }
     }
@@ -535,6 +563,20 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn setLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
+        return self.setLocalSelectionWithTags(anchorX, anchorY, focusX, focusY, bgColor, fgColor, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
+    }
+
+    pub fn setLocalSelectionWithTags(
+        self: *Self,
+        anchorX: i32,
+        anchorY: i32,
+        focusX: i32,
+        focusY: i32,
+        bgColor: ?RGBA,
+        fgColor: ?RGBA,
+        bgTag: ansi.ColorTag,
+        fgTag: ansi.ColorTag,
+    ) bool {
         self.updateVirtualLines();
         if (self.truncate and self.viewport != null) {
             self.ensureTruncation();
@@ -590,6 +632,8 @@ pub const UnifiedTextBufferView = struct {
             .end = new_end,
             .bgColor = bgColor,
             .fgColor = fgColor,
+            .bgTag = bgTag,
+            .fgTag = fgTag,
         };
 
         const selection_changed = if (self.selection) |old_sel|
@@ -602,14 +646,28 @@ pub const UnifiedTextBufferView = struct {
     }
 
     pub fn updateLocalSelection(self: *Self, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
+        return self.updateLocalSelectionWithTags(anchorX, anchorY, focusX, focusY, bgColor, fgColor, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
+    }
+
+    pub fn updateLocalSelectionWithTags(
+        self: *Self,
+        anchorX: i32,
+        anchorY: i32,
+        focusX: i32,
+        focusY: i32,
+        bgColor: ?RGBA,
+        fgColor: ?RGBA,
+        bgTag: ansi.ColorTag,
+        fgTag: ansi.ColorTag,
+    ) bool {
         if (self.selection_anchor_offset) |_| {
-            return self.updateLocalSelectionFocusOnly(focusX, focusY, bgColor, fgColor);
+            return self.updateLocalSelectionFocusOnly(focusX, focusY, bgColor, fgColor, bgTag, fgTag);
         } else {
-            return self.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
+            return self.setLocalSelectionWithTags(anchorX, anchorY, focusX, focusY, bgColor, fgColor, bgTag, fgTag);
         }
     }
 
-    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA) bool {
+    fn updateLocalSelectionFocusOnly(self: *Self, focusX: i32, focusY: i32, bgColor: ?RGBA, fgColor: ?RGBA, bgTag: ansi.ColorTag, fgTag: ansi.ColorTag) bool {
         const anchor_offset = self.selection_anchor_offset orelse return false;
 
         self.updateVirtualLines();
@@ -642,6 +700,8 @@ pub const UnifiedTextBufferView = struct {
             .end = new_end,
             .bgColor = bgColor,
             .fgColor = fgColor,
+            .bgTag = bgTag,
+            .fgTag = fgTag,
         };
 
         return true;

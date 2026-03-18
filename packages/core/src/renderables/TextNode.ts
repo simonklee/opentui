@@ -1,13 +1,13 @@
 import type { TextRenderable } from "./index.js"
 import { BaseRenderable, type BaseRenderableOptions } from "../Renderable.js"
-import { RGBA, parseColor } from "../lib/RGBA.js"
+import { prepareColorValueInput, type ColorValueInput } from "../lib/color-value.js"
 import { isStyledText, StyledText } from "../lib/styled-text.js"
 import { type TextChunk } from "../text-buffer.js"
 import type { RenderContext } from "../types.js"
 
 export interface TextNodeOptions extends BaseRenderableOptions {
-  fg?: string | RGBA
-  bg?: string | RGBA
+  fg?: ColorValueInput
+  bg?: ColorValueInput
   attributes?: number
   link?: { url: string }
 }
@@ -34,8 +34,8 @@ function styledTextToTextNodes(styledText: StyledText): TextNodeRenderable[] {
 export class TextNodeRenderable extends BaseRenderable {
   [BrandedTextNodeRenderable] = true
 
-  private _fg?: RGBA
-  private _bg?: RGBA
+  private _fg?: ColorValueInput
+  private _bg?: ColorValueInput
   private _attributes: number
   private _link?: { url: string }
   private _children: (string | TextNodeRenderable)[] = []
@@ -44,8 +44,8 @@ export class TextNodeRenderable extends BaseRenderable {
   constructor(options: TextNodeOptions) {
     super(options)
 
-    this._fg = options.fg ? parseColor(options.fg) : undefined
-    this._bg = options.bg ? parseColor(options.bg) : undefined
+    this._fg = options.fg ? prepareColorValueInput(options.fg) ?? undefined : undefined
+    this._bg = options.bg ? prepareColorValueInput(options.bg) ?? undefined : undefined
     this._attributes = options.attributes ?? 0
     this._link = options.link
   }
@@ -169,9 +169,9 @@ export class TextNodeRenderable extends BaseRenderable {
     this.requestRender()
   }
 
-  public mergeStyles(parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number; link?: { url: string } }): {
-    fg?: RGBA
-    bg?: RGBA
+  public mergeStyles(parentStyle: { fg?: ColorValueInput; bg?: ColorValueInput; attributes: number; link?: { url: string } }): {
+    fg?: ColorValueInput
+    bg?: ColorValueInput
     attributes: number
     link?: { url: string }
   } {
@@ -184,7 +184,7 @@ export class TextNodeRenderable extends BaseRenderable {
   }
 
   public gatherWithInheritedStyle(
-    parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number; link?: { url: string } } = {
+    parentStyle: { fg?: ColorValueInput; bg?: ColorValueInput; attributes: number; link?: { url: string } } = {
       fg: undefined,
       bg: undefined,
       attributes: 0,
@@ -230,7 +230,7 @@ export class TextNodeRenderable extends BaseRenderable {
   }
 
   public toChunks(
-    parentStyle: { fg?: RGBA; bg?: RGBA; attributes: number; link?: { url: string } } = {
+    parentStyle: { fg?: ColorValueInput; bg?: ColorValueInput; attributes: number; link?: { url: string } } = {
       fg: undefined,
       bg: undefined,
       attributes: 0,
@@ -255,31 +255,31 @@ export class TextNodeRenderable extends BaseRenderable {
     return this._children.findIndex((child) => isTextNodeRenderable(child) && child.id === id)
   }
 
-  public get fg(): RGBA | undefined {
+  public get fg(): ColorValueInput | undefined {
     return this._fg
   }
 
-  public set fg(fg: RGBA | string | undefined) {
+  public set fg(fg: ColorValueInput | undefined) {
     if (!fg) {
       this._fg = undefined
       this.requestRender()
       return
     }
-    this._fg = parseColor(fg)
+    this._fg = prepareColorValueInput(fg) ?? undefined
     this.requestRender()
   }
 
-  public set bg(bg: RGBA | string | undefined) {
+  public set bg(bg: ColorValueInput | undefined) {
     if (!bg) {
       this._bg = undefined
       this.requestRender()
       return
     }
-    this._bg = parseColor(bg)
+    this._bg = prepareColorValueInput(bg) ?? undefined
     this.requestRender()
   }
 
-  public get bg(): RGBA | undefined {
+  public get bg(): ColorValueInput | undefined {
     return this._bg
   }
 

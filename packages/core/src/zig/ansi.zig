@@ -2,6 +2,20 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 pub const RGBA = [4]f32;
+pub const ColorTag = u16;
+pub const COLOR_TAG_RGB: ColorTag = 256;
+pub const COLOR_TAG_DEFAULT: ColorTag = 257;
+
+pub const ColorKind = enum {
+    indexed,
+    rgb,
+    default,
+};
+
+pub const DecodedColorTag = struct {
+    kind: ColorKind,
+    index: ?u8 = null,
+};
 
 pub const AnsiError = error{
     InvalidFormat,
@@ -28,8 +42,24 @@ pub const ANSI = struct {
         writer.print("\x1b[38;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
     }
 
+    pub fn fgIndexedColorOutput(writer: anytype, index: u8) AnsiError!void {
+        writer.print("\x1b[38;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn fgDefaultOutput(writer: anytype) AnsiError!void {
+        writer.writeAll("\x1b[39m") catch return AnsiError.WriteFailed;
+    }
+
     pub fn bgColorOutput(writer: anytype, r: u8, g: u8, b: u8) AnsiError!void {
         writer.print("\x1b[48;2;{d};{d};{d}m", .{ r, g, b }) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn bgIndexedColorOutput(writer: anytype, index: u8) AnsiError!void {
+        writer.print("\x1b[48;5;{d}m", .{index}) catch return AnsiError.WriteFailed;
+    }
+
+    pub fn bgDefaultOutput(writer: anytype) AnsiError!void {
+        writer.writeAll("\x1b[49m") catch return AnsiError.WriteFailed;
     }
 
     // Text attribute constants
@@ -182,6 +212,45 @@ pub const ANSI = struct {
         }
     }
 };
+
+pub fn rgbColorTag() ColorTag {
+    return COLOR_TAG_RGB;
+}
+
+pub fn defaultColorTag() ColorTag {
+    return COLOR_TAG_DEFAULT;
+}
+
+pub fn indexedColorTag(index: u8) ColorTag {
+    return @as(ColorTag, index);
+}
+
+pub fn decodeColorTag(tag: ColorTag) DecodedColorTag {
+    if (tag == COLOR_TAG_DEFAULT) {
+        return .{ .kind = .default };
+    }
+
+    if (tag == COLOR_TAG_RGB) {
+        return .{ .kind = .rgb };
+    }
+
+    return .{
+        .kind = .indexed,
+        .index = @intCast(tag),
+    };
+}
+
+pub fn isRgbColorTag(tag: ColorTag) bool {
+    return tag == COLOR_TAG_RGB;
+}
+
+pub fn isDefaultColorTag(tag: ColorTag) bool {
+    return tag == COLOR_TAG_DEFAULT;
+}
+
+pub fn isIndexedColorTag(tag: ColorTag) bool {
+    return tag < COLOR_TAG_RGB;
+}
 
 pub const TextAttributes = struct {
     pub const NONE: u8 = 0;
