@@ -28,7 +28,6 @@ import {
   LineInfoStruct,
   MeasureResultStruct,
   CursorStateStruct,
-  ColorDebugStatsStruct,
   CursorStyleOptionsStruct,
   GridDrawOptionsStruct,
   NativeSpanFeedOptionsStruct,
@@ -46,14 +45,6 @@ import type {
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 import type { TerminalColors } from "./lib/terminal-palette.js"
-
-interface InternalColorDebugStats {
-  conversions: number
-  cache_hits: number
-  cache_misses: number
-  cache_size: number
-  palette_epoch: number
-}
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -105,13 +96,6 @@ registerEnvVar({
   type: "boolean",
   default: false,
 })
-registerEnvVar({
-  name: "OPENTUI_FORCE_COLOR_MODE",
-  description: "Force terminal color mode detection to truecolor, 256, or none",
-  type: "string",
-  default: "",
-})
-
 // Cursor & mouse pointer style mappings (avoid recreation on each call)
 const CURSOR_STYLE_TO_ID = { block: 0, line: 1, underline: 2, default: 3 } as const
 const CURSOR_ID_TO_STYLE = ["block", "line", "underline", "default"] as const
@@ -350,14 +334,6 @@ function getOpenTUILib(libPath?: string) {
     // Debug overlay
     setDebugOverlay: {
       args: ["ptr", "bool", "u8"],
-      returns: "void",
-    },
-    resetColorDebugStats: {
-      args: ["ptr", "bool"],
-      returns: "void",
-    },
-    getColorDebugStats: {
-      args: ["ptr", "ptr"],
       returns: "void",
     },
 
@@ -2566,16 +2542,6 @@ class FFIRenderLib implements RenderLib {
 
   public setDebugOverlay(renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) {
     this.opentui.symbols.setDebugOverlay(renderer, enabled, corner)
-  }
-
-  public resetColorDebugStats(renderer: Pointer, clearCache: boolean): void {
-    this.opentui.symbols.resetColorDebugStats(renderer, clearCache)
-  }
-
-  public getColorDebugStats(renderer: Pointer): InternalColorDebugStats {
-    const statsBuffer = new ArrayBuffer(ColorDebugStatsStruct.size)
-    this.opentui.symbols.getColorDebugStats(renderer, ptr(statsBuffer))
-    return ColorDebugStatsStruct.unpack(statsBuffer) as InternalColorDebugStats
   }
 
   public clearTerminal(renderer: Pointer) {

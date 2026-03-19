@@ -17,25 +17,13 @@ import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
 type ScenarioMode = "reused" | "unique"
 type PalettePresetName = "detected" | "xterm" | "solarized-dark"
-type RunOptions = {
-  autoDetectPalette?: boolean
-}
 
-interface InternalColorDebugStats {
-  conversions: number
-  cache_hits: number
-  cache_misses: number
-  cache_size: number
-  palette_epoch: number
-}
-
-interface InternalPaletteDebugRenderer {
+interface InternalPalettePublisher {
   publishPalette(colors: TerminalColors | null): void
-  resetColorDebugStats(options?: { clearCache?: boolean }): void
-  getColorDebugStats(): InternalColorDebugStats
 }
 
 const SWATCH_COUNT = 32
+
 const XTERM_16_HEX = [
   "#000000",
   "#800000",
@@ -54,6 +42,7 @@ const XTERM_16_HEX = [
   "#00ffff",
   "#ffffff",
 ] as const
+
 const SOLARIZED_DARK_16_HEX = [
   "#073642",
   "#dc322f",
@@ -72,6 +61,7 @@ const SOLARIZED_DARK_16_HEX = [
   "#93a1a1",
   "#fdf6e3",
 ] as const
+
 const REUSED_BASE_HEX = [
   "#ef4444",
   "#f59e0b",
@@ -94,38 +84,23 @@ const COLOR_ERROR = RGBA.fromHex("#f87171")
 let rootContainer: BoxRenderable | null = null
 let terminalInfoText: TextRenderable | null = null
 let statusText: TextRenderable | null = null
-let rgbFallbackLineText: TextRenderable | null = null
+let rgbSnapshotLineText: TextRenderable | null = null
 let explicitIndexedLineText: TextRenderable | null = null
 let defaultIntentLineText: TextRenderable | null = null
 let paletteTopText: TextRenderable | null = null
 let paletteBottomText: TextRenderable | null = null
-let cacheStatsText: TextRenderable | null = null
 let footerText: TextRenderable | null = null
 let keyListener: ((key: KeyEvent) => void) | null = null
-let frameCallback: ((deltaTime: number) => Promise<void>) | null = null
 
 let scenarioMode: ScenarioMode = "reused"
 let palettePreset: PalettePresetName = "xterm"
 let swatchGlyph = "█"
 let fullPalette: RGBA[] = normalizeTerminalPalette(null).palette
 let visiblePalette: RGBA[] = fullPalette.slice(0, 16)
-let lastStatsLabel = ""
-let visualChecklistRunning = false
+let paletteGeneration = 0
 
 function publishPalette(renderer: CliRenderer, colors: TerminalColors | null): void {
-  ;(renderer as unknown as InternalPaletteDebugRenderer).publishPalette(colors)
-}
-
-function resetRendererColorDebugStats(renderer: CliRenderer, options?: { clearCache?: boolean }): void {
-  ;(renderer as unknown as InternalPaletteDebugRenderer).resetColorDebugStats(options)
-}
-
-function readColorDebugStats(renderer: CliRenderer): InternalColorDebugStats {
-  return (renderer as unknown as InternalPaletteDebugRenderer).getColorDebugStats()
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+  ;(renderer as unknown as InternalPalettePublisher).publishPalette(colors)
 }
 
 function chunk(text: string, options: { fg?: RGBA; bg?: RGBA; attributes?: number } = {}): TextChunk {
@@ -169,11 +144,6 @@ function applyPalette(colors: TerminalColors | null, source: PalettePresetName):
   palettePreset = source
 }
 
-function colorKey(color: RGBA): string {
-  const [r, g, b] = color.toInts()
-  return `${r},${g},${b}`
-}
-
 function rgbDistanceSquared(a: RGBA, b: RGBA): number {
   const dr = a.r - b.r
   const dg = a.g - b.g
@@ -199,19 +169,20 @@ function nearestPaletteIndex(rgb: RGBA): number {
 function buildSourceColors(mode: ScenarioMode, count: number): RGBA[] {
   if (mode === "reused") {
     const palette = REUSED_BASE_HEX.map((hex) => RGBA.fromHex(hex))
-    return Array.from({ length: count }, (_, i) => palette[i % palette.length])
+    return Array.from({ length: count }, (_, index) => palette[index % palette.length])
   }
 
-  return Array.from({ length: count }, (_, i) => {
-    const t = count <= 1 ? 0 : i / (count - 1)
-    const r = Math.round(255 * t)
-    const g = Math.round(255 * (1 - Math.abs(0.5 - t) * 2))
-    const b = Math.round(255 * (1 - t))
-    return RGBA.fromInts(r, g, b)
+  return Array.from({ length: count }, (_, index) => {
+    const t = count <= 1 ? 0 : index / (count - 1)
+    return RGBA.fromInts(
+      Math.round(255 * t),
+      Math.round(255 * (1 - Math.abs(0.5 - t) * 2)),
+      Math.round(255 * (1 - t)),
+    )
   })
 }
 
-function buildRgbFallbackLine(label: string, colors: RGBA[]): StyledText {
+function buildRgbSnapshotLine(label: string, colors: RGBA[]): StyledText {
   const chunks: TextChunk[] = [
     chunk(label.padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
@@ -320,280 +291,73 @@ function setStatus(message: string, color: RGBA): void {
   statusText.fg = color
 }
 
-function updateStatsLabel(renderer: CliRenderer): void {
-  if (!cacheStatsText) return
-
-  const stats = readColorDebugStats(renderer)
-  const label =
-    `palette=${palettePreset} mode=${colorModeLabel(renderer)} scenario=${scenarioMode} glyph=${swatchGlyph}` +
-    `\n` +
-    `hits=${stats.cache_hits} misses=${stats.cache_misses} conv=${stats.conversions} cache=${stats.cache_size} epoch=${stats.palette_epoch}`
-
-  if (label === lastStatsLabel) return
-  lastStatsLabel = label
-  cacheStatsText.content = label
-}
-
 function refreshView(renderer: CliRenderer): void {
-  if (
-    !rgbFallbackLineText ||
-    !explicitIndexedLineText ||
-    !defaultIntentLineText ||
-    !paletteTopText ||
-    !paletteBottomText ||
-    !footerText
-  ) {
+  if (!rgbSnapshotLineText || !explicitIndexedLineText || !defaultIntentLineText || !paletteTopText || !paletteBottomText) {
     return
   }
 
   const sourceColors = buildSourceColors(scenarioMode, SWATCH_COUNT)
-  rgbFallbackLineText.content = buildRgbFallbackLine("RGB fallback", sourceColors)
+  rgbSnapshotLineText.content = buildRgbSnapshotLine("RGB snapshot", sourceColors)
   explicitIndexedLineText.content = buildIndexedIntentLine("Explicit index", sourceColors)
   defaultIntentLineText.content = buildDefaultIntentLine()
   paletteTopText.content = buildPaletteLine("Palette 0-7", 0, 7)
   paletteBottomText.content = buildPaletteLine("Palette 8-F", 8, 15)
 
-  footerText.content =
-    colorModeLabel(renderer) === "truecolor"
-      ? "Truecolor mode: fallback stats stay 0. Set OPENTUI_FORCE_COLOR_MODE=256. Press v for visual e2e."
-      : process.env.OPENTUI_FORCE_COLOR_MODE === "256"
-        ? "ANSI256 fallback active: press space repaint or v to run visual e2e checklist."
-        : "Tip: set OPENTUI_FORCE_COLOR_MODE=256. Press v for visual e2e checklist."
+  if (footerText) {
+    const scenarioLabel =
+      scenarioMode === "reused" ? "eight repeated RGB swatches" : "a unique RGB gradient across the row"
+    footerText.content = `Palette basis: ${palettePreset} | Scenario: ${scenarioLabel}`
+  }
 
-  updateStatsLabel(renderer)
   renderer.requestRender()
 }
 
-function resetColorStats(renderer: CliRenderer, clearCache: boolean): void {
-  resetRendererColorDebugStats(renderer, { clearCache })
-  lastStatsLabel = ""
-}
-
-function applyPresetPalette(
-  renderer: CliRenderer,
-  name: Exclude<PalettePresetName, "detected">,
-  options: { resetStats?: boolean } = {},
-): void {
+function applyPresetPalette(renderer: CliRenderer, name: Exclude<PalettePresetName, "detected">): void {
+  paletteGeneration += 1
   const colors = buildPresetPalette(name)
   applyPalette(colors, name)
   publishPalette(renderer, colors)
-  if (options.resetStats ?? true) {
-    resetColorStats(renderer, true)
-  }
-}
-
-function publishPresetPalette(renderer: CliRenderer, name: Exclude<PalettePresetName, "detected">): void {
-  applyPresetPalette(renderer, name, { resetStats: true })
-  setStatus(`Published ${name} palette preset and cleared RGB->index stats.`, COLOR_SUCCESS)
+  updateTerminalInfo(renderer)
+  setStatus(`Published ${name} palette preset.`, COLOR_SUCCESS)
   refreshView(renderer)
 }
 
-async function detectPalette(renderer: CliRenderer, clearRendererCache: boolean): Promise<void> {
+async function detectPalette(renderer: CliRenderer): Promise<void> {
+  const generation = ++paletteGeneration
+  setStatus("Detecting terminal palette via OSC queries...", COLOR_WARNING)
+
   try {
-    setStatus("Detecting terminal palette via OSC queries...", COLOR_WARNING)
-
-    if (clearRendererCache) {
-      renderer.clearPaletteCache()
-    }
-
+    renderer.clearPaletteCache()
     const colors = await renderer.getPalette({ size: 256 })
+
+    if (!rootContainer || generation !== paletteGeneration) return
+
     applyPalette(colors, "detected")
     publishPalette(renderer, colors)
-    resetColorStats(renderer, true)
-    setStatus("Published detected terminal palette and reset RGB->index stats.", COLOR_SUCCESS)
+    updateTerminalInfo(renderer)
+    setStatus("Published detected terminal palette.", COLOR_SUCCESS)
+    refreshView(renderer)
   } catch (error) {
+    if (!rootContainer || generation !== paletteGeneration) return
+
     const message = error instanceof Error ? error.message : String(error)
     setStatus(`Palette detection failed (${message}). Keeping current palette basis.`, COLOR_ERROR)
+    updateTerminalInfo(renderer)
+    refreshView(renderer)
   }
-
-  updateTerminalInfo(renderer)
-  refreshView(renderer)
 }
 
 function toggleSwatchGlyph(): void {
   swatchGlyph = swatchGlyph === "█" ? "▓" : "█"
 }
 
-async function runVisualChecklist(renderer: CliRenderer): Promise<void> {
-  if (visualChecklistRunning) {
-    setStatus("Visual checklist already running.", COLOR_WARNING)
-    return
-  }
-
-  visualChecklistRunning = true
-
-  try {
-    const total = 5
-
-    scenarioMode = "reused"
-    swatchGlyph = "█"
-    applyPresetPalette(renderer, "xterm", { resetStats: true })
-    setStatus(`E2E 1/${total}: baseline (xterm + stats reset).`, COLOR_WARNING)
-    refreshView(renderer)
-    await sleep(750)
-
-    toggleSwatchGlyph()
-    setStatus(`E2E 2/${total}: first repaint (misses/conversions rise).`, COLOR_WARNING)
-    refreshView(renderer)
-    await sleep(750)
-
-    toggleSwatchGlyph()
-    setStatus(`E2E 3/${total}: steady repaint (hits rise, conversions flatten).`, COLOR_WARNING)
-    refreshView(renderer)
-    await sleep(750)
-
-    applyPresetPalette(renderer, "solarized-dark", { resetStats: false })
-    setStatus(`E2E 4/${total}: palette switch (epoch and misses rise).`, COLOR_WARNING)
-    refreshView(renderer)
-    await sleep(850)
-
-    toggleSwatchGlyph()
-    setStatus(`E2E 5/${total}: post-switch repaint (hits rise again).`, COLOR_WARNING)
-    refreshView(renderer)
-    await sleep(850)
-
-    setStatus("Visual checklist complete. Press c to reset or rerun with v.", COLOR_SUCCESS)
-    refreshView(renderer)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    setStatus(`Visual checklist failed (${message}).`, COLOR_ERROR)
-    refreshView(renderer)
-  } finally {
-    visualChecklistRunning = false
-  }
-}
-
-type ChecklistSnapshot = {
-  label: string
-  mode: string
-  palette: PalettePresetName
-  scenario: ScenarioMode
-  glyph: string
-  conversions: number
-  cache_hits: number
-  cache_misses: number
-  cache_size: number
-  palette_epoch: number
-}
-
-function snapshotStats(renderer: CliRenderer, label: string): ChecklistSnapshot {
-  const stats = readColorDebugStats(renderer)
-  return {
-    label,
-    mode: colorModeLabel(renderer),
-    palette: palettePreset,
-    scenario: scenarioMode,
-    glyph: swatchGlyph,
-    conversions: stats.conversions,
-    cache_hits: stats.cache_hits,
-    cache_misses: stats.cache_misses,
-    cache_size: stats.cache_size,
-    palette_epoch: stats.palette_epoch,
-  }
-}
-
-type ChecklistReport = {
-  passed: boolean
-  checks: {
-    nonTruecolorMode: boolean
-    firstPassMissesGrow: boolean
-    steadyHitsGrow: boolean
-    steadyConversionsFlat: boolean
-    paletteEpochIncrements: boolean
-    paletteSwitchMissesGrow: boolean
-    postSwitchHitsGrow: boolean
-    postSwitchConversionsFlat: boolean
-  }
-  samples: ChecklistSnapshot[]
-  notes: {
-    forceColorMode: string | null
-    rendererMode: string
-  }
-}
-
-export async function runChecklistCase(): Promise<ChecklistReport> {
-  process.env.OPENTUI_FORCE_COLOR_MODE ??= "256"
-
-  const { createTestRenderer } = await import("../testing/test-renderer.js")
-  const { renderer, renderOnce } = await createTestRenderer({
-    width: 120,
-    height: 28,
-    useThread: false,
-  })
-
-  try {
-    run(renderer, { autoDetectPalette: false })
-    await renderOnce()
-    await renderOnce()
-
-    resetColorStats(renderer, true)
-    refreshView(renderer)
-    await renderOnce()
-    await renderOnce()
-    const baseline = snapshotStats(renderer, "baseline")
-
-    toggleSwatchGlyph()
-    refreshView(renderer)
-    await renderOnce()
-    await renderOnce()
-    const firstRepaint = snapshotStats(renderer, "first_repaint")
-
-    toggleSwatchGlyph()
-    refreshView(renderer)
-    await renderOnce()
-    await renderOnce()
-    const steadyRepaint = snapshotStats(renderer, "steady_repaint")
-
-    const beforePaletteSwitch = snapshotStats(renderer, "before_palette_switch")
-    publishPresetPalette(renderer, "solarized-dark")
-    await renderOnce()
-    await renderOnce()
-    const afterPaletteSwitch = snapshotStats(renderer, "after_palette_switch")
-
-    toggleSwatchGlyph()
-    refreshView(renderer)
-    await renderOnce()
-    await renderOnce()
-    const afterPaletteRepaint = snapshotStats(renderer, "after_palette_repaint")
-
-    const checks = {
-      nonTruecolorMode: afterPaletteRepaint.mode !== "truecolor",
-      firstPassMissesGrow: firstRepaint.cache_misses > baseline.cache_misses,
-      steadyHitsGrow: steadyRepaint.cache_hits > firstRepaint.cache_hits,
-      steadyConversionsFlat: steadyRepaint.conversions === firstRepaint.conversions,
-      paletteEpochIncrements: afterPaletteSwitch.palette_epoch > beforePaletteSwitch.palette_epoch,
-      paletteSwitchMissesGrow: afterPaletteSwitch.cache_misses > beforePaletteSwitch.cache_misses,
-      postSwitchHitsGrow: afterPaletteRepaint.cache_hits > afterPaletteSwitch.cache_hits,
-      postSwitchConversionsFlat: afterPaletteRepaint.conversions === afterPaletteSwitch.conversions,
-    }
-
-    const passed = Object.values(checks).every(Boolean)
-    const report: ChecklistReport = {
-      passed,
-      checks,
-      samples: [baseline, firstRepaint, steadyRepaint, beforePaletteSwitch, afterPaletteSwitch, afterPaletteRepaint],
-      notes: {
-        forceColorMode: process.env.OPENTUI_FORCE_COLOR_MODE ?? null,
-        rendererMode: "test-renderer",
-      },
-    }
-
-    return report
-  } finally {
-    destroy(renderer)
-    renderer.destroy()
-  }
-}
-
-export function run(renderer: CliRenderer, options: RunOptions = {}): void {
-  const autoDetectPalette = options.autoDetectPalette ?? true
-
+export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor(COLOR_BG)
 
-  applyPalette(buildPresetPalette("xterm"), "xterm")
-  publishPalette(renderer, buildPresetPalette("xterm"))
-  resetColorStats(renderer, true)
+  const xtermPalette = buildPresetPalette("xterm")
+  applyPalette(xtermPalette, "xterm")
+  publishPalette(renderer, xtermPalette)
 
   rootContainer = new BoxRenderable(renderer, {
     id: "rgbaa-indexed-demo",
@@ -607,7 +371,7 @@ export function run(renderer: CliRenderer, options: RunOptions = {}): void {
 
   const titleText = new TextRenderable(renderer, {
     id: "rgbaa-title",
-    content: "RGBA+A Indexed Color Demo (native routing)",
+    content: "RGBA+A Indexed Color Demo",
     fg: COLOR_TITLE,
     attributes: TextAttributes.BOLD,
     height: 1,
@@ -634,20 +398,20 @@ export function run(renderer: CliRenderer, options: RunOptions = {}): void {
 
   const instructions = new TextRenderable(renderer, {
     id: "rgbaa-instructions",
-    content: "Keys: space repaint, u scenario, 1/2 preset, p/r detect, c reset, v e2e",
+    content: "Keys: space glyph, u scenario, 1/2 presets, p detect palette, Esc menu",
     fg: COLOR_MUTED,
     height: 1,
     wrapMode: "none",
   })
   rootContainer.add(instructions)
 
-  rgbFallbackLineText = new TextRenderable(renderer, {
-    id: "rgbaa-rgb-fallback-line",
+  rgbSnapshotLineText = new TextRenderable(renderer, {
+    id: "rgbaa-rgb-snapshot-line",
     content: "",
     height: 1,
     wrapMode: "none",
   })
-  rootContainer.add(rgbFallbackLineText)
+  rootContainer.add(rgbSnapshotLineText)
 
   explicitIndexedLineText = new TextRenderable(renderer, {
     id: "rgbaa-indexed-line",
@@ -681,15 +445,6 @@ export function run(renderer: CliRenderer, options: RunOptions = {}): void {
   })
   rootContainer.add(paletteBottomText)
 
-  cacheStatsText = new TextRenderable(renderer, {
-    id: "rgbaa-cache-stats",
-    content: "",
-    fg: COLOR_MUTED,
-    height: 2,
-    wrapMode: "word",
-  })
-  rootContainer.add(cacheStatsText)
-
   footerText = new TextRenderable(renderer, {
     id: "rgbaa-footer",
     content: "",
@@ -702,11 +457,6 @@ export function run(renderer: CliRenderer, options: RunOptions = {}): void {
   updateTerminalInfo(renderer)
   refreshView(renderer)
 
-  frameCallback = async () => {
-    updateStatsLabel(renderer)
-  }
-  renderer.setFrameCallback(frameCallback)
-
   keyListener = async (key: KeyEvent) => {
     if (key.name === "space") {
       toggleSwatchGlyph()
@@ -714,61 +464,36 @@ export function run(renderer: CliRenderer, options: RunOptions = {}): void {
       return
     }
 
-    if (key.name === "v") {
-      void runVisualChecklist(renderer)
-      return
-    }
-
     if (key.name === "u") {
       scenarioMode = scenarioMode === "reused" ? "unique" : "reused"
-      resetColorStats(renderer, true)
-      setStatus(`Scenario switched to ${scenarioMode}. Repaint with space to compare cache reuse.`, COLOR_SUCCESS)
-      refreshView(renderer)
-      return
-    }
-
-    if (key.name === "c") {
-      resetColorStats(renderer, true)
-      setStatus("Renderer RGB->index stats and cache cleared.", COLOR_SUCCESS)
+      setStatus(`Scenario switched to ${scenarioMode}.`, COLOR_SUCCESS)
       refreshView(renderer)
       return
     }
 
     if (key.name === "1") {
-      publishPresetPalette(renderer, "xterm")
+      applyPresetPalette(renderer, "xterm")
       return
     }
 
     if (key.name === "2") {
-      publishPresetPalette(renderer, "solarized-dark")
+      applyPresetPalette(renderer, "solarized-dark")
       return
     }
 
     if (key.name === "p") {
-      await detectPalette(renderer, false)
-      return
-    }
-
-    if (key.name === "r") {
-      await detectPalette(renderer, true)
+      await detectPalette(renderer)
     }
   }
 
   renderer.keyInput.on("keypress", keyListener)
-  if (autoDetectPalette) {
-    void detectPalette(renderer, false)
-  }
+  void detectPalette(renderer)
 }
 
 export function destroy(renderer: CliRenderer): void {
   if (keyListener) {
     renderer.keyInput.off("keypress", keyListener)
     keyListener = null
-  }
-
-  if (frameCallback) {
-    renderer.removeFrameCallback(frameCallback)
-    frameCallback = null
   }
 
   if (rootContainer) {
@@ -779,12 +504,11 @@ export function destroy(renderer: CliRenderer): void {
 
   terminalInfoText = null
   statusText = null
-  rgbFallbackLineText = null
+  rgbSnapshotLineText = null
   explicitIndexedLineText = null
   defaultIntentLineText = null
   paletteTopText = null
   paletteBottomText = null
-  cacheStatsText = null
   footerText = null
 
   scenarioMode = "reused"
@@ -792,24 +516,13 @@ export function destroy(renderer: CliRenderer): void {
   swatchGlyph = "█"
   fullPalette = normalizeTerminalPalette(null).palette
   visiblePalette = fullPalette.slice(0, 16)
-  lastStatsLabel = ""
-  visualChecklistRunning = false
+  paletteGeneration = 0
 }
 
 if (import.meta.main) {
-  if (process.argv.includes("--checklist") || process.env.RGBAA_DEMO_CHECKLIST === "1") {
-    const report = await runChecklistCase()
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
-    if (!report.passed) {
-      process.exitCode = 1
-    }
-  } else {
-    process.env.OPENTUI_FORCE_COLOR_MODE ??= "256"
-
-    const renderer = await createCliRenderer({
-      exitOnCtrlC: true,
-    })
-    run(renderer)
-    setupCommonDemoKeys(renderer)
-  }
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+  })
+  run(renderer)
+  setupCommonDemoKeys(renderer)
 }

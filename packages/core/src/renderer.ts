@@ -38,18 +38,8 @@ import {
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
 
-interface InternalColorDebugStats {
-  conversions: number
-  cache_hits: number
-  cache_misses: number
-  cache_size: number
-  palette_epoch: number
-}
-
-interface InternalRendererPaletteDebugLib extends RenderLib {
+interface InternalRendererPaletteLib extends RenderLib {
   rendererSetPaletteState: (renderer: Pointer, colors: TerminalColors | null | undefined, paletteEpoch: number) => void
-  resetColorDebugStats: (renderer: Pointer, clearCache: boolean) => void
-  getColorDebugStats: (renderer: Pointer) => InternalColorDebugStats
 }
 
 registerEnvVar({
@@ -145,7 +135,6 @@ const DEFAULT_FORWARDED_ENV_KEYS = [
   "OPENTUI_FORCE_WCWIDTH",
   "OPENTUI_FORCE_UNICODE",
   "OPENTUI_FORCE_NOZWJ",
-  "OPENTUI_FORCE_COLOR_MODE",
   "OPENTUI_FORCE_EXPLICIT_WIDTH",
   "WT_SESSION",
   "STY",
@@ -752,22 +741,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._currentFocusedRenderable
   }
 
-  private normalizeClockTime(now: number, fallback: number): number {
-    if (Number.isFinite(now)) {
-      return now
-    }
-
-    return Number.isFinite(fallback) ? fallback : 0
-  }
-
-  private getElapsedMs(now: number, then: number): number {
-    if (!Number.isFinite(now) || !Number.isFinite(then)) {
-      return 0
-    }
-
-    return Math.max(now - then, 0)
-  }
-
   public focusRenderable(renderable: Renderable) {
     if (this._currentFocusedRenderable === renderable) return
 
@@ -839,8 +812,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
-      const now = this.normalizeClockTime(this.clock.now(), this.lastTime)
-      const elapsed = this.getElapsedMs(now, this.lastTime)
+      const now = this.clock.now()
+      const elapsed = now - this.lastTime
       const delay = Math.max(this.minTargetFrameTime - elapsed, 0)
 
       if (delay === 0) {
@@ -1023,7 +996,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
-    this.emit(CliRenderEvents.RESIZE, this.width, this.height)
+    this.emit("resize", this.width, this.height)
     this.requestRender()
   }
 
@@ -1188,7 +1161,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (isCapabilityResponse(sequence)) {
       this.lib.processCapabilityResponse(this.rendererPtr, sequence)
       this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
-      this.emit(CliRenderEvents.CAPABILITIES, this._capabilities)
+      this.emit("capabilities", this._capabilities)
       return true
     }
     return false
@@ -1225,14 +1198,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (sequence === "\x1b[?997;1n") {
       if (this._themeMode !== "dark") {
         this._themeMode = "dark"
-        this.emit(CliRenderEvents.THEME_MODE, "dark")
+        this.emit("theme_mode", "dark")
       }
       return true
     }
     if (sequence === "\x1b[?997;2n") {
       if (this._themeMode !== "light") {
         this._themeMode = "light"
-        this.emit(CliRenderEvents.THEME_MODE, "light")
+        this.emit("theme_mode", "light")
       }
       return true
     }
@@ -1596,7 +1569,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastMemorySnapshot.arrayBuffers,
     )
 
-    this.emit(CliRenderEvents.MEMORY_SNAPSHOT, this.lastMemorySnapshot)
+    this.emit("memory:snapshot", this.lastMemorySnapshot)
   }
 
   private startMemorySnapshotTimer(): void {
@@ -1683,7 +1656,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
-    this.emit(CliRenderEvents.RESIZE, this.width, this.height)
+    this.emit("resize", this.width, this.height)
     this.requestRender()
   }
 
@@ -2065,7 +2038,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private startRenderLoop(): void {
     if (!this._isRunning) return
 
-    this.lastTime = this.normalizeClockTime(this.clock.now(), 0)
+    this.lastTime = this.clock.now()
     this.frameCount = 0
     this.lastFpsTime = this.lastTime
     this.currentFps = 0
@@ -2083,14 +2056,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderTimeout = null
     }
     try {
-      const now = this.normalizeClockTime(this.clock.now(), this.lastTime)
-      const elapsed = this.getElapsedMs(now, this.lastTime)
+      const now = this.clock.now()
+      const elapsed = now - this.lastTime
 
       const deltaTime = elapsed
       this.lastTime = now
 
       this.frameCount++
-      if (this.getElapsedMs(now, this.lastFpsTime) >= 1000) {
+      if (now - this.lastFpsTime >= 1000) {
         this.currentFps = this.frameCount
         this.frameCount = 0
         this.lastFpsTime = now
@@ -2341,7 +2314,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private finishSelection(): void {
     if (this.currentSelection) {
       this.currentSelection.isDragging = false
-      this.emit(CliRenderEvents.SELECTION, this.currentSelection)
+      this.emit("selection", this.currentSelection)
       this.notifySelectablesOfSelectionChange()
     }
   }
@@ -2457,7 +2430,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this._publishedPaletteSignature = signature
-    ;(this.lib as InternalRendererPaletteDebugLib).rendererSetPaletteState(this.rendererPtr, colors, this._paletteEpoch)
+    ;(this.lib as InternalRendererPaletteLib).rendererSetPaletteState(this.rendererPtr, colors, this._paletteEpoch)
   }
 
   private ensureNativePaletteState(): void {
@@ -2491,14 +2464,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._cachedPalette = colors
     }
     this.requestRender()
-  }
-
-  private resetColorDebugStats(options: { clearCache?: boolean } = {}): void {
-    ;(this.lib as InternalRendererPaletteDebugLib).resetColorDebugStats(this.rendererPtr, options.clearCache ?? false)
-  }
-
-  private getColorDebugStats(): InternalColorDebugStats {
-    return (this.lib as InternalRendererPaletteDebugLib).getColorDebugStats(this.rendererPtr)
   }
 
   /**

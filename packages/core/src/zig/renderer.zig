@@ -195,9 +195,6 @@ pub const CliRenderer = struct {
     last_rendered_palette_epoch: ?u32 = null,
     force_full_repaint: bool = false,
     palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
-    rgb_to_index_conversions: u32 = 0,
-    rgb_to_index_cache_hits: u32 = 0,
-    rgb_to_index_cache_misses: u32 = 0,
 
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
@@ -604,43 +601,13 @@ pub const CliRenderer = struct {
         }
     }
 
-    pub fn resetColorDebugStats(self: *CliRenderer, clear_cache: bool) void {
-        self.rgb_to_index_conversions = 0;
-        self.rgb_to_index_cache_hits = 0;
-        self.rgb_to_index_cache_misses = 0;
-
-        if (clear_cache) {
-            self.palette_index_cache.clearRetainingCapacity();
-        }
-    }
-
-    pub fn getColorDebugStats(self: *const CliRenderer) struct {
-        conversions: u32,
-        cache_hits: u32,
-        cache_misses: u32,
-        cache_size: u32,
-        palette_epoch: u32,
-    } {
-        return .{
-            .conversions = self.rgb_to_index_conversions,
-            .cache_hits = self.rgb_to_index_cache_hits,
-            .cache_misses = self.rgb_to_index_cache_misses,
-            .cache_size = @intCast(self.palette_index_cache.count()),
-            .palette_epoch = self.palette_epoch,
-        };
-    }
-
     fn cachedNearestPaletteIndex(self: *CliRenderer, rgba: RGBA) u8 {
         const rgb24 = rgbaToRgb24(rgba);
         const key = (@as(u64, self.palette_epoch) << 24) | @as(u64, rgb24);
 
         if (self.palette_index_cache.get(key)) |cached| {
-            self.rgb_to_index_cache_hits += 1;
             return cached;
         }
-
-        self.rgb_to_index_cache_misses += 1;
-        self.rgb_to_index_conversions += 1;
 
         var best_index: u8 = 0;
         var best_distance = std.math.inf(f32);

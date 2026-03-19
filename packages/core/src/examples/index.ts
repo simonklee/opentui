@@ -415,8 +415,7 @@ const examples: Example[] = [
   },
   {
     name: "RGBA+A Indexed Color Demo",
-    description:
-      "Native RGBA+A routing demo with RGB fallback cache stats, explicit indexed/default colors, and palette preset switching",
+    description: "Visualize RGB snapshots, explicit indexed colors, and terminal-default intent across palette bases",
     run: rgbaaIndexedDemo.run,
     destroy: rgbaaIndexedDemo.destroy,
   },
@@ -483,7 +482,7 @@ class ExampleSelector {
   private themeMode: ThemeMode = DEFAULT_THEME_MODE
 
   private menuContainer: BoxRenderable | null = null
-  private title: FrameBufferRenderable | null = null
+  private title: ASCIIFontRenderable | null = null
   private filterBox: BoxRenderable | null = null
   private filterInput: TextareaRenderable | null = null
   private instructions: TextRenderable | null = null

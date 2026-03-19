@@ -153,14 +153,6 @@ export const CursorStateStruct = defineStruct([
   ["a", "f32"],
 ])
 
-export const ColorDebugStatsStruct = defineStruct([
-  ["conversions", "u32"],
-  ["cache_hits", "u32"],
-  ["cache_misses", "u32"],
-  ["cache_size", "u32"],
-  ["palette_epoch", "u32"],
-])
-
 export const CursorStyleOptionsStruct = defineStruct([
   ["style", "u8", { default: 255 }],
   ["blinking", "u8", { default: 255 }],
