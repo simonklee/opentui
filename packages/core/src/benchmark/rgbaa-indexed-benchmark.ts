@@ -2,14 +2,10 @@
 
 import { writeFileSync } from "node:fs"
 
-import { RGBA, StyledText, TextRenderable, indexedColor, type ColorValueInput } from "../index.js"
+import { RGBA, StyledText, TextRenderable } from "../index.js"
 import type { TerminalColors } from "../lib/terminal-palette.js"
 import type { TextChunk } from "../text-buffer.js"
 import { createTestRenderer } from "../testing/test-renderer.js"
-
-type BenchmarkTextChunk = Omit<TextChunk, "fg" | "bg"> & {
-  fg?: ColorValueInput
-}
 
 interface ColorDebugStats {
   conversions: number
@@ -95,7 +91,7 @@ function buildPalette(): TerminalColors {
   }
 }
 
-function chunk(text: string, options: { fg?: ColorValueInput; attributes?: number } = {}): BenchmarkTextChunk {
+function chunk(text: string, options: { fg?: RGBA; attributes?: number } = {}): TextChunk {
   return {
     __isChunk: true,
     text,
@@ -126,26 +122,26 @@ function buildScenarioColors(name: ScenarioName, swatches: number): RGBA[] {
 
 function buildLine(name: ScenarioName, glyph: string, swatches: number): StyledText {
   const colors = buildScenarioColors(name, swatches)
-  const chunks: BenchmarkTextChunk[] = []
+  const chunks: TextChunk[] = []
 
   for (let index = 0; index < colors.length; index++) {
     const color = colors[index]
-    const fg = name === "explicit-indexed" ? indexedColor(index % 16, color) : color
+    const fg = name === "explicit-indexed" ? RGBA.fromIndex(index % 16, color) : color
     chunks.push(chunk(glyph, { fg }))
   }
 
-  return new StyledText(chunks as TextChunk[])
+  return new StyledText(chunks)
 }
 
 function buildBenchmarkFrame(glyph: string, swatches: number, rows: number, scenario: ScenarioName): StyledText {
-  const chunks: BenchmarkTextChunk[] = []
+  const chunks: TextChunk[] = []
 
   for (let row = 0; row < rows; row++) {
     chunks.push(...buildLine(scenario, glyph, swatches).chunks)
     if (row < rows - 1) chunks.push(chunk("\n"))
   }
 
-  return new StyledText(chunks as TextChunk[])
+  return new StyledText(chunks)
 }
 
 function diffStats(a: ColorDebugStats, b: ColorDebugStats): ColorDebugStats {

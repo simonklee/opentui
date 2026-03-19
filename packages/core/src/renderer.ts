@@ -47,6 +47,7 @@ interface InternalColorDebugStats {
 }
 
 interface InternalRendererPaletteDebugLib extends RenderLib {
+  rendererSetPaletteState: (renderer: Pointer, colors: TerminalColors | null | undefined, paletteEpoch: number) => void
   resetColorDebugStats: (renderer: Pointer, clearCache: boolean) => void
   getColorDebugStats: (renderer: Pointer) => InternalColorDebugStats
 }
@@ -2456,7 +2457,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this._publishedPaletteSignature = signature
-    this.lib.rendererSetPaletteState(this.rendererPtr, colors, this._paletteEpoch)
+    ;(this.lib as InternalRendererPaletteDebugLib).rendererSetPaletteState(this.rendererPtr, colors, this._paletteEpoch)
   }
 
   private ensureNativePaletteState(): void {

@@ -7,21 +7,13 @@ import {
   RGBA,
   TextAttributes,
   TextRenderable,
-  defaultColor,
-  indexedColor,
-  normalizeTerminalPalette,
-  type ColorValueInput,
   type KeyEvent,
 } from "../index.js"
+import { normalizeTerminalPalette } from "../lib/color-value.js"
 import { StyledText } from "../lib/styled-text.js"
 import type { TerminalColors } from "../lib/terminal-palette.js"
 import type { TextChunk } from "../text-buffer.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
-
-type DemoTextChunk = Omit<TextChunk, "fg" | "bg"> & {
-  fg?: ColorValueInput
-  bg?: ColorValueInput
-}
 
 type ScenarioMode = "reused" | "unique"
 type PalettePresetName = "detected" | "xterm" | "solarized-dark"
@@ -136,10 +128,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function chunk(
-  text: string,
-  options: { fg?: ColorValueInput; bg?: ColorValueInput; attributes?: number } = {},
-): DemoTextChunk {
+function chunk(text: string, options: { fg?: RGBA; bg?: RGBA; attributes?: number } = {}): TextChunk {
   return {
     __isChunk: true,
     text,
@@ -223,7 +212,7 @@ function buildSourceColors(mode: ScenarioMode, count: number): RGBA[] {
 }
 
 function buildRgbFallbackLine(label: string, colors: RGBA[]): StyledText {
-  const chunks: DemoTextChunk[] = [
+  const chunks: TextChunk[] = [
     chunk(label.padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
   ]
@@ -233,22 +222,22 @@ function buildRgbFallbackLine(label: string, colors: RGBA[]): StyledText {
     if ((i + 1) % 8 === 0) chunks.push(chunk(" "))
   }
 
-  return new StyledText(chunks as TextChunk[])
+  return new StyledText(chunks)
 }
 
 function buildIndexedIntentLine(label: string, colors: RGBA[]): StyledText {
-  const chunks: DemoTextChunk[] = [
+  const chunks: TextChunk[] = [
     chunk(label.padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
   ]
 
   for (let i = 0; i < colors.length; i++) {
     const index = nearestPaletteIndex(colors[i])
-    chunks.push(chunk(swatchGlyph, { fg: indexedColor(index, colors[i]) }))
+    chunks.push(chunk(swatchGlyph, { fg: RGBA.fromIndex(index, colors[i]) }))
     if ((i + 1) % 8 === 0) chunks.push(chunk(" "))
   }
 
-  return new StyledText(chunks as TextChunk[])
+  return new StyledText(chunks)
 }
 
 function buildDefaultIntentLine(): StyledText {
@@ -263,18 +252,26 @@ function buildDefaultIntentLine(): StyledText {
   return new StyledText([
     chunk("Theme usage".padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
-    chunk(" Header ", { fg: indexedColor(15, bright), bg: indexedColor(4, primary), attributes: TextAttributes.BOLD }),
+    chunk(" Header ", {
+      fg: RGBA.fromIndex(15, bright),
+      bg: RGBA.fromIndex(4, primary),
+      attributes: TextAttributes.BOLD,
+    }),
     chunk("  "),
-    chunk(" Button ", { fg: indexedColor(15, bright), bg: indexedColor(6, accent), attributes: TextAttributes.BOLD }),
+    chunk(" Button ", {
+      fg: RGBA.fromIndex(15, bright),
+      bg: RGBA.fromIndex(6, accent),
+      attributes: TextAttributes.BOLD,
+    }),
     chunk("  "),
-    chunk(" Warning ", { fg: warningFg, bg: indexedColor(3, warning), attributes: TextAttributes.BOLD }),
+    chunk(" Warning ", { fg: warningFg, bg: RGBA.fromIndex(3, warning), attributes: TextAttributes.BOLD }),
     chunk("  "),
-    chunk(" defaults ", { fg: defaultColor(defaultSurfaceFg), bg: defaultColor(surface) }),
-  ] as TextChunk[])
+    chunk(" defaults ", { fg: RGBA.defaultForeground(defaultSurfaceFg), bg: RGBA.defaultBackground(surface) }),
+  ])
 }
 
 function buildPaletteLine(label: string, start: number, end: number): StyledText {
-  const chunks: DemoTextChunk[] = [
+  const chunks: TextChunk[] = [
     chunk(label.padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
   ]
@@ -282,11 +279,11 @@ function buildPaletteLine(label: string, start: number, end: number): StyledText
   for (let i = start; i <= end; i++) {
     const color = visiblePalette[i] ?? RGBA.fromHex(XTERM_16_HEX[i])
     const fg = getContrastForBackground(color)
-    chunks.push(chunk(` ${i.toString(16).toUpperCase()} `, { fg, bg: indexedColor(i, color) }))
+    chunks.push(chunk(` ${i.toString(16).toUpperCase()} `, { fg, bg: RGBA.fromIndex(i, color) }))
     chunks.push(chunk(" "))
   }
 
-  return new StyledText(chunks as TextChunk[])
+  return new StyledText(chunks)
 }
 
 function colorModeLabel(renderer: CliRenderer): string {

@@ -79,12 +79,12 @@ export class EditorView {
 
   public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
     this.guard()
-    this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor ?? null, fgColor ?? null)
+    this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor || null, fgColor || null)
   }
 
   public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void {
     this.guard()
-    this.lib.editorViewUpdateSelection(this.viewPtr, end, bgColor ?? null, fgColor ?? null)
+    this.lib.editorViewUpdateSelection(this.viewPtr, end, bgColor || null, fgColor || null)
   }
 
   public resetSelection(): void {
@@ -119,8 +119,8 @@ export class EditorView {
       anchorY,
       focusX,
       focusY,
-      bgColor ?? null,
-      fgColor ?? null,
+      bgColor || null,
+      fgColor || null,
       updateCursor ?? false,
       followCursor ?? false,
     )
@@ -143,8 +143,8 @@ export class EditorView {
       anchorY,
       focusX,
       focusY,
-      bgColor ?? null,
-      fgColor ?? null,
+      bgColor || null,
+      fgColor || null,
       updateCursor ?? false,
       followCursor ?? false,
     )

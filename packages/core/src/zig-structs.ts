@@ -1,15 +1,15 @@
 import { defineStruct, defineEnum } from "bun-ffi-structs"
 import { ptr, toArrayBuffer, type Pointer } from "bun:ffi"
 import { RGBA } from "./lib/RGBA.js"
-import { COLOR_TAG_RGB, normalizeColorValue, type ColorValueInput } from "./lib/color-value.js"
+import { COLOR_TAG_RGB, normalizeColorValue } from "./lib/color-value.js"
 
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
 const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr))) : undefined)
 
 type StyledChunkInput = {
   text: string
-  fg?: ColorValueInput | null
-  bg?: ColorValueInput | null
+  fg?: RGBA | null
+  bg?: RGBA | null
   fgTag?: number
   bgTag?: number
   attributes?: number | null

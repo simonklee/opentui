@@ -1,7 +1,23 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test"
+import { toArrayBuffer, type Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer.js"
 import { RGBA } from "./lib/RGBA.js"
-import { COLOR_TAG_DEFAULT, COLOR_TAG_RGB, defaultColor, indexedColor } from "./lib/color-value.js"
+import { COLOR_TAG_DEFAULT, COLOR_TAG_RGB } from "./lib/color-value.js"
+
+interface InternalBufferTagLib {
+  bufferGetFgTagPtr(buffer: Pointer): Pointer
+  bufferGetBgTagPtr(buffer: Pointer): Pointer
+}
+
+function getTagBuffers(buffer: OptimizedBuffer): { fgTag: Uint16Array; bgTag: Uint16Array } {
+  const size = buffer.width * buffer.height
+  const lib = buffer.lib as unknown as InternalBufferTagLib
+
+  return {
+    fgTag: new Uint16Array(toArrayBuffer(lib.bufferGetFgTagPtr(buffer.ptr), 0, size * 2)),
+    bgTag: new Uint16Array(toArrayBuffer(lib.bufferGetBgTagPtr(buffer.ptr), 0, size * 2)),
+  }
+}
 
 describe("OptimizedBuffer", () => {
   let buffer: OptimizedBuffer
@@ -144,14 +160,17 @@ describe("OptimizedBuffer", () => {
 
       buffer.clear(bg)
       buffer.setCell(0, 0, "A", fgSnapshot, bg)
-      buffer.setCell(1, 0, "B", defaultColor(fgSnapshot), bg)
+      buffer.setCell(1, 0, "B", RGBA.defaultForeground(fgSnapshot), bg)
 
       const firstLine = buffer.getSpanLines()[0]
-      const taggedSpans = firstLine.spans.filter((span) => span.text.includes("A") || span.text.includes("B"))
+      const taggedSpans = firstLine.spans.filter((span) => span.text.includes("A") || span.text.includes("B")) as Array<
+        (typeof firstLine.spans)[number] & { fgTag: number; bgTag: number }
+      >
+      const tags = getTagBuffers(buffer)
 
       expect(taggedSpans).toHaveLength(2)
       expect(taggedSpans[0].fgTag).not.toBe(taggedSpans[1].fgTag)
-      expect(buffer.buffers.fgTag[0]).not.toBe(buffer.buffers.fgTag[1])
+      expect(tags.fgTag[0]).not.toBe(tags.fgTag[1])
     })
 
     it("should preserve intentful RGBA constructors through draw APIs", () => {
@@ -160,9 +179,10 @@ describe("OptimizedBuffer", () => {
       buffer.clear(bg)
       buffer.setCell(0, 0, "A", RGBA.defaultForeground(RGBA.fromHex("#ffffff")), bg)
       buffer.setCell(1, 0, "B", RGBA.fromIndex(6), bg)
+      const tags = getTagBuffers(buffer)
 
-      expect(buffer.buffers.fgTag[0]).toBe(COLOR_TAG_DEFAULT)
-      expect(buffer.buffers.fgTag[1]).toBe(6)
+      expect(tags.fgTag[0]).toBe(COLOR_TAG_DEFAULT)
+      expect(tags.fgTag[1]).toBe(6)
     })
   })
 
@@ -289,10 +309,17 @@ describe("OptimizedBuffer", () => {
 
       const blendedFgSnapshot = RGBA.fromValues(1, 0, 0, 0.5)
       const opaqueBgSnapshot = RGBA.fromValues(0, 0, 0, 1)
-      buffer.setCellWithAlphaBlending(0, 0, "B", indexedColor(2, blendedFgSnapshot), indexedColor(4, opaqueBgSnapshot))
+      buffer.setCellWithAlphaBlending(
+        0,
+        0,
+        "B",
+        RGBA.fromIndex(2, blendedFgSnapshot),
+        RGBA.fromIndex(4, opaqueBgSnapshot),
+      )
+      const tags = getTagBuffers(buffer)
 
-      expect(buffer.buffers.fgTag[0]).toBe(COLOR_TAG_RGB)
-      expect(buffer.buffers.bgTag[0]).toBe(4)
+      expect(tags.fgTag[0]).toBe(COLOR_TAG_RGB)
+      expect(tags.bgTag[0]).toBe(4)
     })
 
     it("downgrades indexed bg tags to rgb when bg blending occurs", () => {
@@ -303,10 +330,17 @@ describe("OptimizedBuffer", () => {
 
       const opaqueFgSnapshot = RGBA.fromValues(1, 0, 0, 1)
       const blendedBgSnapshot = RGBA.fromValues(0, 1, 0, 0.5)
-      buffer.setCellWithAlphaBlending(0, 0, "C", indexedColor(3, opaqueFgSnapshot), indexedColor(5, blendedBgSnapshot))
+      buffer.setCellWithAlphaBlending(
+        0,
+        0,
+        "C",
+        RGBA.fromIndex(3, opaqueFgSnapshot),
+        RGBA.fromIndex(5, blendedBgSnapshot),
+      )
+      const tags = getTagBuffers(buffer)
 
-      expect(buffer.buffers.fgTag[0]).toBe(3)
-      expect(buffer.buffers.bgTag[0]).toBe(COLOR_TAG_RGB)
+      expect(tags.fgTag[0]).toBe(3)
+      expect(tags.bgTag[0]).toBe(COLOR_TAG_RGB)
     })
   })
 
@@ -320,12 +354,19 @@ describe("OptimizedBuffer", () => {
         source.clear(bg)
         dest.clear(bg)
 
-        source.setCell(0, 0, "X", defaultColor(RGBA.fromHex("#f8fafc")), indexedColor(6, RGBA.fromHex("#008080")))
+        source.setCell(
+          0,
+          0,
+          "X",
+          RGBA.defaultForeground(RGBA.fromHex("#f8fafc")),
+          RGBA.fromIndex(6, RGBA.fromHex("#008080")),
+        )
 
         dest.drawFrameBuffer(0, 0, source)
+        const tags = getTagBuffers(dest)
 
-        expect(dest.buffers.fgTag[0]).toBe(COLOR_TAG_DEFAULT)
-        expect(dest.buffers.bgTag[0]).toBe(6)
+        expect(tags.fgTag[0]).toBe(COLOR_TAG_DEFAULT)
+        expect(tags.bgTag[0]).toBe(6)
       } finally {
         source.destroy()
         dest.destroy()
@@ -342,15 +383,16 @@ describe("OptimizedBuffer", () => {
 
         source.setRespectAlpha(true)
         source.clear(baseBg)
-        source.setCell(0, 0, "Y", indexedColor(2, RGBA.fromValues(1, 0, 0, 0.5)), indexedColor(4, baseBg))
+        source.setCell(0, 0, "Y", RGBA.fromIndex(2, RGBA.fromValues(1, 0, 0, 0.5)), RGBA.fromIndex(4, baseBg))
 
         dest.clear(baseBg)
         dest.setCell(0, 0, "A", baseFg, baseBg)
 
         dest.drawFrameBuffer(0, 0, source)
+        const tags = getTagBuffers(dest)
 
-        expect(dest.buffers.fgTag[0]).toBe(COLOR_TAG_RGB)
-        expect(dest.buffers.bgTag[0]).toBe(4)
+        expect(tags.fgTag[0]).toBe(COLOR_TAG_RGB)
+        expect(tags.bgTag[0]).toBe(4)
       } finally {
         source.destroy()
         dest.destroy()

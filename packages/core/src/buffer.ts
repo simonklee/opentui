@@ -7,6 +7,11 @@ import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine }
 import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
 
+interface InternalBufferTagLib extends RenderLib {
+  bufferGetFgTagPtr(buffer: Pointer): Pointer
+  bufferGetBgTagPtr(buffer: Pointer): Pointer
+}
+
 // Pack drawing options into a single u32
 // bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
 function packDrawOptions(
@@ -53,10 +58,9 @@ export class OptimizedBuffer {
     char: Uint32Array
     fg: Float32Array
     bg: Float32Array
-    fgTag: Uint16Array
-    bgTag: Uint16Array
     attributes: Uint32Array
   } | null = null
+  private _rawTagBuffers: { fgTag: Uint16Array; bgTag: Uint16Array } | null = null
   private _destroyed: boolean = false
 
   get ptr(): Pointer {
@@ -74,8 +78,6 @@ export class OptimizedBuffer {
     char: Uint32Array
     fg: Float32Array
     bg: Float32Array
-    fgTag: Uint16Array
-    bgTag: Uint16Array
     attributes: Uint32Array
   } {
     this.guard()
@@ -84,21 +86,34 @@ export class OptimizedBuffer {
       const charPtr = this.lib.bufferGetCharPtr(this.bufferPtr)
       const fgPtr = this.lib.bufferGetFgPtr(this.bufferPtr)
       const bgPtr = this.lib.bufferGetBgPtr(this.bufferPtr)
-      const fgTagPtr = this.lib.bufferGetFgTagPtr(this.bufferPtr)
-      const bgTagPtr = this.lib.bufferGetBgTagPtr(this.bufferPtr)
       const attributesPtr = this.lib.bufferGetAttributesPtr(this.bufferPtr)
 
       this._rawBuffers = {
         char: new Uint32Array(toArrayBuffer(charPtr, 0, size * 4)),
         fg: new Float32Array(toArrayBuffer(fgPtr, 0, size * 4 * 4)),
         bg: new Float32Array(toArrayBuffer(bgPtr, 0, size * 4 * 4)),
-        fgTag: new Uint16Array(toArrayBuffer(fgTagPtr, 0, size * 2)),
-        bgTag: new Uint16Array(toArrayBuffer(bgTagPtr, 0, size * 2)),
         attributes: new Uint32Array(toArrayBuffer(attributesPtr, 0, size * 4)),
       }
     }
 
     return this._rawBuffers
+  }
+
+  private getTagBuffers(): { fgTag: Uint16Array; bgTag: Uint16Array } {
+    this.guard()
+    if (this._rawTagBuffers === null) {
+      const size = this._width * this._height
+      const tagLib = this.lib as InternalBufferTagLib
+      const fgTagPtr = tagLib.bufferGetFgTagPtr(this.bufferPtr)
+      const bgTagPtr = tagLib.bufferGetBgTagPtr(this.bufferPtr)
+
+      this._rawTagBuffers = {
+        fgTag: new Uint16Array(toArrayBuffer(fgTagPtr, 0, size * 2)),
+        bgTag: new Uint16Array(toArrayBuffer(bgTagPtr, 0, size * 2)),
+      }
+    }
+
+    return this._rawTagBuffers
   }
 
   constructor(
@@ -163,7 +178,8 @@ export class OptimizedBuffer {
 
   public getSpanLines(): CapturedLine[] {
     this.guard()
-    const { char, fg, bg, fgTag, bgTag, attributes } = this.buffers
+    const { char, fg, bg, attributes } = this.buffers
+    const { fgTag, bgTag } = this.getTagBuffers()
     const lines: CapturedLine[] = []
 
     const CHAR_FLAG_CONTINUATION = 0xc0000000 | 0
@@ -279,10 +295,9 @@ export class OptimizedBuffer {
       selectionBg = selection.bgColor
       selectionFg = selection.fgColor || fg
     } else {
-      const defaultBg = normalizeColorValue(bg ?? null, { role: "bg" })?.rgba ?? RGBA.fromValues(0, 0, 0, 0)
-      const defaultFg = normalizeColorValue(fg, { role: "fg" })!.rgba
+      const defaultBg = bg || RGBA.fromValues(0, 0, 0, 0)
       selectionFg = defaultBg.a > 0 ? defaultBg : RGBA.fromValues(0, 0, 0, 1)
-      selectionBg = defaultFg
+      selectionBg = fg
     }
 
     if (start > 0) {
@@ -440,6 +455,7 @@ export class OptimizedBuffer {
     this._width = width
     this._height = height
     this._rawBuffers = null
+    this._rawTagBuffers = null
 
     this.lib.bufferResize(this.bufferPtr, width, height)
   }

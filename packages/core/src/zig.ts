@@ -14,12 +14,7 @@ import {
 export type { LineInfo, AllocatorStats, BuildOptions }
 
 import { RGBA } from "./lib/RGBA.js"
-import {
-  PACKED_COLOR_STRIDE,
-  normalizeTerminalPalette,
-  packColorValueToF32,
-  type ColorValueInput,
-} from "./lib/color-value.js"
+import { PACKED_COLOR_STRIDE, normalizeTerminalPalette, packColorValueToF32 } from "./lib/color-value.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { TextBuffer } from "./text-buffer.js"
 import { env, registerEnvVar } from "./lib/env.js"
@@ -1432,7 +1427,6 @@ export interface RenderLib {
   render: (renderer: Pointer, force: boolean) => void
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
-  rendererSetPaletteState: (renderer: Pointer, colors: TerminalColors | null | undefined, paletteEpoch: number) => void
   createOptimizedBuffer: (
     width: number,
     height: number,
@@ -1453,12 +1447,10 @@ export interface RenderLib {
   ) => void
   getBufferWidth: (buffer: Pointer) => number
   getBufferHeight: (buffer: Pointer) => number
-  bufferClear: (buffer: Pointer, color: ColorValueInput) => void
+  bufferClear: (buffer: Pointer, color: RGBA) => void
   bufferGetCharPtr: (buffer: Pointer) => Pointer
   bufferGetFgPtr: (buffer: Pointer) => Pointer
   bufferGetBgPtr: (buffer: Pointer) => Pointer
-  bufferGetFgTagPtr: (buffer: Pointer) => Pointer
-  bufferGetBgTagPtr: (buffer: Pointer) => Pointer
   bufferGetAttributesPtr: (buffer: Pointer) => Pointer
   bufferGetRespectAlpha: (buffer: Pointer) => boolean
   bufferSetRespectAlpha: (buffer: Pointer, respectAlpha: boolean) => void
@@ -1470,8 +1462,8 @@ export interface RenderLib {
     text: string,
     x: number,
     y: number,
-    color: ColorValueInput,
-    bgColor?: ColorValueInput,
+    color: RGBA,
+    bgColor?: RGBA,
     attributes?: number,
   ) => void
   bufferSetCellWithAlphaBlending: (
@@ -1479,8 +1471,8 @@ export interface RenderLib {
     x: number,
     y: number,
     char: string,
-    color: ColorValueInput,
-    bgColor: ColorValueInput,
+    color: RGBA,
+    bgColor: RGBA,
     attributes?: number,
   ) => void
   bufferSetCell: (
@@ -1488,11 +1480,11 @@ export interface RenderLib {
     x: number,
     y: number,
     char: string,
-    color: ColorValueInput,
-    bgColor: ColorValueInput,
+    color: RGBA,
+    bgColor: RGBA,
     attributes?: number,
   ) => void
-  bufferFillRect: (buffer: Pointer, x: number, y: number, width: number, height: number, color: ColorValueInput) => void
+  bufferFillRect: (buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) => void
   bufferColorMatrix: (
     buffer: Pointer,
     matrixPtr: Pointer,
@@ -1527,8 +1519,8 @@ export interface RenderLib {
     intensitiesPtr: Pointer,
     srcWidth: number,
     srcHeight: number,
-    fg: ColorValueInput | null,
-    bg: ColorValueInput | null,
+    fg: RGBA | null,
+    bg: RGBA | null,
   ) => void
   bufferDrawGrayscaleBufferSupersampled: (
     buffer: Pointer,
@@ -1537,14 +1529,14 @@ export interface RenderLib {
     intensitiesPtr: Pointer,
     srcWidth: number,
     srcHeight: number,
-    fg: ColorValueInput | null,
-    bg: ColorValueInput | null,
+    fg: RGBA | null,
+    bg: RGBA | null,
   ) => void
   bufferDrawGrid: (
     buffer: Pointer,
     borderChars: Uint32Array,
-    borderFg: ColorValueInput,
-    borderBg: ColorValueInput,
+    borderFg: RGBA,
+    borderBg: RGBA,
     columnOffsets: Int32Array,
     columnCount: number,
     rowOffsets: Int32Array,
@@ -1559,8 +1551,8 @@ export interface RenderLib {
     height: number,
     borderChars: Uint32Array,
     packedOptions: number,
-    borderColor: ColorValueInput,
-    backgroundColor: ColorValueInput,
+    borderColor: RGBA,
+    backgroundColor: RGBA,
     title: string | null,
   ) => void
   bufferResize: (buffer: Pointer, width: number, height: number) => void
@@ -1624,14 +1616,14 @@ export interface RenderLib {
     buffer: Pointer,
     chunks: Array<{
       text: string
-      fg?: ColorValueInput | null
-      bg?: ColorValueInput | null
+      fg?: RGBA | null
+      bg?: RGBA | null
       attributes?: number
       link?: { url: string }
     }>,
   ) => void
-  textBufferSetDefaultFg: (buffer: Pointer, fg: ColorValueInput | null) => void
-  textBufferSetDefaultBg: (buffer: Pointer, bg: ColorValueInput | null) => void
+  textBufferSetDefaultFg: (buffer: Pointer, fg: RGBA | null) => void
+  textBufferSetDefaultBg: (buffer: Pointer, bg: RGBA | null) => void
   textBufferSetDefaultAttributes: (buffer: Pointer, attributes: number | null) => void
   textBufferResetDefaults: (buffer: Pointer) => void
   textBufferGetTabWidth: (buffer: Pointer) => number
@@ -1660,8 +1652,8 @@ export interface RenderLib {
     view: Pointer,
     start: number,
     end: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
   ) => void
   textBufferViewResetSelection: (view: Pointer) => void
   textBufferViewGetSelection: (view: Pointer) => { start: number; end: number } | null
@@ -1671,23 +1663,18 @@ export interface RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
   ) => boolean
-  textBufferViewUpdateSelection: (
-    view: Pointer,
-    end: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
-  ) => void
+  textBufferViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   textBufferViewUpdateLocalSelection: (
     view: Pointer,
     anchorX: number,
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
   ) => boolean
   textBufferViewResetLocalSelection: (view: Pointer) => void
   textBufferViewSetWrapWidth: (view: Pointer, width: number) => void
@@ -1789,8 +1776,8 @@ export interface RenderLib {
     view: Pointer,
     start: number,
     end: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
   ) => void
   editorViewResetSelection: (view: Pointer) => void
   editorViewGetSelection: (view: Pointer) => { start: number; end: number } | null
@@ -1800,26 +1787,21 @@ export interface RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
     updateCursor: boolean,
     followCursor: boolean,
   ) => boolean
 
-  editorViewUpdateSelection: (
-    view: Pointer,
-    end: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
-  ) => void
+  editorViewUpdateSelection: (view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null) => void
   editorViewUpdateLocalSelection: (
     view: Pointer,
     anchorX: number,
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
     updateCursor: boolean,
     followCursor: boolean,
   ) => boolean
@@ -1842,7 +1824,7 @@ export interface RenderLib {
   editorViewGetLogicalLineInfo: (view: Pointer) => LineInfo
   editorViewSetPlaceholderStyledText: (
     view: Pointer,
-    chunks: Array<{ text: string; fg?: ColorValueInput | null; bg?: ColorValueInput | null; attributes?: number }>,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
   ) => void
   editorViewSetTabIndicator: (view: Pointer, indicator: number) => void
   editorViewSetTabIndicatorColor: (view: Pointer, color: RGBA) => void
@@ -1869,13 +1851,7 @@ export interface RenderLib {
 
   createSyntaxStyle: () => Pointer
   destroySyntaxStyle: (style: Pointer) => void
-  syntaxStyleRegister: (
-    style: Pointer,
-    name: string,
-    fg: ColorValueInput | null,
-    bg: ColorValueInput | null,
-    attributes: number,
-  ) => number
+  syntaxStyleRegister: (style: Pointer, name: string, fg: RGBA | null, bg: RGBA | null, attributes: number) => number
   syntaxStyleResolveByName: (style: Pointer, name: string) => number | null
   syntaxStyleGetStyleCount: (style: Pointer) => number
 
@@ -1887,15 +1863,7 @@ export interface RenderLib {
     widthMethod: WidthMethod,
   ) => { ptr: Pointer; data: Array<{ width: number; char: number }> } | null
   freeUnicode: (encoded: { ptr: Pointer; data: Array<{ width: number; char: number }> }) => void
-  bufferDrawChar: (
-    buffer: Pointer,
-    char: number,
-    x: number,
-    y: number,
-    fg: ColorValueInput,
-    bg: ColorValueInput,
-    attributes?: number,
-  ) => void
+  bufferDrawChar: (buffer: Pointer, char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes?: number) => void
 
   registerNativeSpanFeedStream: (stream: Pointer, handler: NativeSpanFeedEventHandler) => void
   unregisterNativeSpanFeedStream: (stream: Pointer) => void
@@ -1936,11 +1904,7 @@ class FFIRenderLib implements RenderLib {
     this.setupEventBus()
   }
 
-  private packColor(
-    value: ColorValueInput | null | undefined,
-    role: "fg" | "bg",
-    out: Float32Array,
-  ): Float32Array | null {
+  private packColor(value: RGBA | null | undefined, role: "fg" | "bg", out: Float32Array): Float32Array | null {
     return packColorValueToF32(value, role, out)
   }
 
@@ -2257,7 +2221,7 @@ class FFIRenderLib implements RenderLib {
     return this.opentui.symbols.getBufferHeight(buffer)
   }
 
-  public bufferClear(buffer: Pointer, color: ColorValueInput) {
+  public bufferClear(buffer: Pointer, color: RGBA) {
     const bgPacked = this.packColor(color, "bg", this._scratchColorA)!
     this.opentui.symbols.bufferClear(buffer, bgPacked)
   }
@@ -2267,8 +2231,8 @@ class FFIRenderLib implements RenderLib {
     text: string,
     x: number,
     y: number,
-    color: ColorValueInput,
-    bgColor?: ColorValueInput,
+    color: RGBA,
+    bgColor?: RGBA,
     attributes?: number,
   ) {
     const textBytes = this.encoder.encode(text)
@@ -2284,8 +2248,8 @@ class FFIRenderLib implements RenderLib {
     x: number,
     y: number,
     char: string,
-    color: ColorValueInput,
-    bgColor: ColorValueInput,
+    color: RGBA,
+    bgColor: RGBA,
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
@@ -2300,8 +2264,8 @@ class FFIRenderLib implements RenderLib {
     x: number,
     y: number,
     char: string,
-    color: ColorValueInput,
-    bgColor: ColorValueInput,
+    color: RGBA,
+    bgColor: RGBA,
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
@@ -2311,7 +2275,7 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferSetCell(buffer, x, y, charPtr, fgPacked, bgPacked, attributes ?? 0)
   }
 
-  public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: ColorValueInput) {
+  public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) {
     const bgPacked = this.packColor(color, "bg", this._scratchColorA)!
     this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, bgPacked)
   }
@@ -2379,8 +2343,8 @@ class FFIRenderLib implements RenderLib {
     intensitiesPtr: Pointer,
     srcWidth: number,
     srcHeight: number,
-    fg: ColorValueInput | null,
-    bg: ColorValueInput | null,
+    fg: RGBA | null,
+    bg: RGBA | null,
   ): void {
     const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
     const bgPacked = this.packColor(bg, "bg", this._scratchColorB)
@@ -2404,8 +2368,8 @@ class FFIRenderLib implements RenderLib {
     intensitiesPtr: Pointer,
     srcWidth: number,
     srcHeight: number,
-    fg: ColorValueInput | null,
-    bg: ColorValueInput | null,
+    fg: RGBA | null,
+    bg: RGBA | null,
   ): void {
     const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
     const bgPacked = this.packColor(bg, "bg", this._scratchColorB)
@@ -2425,8 +2389,8 @@ class FFIRenderLib implements RenderLib {
   public bufferDrawGrid(
     buffer: Pointer,
     borderChars: Uint32Array,
-    borderFg: ColorValueInput,
-    borderBg: ColorValueInput,
+    borderFg: RGBA,
+    borderBg: RGBA,
     columnOffsets: Int32Array,
     columnCount: number,
     rowOffsets: Int32Array,
@@ -2461,8 +2425,8 @@ class FFIRenderLib implements RenderLib {
     height: number,
     borderChars: Uint32Array,
     packedOptions: number,
-    borderColor: ColorValueInput,
-    backgroundColor: ColorValueInput,
+    borderColor: RGBA,
+    backgroundColor: RGBA,
     title: string | null,
   ): void {
     const borderPacked = this.packColor(borderColor, "fg", this._scratchColorA)!
@@ -2770,12 +2734,12 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.textBufferClear(buffer)
   }
 
-  public textBufferSetDefaultFg(buffer: Pointer, fg: ColorValueInput | null): void {
+  public textBufferSetDefaultFg(buffer: Pointer, fg: RGBA | null): void {
     const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
     this.opentui.symbols.textBufferSetDefaultFg(buffer, fgPacked)
   }
 
-  public textBufferSetDefaultBg(buffer: Pointer, bg: ColorValueInput | null): void {
+  public textBufferSetDefaultBg(buffer: Pointer, bg: RGBA | null): void {
     const bgPacked = this.packColor(bg, "bg", this._scratchColorA)
     this.opentui.symbols.textBufferSetDefaultBg(buffer, bgPacked)
   }
@@ -2839,8 +2803,8 @@ class FFIRenderLib implements RenderLib {
     buffer: Pointer,
     chunks: Array<{
       text: string
-      fg?: ColorValueInput | null
-      bg?: ColorValueInput | null
+      fg?: RGBA | null
+      bg?: RGBA | null
       attributes?: number
       link?: { url: string }
     }>,
@@ -2946,8 +2910,8 @@ class FFIRenderLib implements RenderLib {
     view: Pointer,
     start: number,
     end: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
   ): void {
     const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
     const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
@@ -2982,8 +2946,8 @@ class FFIRenderLib implements RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
   ): boolean {
     const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
     const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
@@ -2998,12 +2962,7 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
-  public textBufferViewUpdateSelection(
-    view: Pointer,
-    end: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
-  ): void {
+  public textBufferViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
     const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
     const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
     this.opentui.symbols.textBufferViewUpdateSelection(view, end, bgPacked, fgPacked)
@@ -3015,8 +2974,8 @@ class FFIRenderLib implements RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
   ): boolean {
     const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
     const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
@@ -3590,8 +3549,8 @@ class FFIRenderLib implements RenderLib {
     view: Pointer,
     start: number,
     end: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
   ): void {
     const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
     const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
@@ -3618,8 +3577,8 @@ class FFIRenderLib implements RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
@@ -3638,12 +3597,7 @@ class FFIRenderLib implements RenderLib {
     )
   }
 
-  public editorViewUpdateSelection(
-    view: Pointer,
-    end: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
-  ): void {
+  public editorViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
     const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
     const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
     this.opentui.symbols.editorViewUpdateSelection(view, end, bgPacked, fgPacked)
@@ -3655,8 +3609,8 @@ class FFIRenderLib implements RenderLib {
     anchorY: number,
     focusX: number,
     focusY: number,
-    bgColor: ColorValueInput | null,
-    fgColor: ColorValueInput | null,
+    bgColor: RGBA | null,
+    fgColor: RGBA | null,
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
@@ -3867,8 +3821,8 @@ class FFIRenderLib implements RenderLib {
     char: number,
     x: number,
     y: number,
-    fg: ColorValueInput,
-    bg: ColorValueInput,
+    fg: RGBA,
+    bg: RGBA,
     attributes: number = 0,
   ): void {
     const fgPacked = this.packColor(fg, "fg", this._scratchColorA)!
@@ -3972,8 +3926,8 @@ class FFIRenderLib implements RenderLib {
   public syntaxStyleRegister(
     style: Pointer,
     name: string,
-    fg: ColorValueInput | null,
-    bg: ColorValueInput | null,
+    fg: RGBA | null,
+    bg: RGBA | null,
     attributes: number,
   ): number {
     const nameBytes = this.encoder.encode(name)
@@ -3995,7 +3949,7 @@ class FFIRenderLib implements RenderLib {
 
   public editorViewSetPlaceholderStyledText(
     view: Pointer,
-    chunks: Array<{ text: string; fg?: ColorValueInput | null; bg?: ColorValueInput | null; attributes?: number }>,
+    chunks: Array<{ text: string; fg?: RGBA | null; bg?: RGBA | null; attributes?: number }>,
   ): void {
     const nonEmptyChunks = chunks.filter((c) => c.text.length > 0)
     if (nonEmptyChunks.length === 0) {
