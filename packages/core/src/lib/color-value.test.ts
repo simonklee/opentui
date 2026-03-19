@@ -4,12 +4,14 @@ import { RGBA } from "./RGBA.js"
 import {
   COLOR_TAG_DEFAULT,
   COLOR_TAG_RGB,
+  PACKED_COLOR_STRIDE,
   buildTerminalPaletteSignature,
   decodeColorTag,
   defaultColor,
   indexedColor,
   normalizeColorValue,
   normalizeTerminalPalette,
+  packColorValueToF32,
 } from "./color-value.js"
 
 describe("color-value", () => {
@@ -28,6 +30,25 @@ describe("color-value", () => {
     expect(normalized).not.toBeNull()
     expect(normalized!.tag).toBe(6)
     expect(normalized!.rgba).toBe(snapshot)
+  })
+
+  it("packs normalized colors into a 5-float boundary buffer", () => {
+    const snapshot = RGBA.fromHex("#112233")
+    const packed = new Float32Array(PACKED_COLOR_STRIDE)
+
+    expect(packColorValueToF32(indexedColor(6, snapshot), "fg", packed)).toBe(packed)
+    expect(Array.from(packed)).toEqual([snapshot.r, snapshot.g, snapshot.b, snapshot.a, 6])
+    expect(packColorValueToF32(null, "bg", packed)).toBeNull()
+  })
+
+  it("preserves indexed and default intent on RGBA instances", () => {
+    const indexed = RGBA.fromIndex(12)
+    const defaultFg = RGBA.defaultForeground()
+    const defaultBg = RGBA.defaultBackground()
+
+    expect(normalizeColorValue(indexed, { role: "fg" })?.tag).toBe(12)
+    expect(normalizeColorValue(defaultFg, { role: "fg" })?.tag).toBe(COLOR_TAG_DEFAULT)
+    expect(normalizeColorValue(defaultBg, { role: "bg" })?.tag).toBe(COLOR_TAG_DEFAULT)
   })
 
   it("decodes rgb, indexed, and default tags", () => {

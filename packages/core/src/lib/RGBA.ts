@@ -1,3 +1,69 @@
+const ANSI16_HEX = [
+  "#000000",
+  "#800000",
+  "#008000",
+  "#808000",
+  "#000080",
+  "#800080",
+  "#008080",
+  "#c0c0c0",
+  "#808080",
+  "#ff0000",
+  "#00ff00",
+  "#ffff00",
+  "#0000ff",
+  "#ff00ff",
+  "#00ffff",
+  "#ffffff",
+] as const
+
+const ANSI_256_CUBE_LEVELS = [0, 95, 135, 175, 215, 255] as const
+const COLOR_TAG_DEFAULT = 257
+const RGBA_INTENT_TAG = Symbol("@opentui/core/RGBA.intent-tag")
+
+type IntentfulRGBA = RGBA & {
+  [RGBA_INTENT_TAG]?: number
+}
+
+function normalizeIndexedColorIndex(index: number): number {
+  if (!Number.isInteger(index) || index < 0 || index > 255) {
+    throw new RangeError(`Indexed color must be an integer in the range 0..255, got ${index}`)
+  }
+
+  return index
+}
+
+function setIntentTag(rgba: RGBA, tag: number | undefined): RGBA {
+  const intentful = rgba as IntentfulRGBA
+
+  if (tag === undefined) {
+    delete intentful[RGBA_INTENT_TAG]
+    return rgba
+  }
+
+  intentful[RGBA_INTENT_TAG] = tag
+  return rgba
+}
+
+function rgbaForAnsi256Index(index: number): RGBA {
+  const normalizedIndex = normalizeIndexedColorIndex(index)
+
+  if (normalizedIndex < 16) {
+    return RGBA.fromHex(ANSI16_HEX[normalizedIndex])
+  }
+
+  if (normalizedIndex < 232) {
+    const cubeIndex = normalizedIndex - 16
+    const r = Math.floor(cubeIndex / 36)
+    const g = Math.floor(cubeIndex / 6) % 6
+    const b = cubeIndex % 6
+    return RGBA.fromInts(ANSI_256_CUBE_LEVELS[r], ANSI_256_CUBE_LEVELS[g], ANSI_256_CUBE_LEVELS[b])
+  }
+
+  const value = 8 + (normalizedIndex - 232) * 10
+  return RGBA.fromInts(value, value, value)
+}
+
 export class RGBA {
   buffer: Float32Array
 
@@ -19,6 +85,26 @@ export class RGBA {
 
   static fromHex(hex: string): RGBA {
     return hexToRgb(hex)
+  }
+
+  static fromIndex(index: number, snapshot?: ColorInput): RGBA {
+    return setIntentTag(snapshot ? parseColor(snapshot) : rgbaForAnsi256Index(index), normalizeIndexedColorIndex(index))
+  }
+
+  static defaultForeground(snapshot?: ColorInput): RGBA {
+    return setIntentTag(snapshot ? parseColor(snapshot) : RGBA.fromInts(255, 255, 255), COLOR_TAG_DEFAULT)
+  }
+
+  static defaultBackground(snapshot?: ColorInput): RGBA {
+    return setIntentTag(snapshot ? parseColor(snapshot) : RGBA.fromInts(0, 0, 0), COLOR_TAG_DEFAULT)
+  }
+
+  static getIntentTag(rgba: RGBA): number | undefined {
+    return (rgba as IntentfulRGBA)[RGBA_INTENT_TAG]
+  }
+
+  static setIntentTag(rgba: RGBA, tag: number | undefined): RGBA {
+    return setIntentTag(rgba, tag)
   }
 
   toInts(): [number, number, number, number] {

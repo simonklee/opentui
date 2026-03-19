@@ -151,6 +151,14 @@ describe("TextBuffer", () => {
       expect(true).toBe(true)
     })
 
+    it("should accept intentful RGBA constructors for default colors", () => {
+      buffer.setDefaultFg(RGBA.fromIndex(6))
+      buffer.setDefaultBg(RGBA.defaultBackground())
+      buffer.resetDefaults()
+
+      expect(true).toBe(true)
+    })
+
     it("should set and reset default attributes", () => {
       buffer.setDefaultAttributes(1)
       buffer.resetDefaults()

@@ -3,6 +3,7 @@ import type { TerminalColors } from "./terminal-palette.js"
 
 export const COLOR_TAG_RGB = 256
 export const COLOR_TAG_DEFAULT = 257
+export const PACKED_COLOR_STRIDE = 5
 
 export type ColorTag = number
 export type ColorKind = "rgb" | "indexed" | "default"
@@ -105,6 +106,16 @@ function normalizeIndexedColorIndex(index: number): number {
   return index
 }
 
+function getNormalizedRGBAIntentTag(rgba: RGBA): ColorTag | undefined {
+  const tag = RGBA.getIntentTag(rgba)
+
+  if (tag === undefined) return undefined
+  if (tag === COLOR_TAG_RGB || tag === COLOR_TAG_DEFAULT) return tag
+  if (Number.isInteger(tag) && tag >= 0 && tag <= 255) return tag
+
+  return undefined
+}
+
 function resolvePreparedColorInput(value: ColorValueInput): PreparedColorValueInput {
   if (typeof value === "string" || value instanceof RGBA) {
     return parseColor(value)
@@ -137,7 +148,9 @@ function isColorValue(value: unknown): value is ColorValue {
   return maybeColor.kind === "rgb" || maybeColor.kind === "indexed" || maybeColor.kind === "default"
 }
 
-export function prepareColorValueInput(value: ColorValueInput | null | undefined): PreparedColorValueInput | null | undefined {
+export function prepareColorValueInput(
+  value: ColorValueInput | null | undefined,
+): PreparedColorValueInput | null | undefined {
   if (value == null) return value
   return resolvePreparedColorInput(value)
 }
@@ -195,13 +208,15 @@ export function normalizeColorValue(
 
   const preparedValue = resolvePreparedColorInput(value)
   if (preparedValue instanceof RGBA) {
+    const tag = getNormalizedRGBAIntentTag(preparedValue) ?? COLOR_TAG_RGB
     return {
       rgba: preparedValue,
-      tag: COLOR_TAG_RGB,
+      tag,
     }
   }
 
   if (preparedValue.kind === "rgb") {
+    RGBA.setIntentTag(preparedValue.rgba as RGBA, undefined)
     return {
       rgba: preparedValue.rgba as RGBA,
       tag: COLOR_TAG_RGB,
@@ -215,14 +230,21 @@ export function normalizeColorValue(
       ? (preparedValue.rgba as RGBA)
       : cloneRgba(palette[index] ?? getFallbackAnsi256Palette()[index] ?? DEFAULT_FOREGROUND_FALLBACK)
 
+    RGBA.setIntentTag(snapshot, index)
+
     return {
       rgba: snapshot,
       tag: index,
     }
   }
 
-  const fallbackSnapshot = options.role === "bg" ? options.defaultBg ?? DEFAULT_BACKGROUND_FALLBACK : options.defaultFg ?? DEFAULT_FOREGROUND_FALLBACK
+  const fallbackSnapshot =
+    options.role === "bg"
+      ? (options.defaultBg ?? DEFAULT_BACKGROUND_FALLBACK)
+      : (options.defaultFg ?? DEFAULT_FOREGROUND_FALLBACK)
   const snapshot = preparedValue.rgba ? (preparedValue.rgba as RGBA) : cloneRgba(fallbackSnapshot)
+
+  RGBA.setIntentTag(snapshot, COLOR_TAG_DEFAULT)
 
   return {
     rgba: snapshot,
@@ -230,7 +252,27 @@ export function normalizeColorValue(
   }
 }
 
-export function colorValuesEqual(a: NormalizedColorValue | null | undefined, b: NormalizedColorValue | null | undefined): boolean {
+export function packColorValueToF32(
+  value: ColorValueInput | null | undefined,
+  role: "fg" | "bg",
+  out: Float32Array,
+): Float32Array | null {
+  const normalized = normalizeColorValue(value, { role })
+  if (!normalized) return null
+
+  out[0] = normalized.rgba.r
+  out[1] = normalized.rgba.g
+  out[2] = normalized.rgba.b
+  out[3] = normalized.rgba.a
+  out[4] = normalized.tag
+
+  return out
+}
+
+export function colorValuesEqual(
+  a: NormalizedColorValue | null | undefined,
+  b: NormalizedColorValue | null | undefined,
+): boolean {
   if (a === b) return true
   if (!a || !b) return false
 
@@ -249,15 +291,23 @@ export function normalizeTerminalPalette(colors?: TerminalColors | null): {
       const detected = colors?.palette[index]
       return detected ? RGBA.fromHex(detected) : fallbackPalette[index]
     }),
-    defaultForeground: colors?.defaultForeground ? RGBA.fromHex(colors.defaultForeground) : cloneRgba(DEFAULT_FOREGROUND_FALLBACK),
-    defaultBackground: colors?.defaultBackground ? RGBA.fromHex(colors.defaultBackground) : cloneRgba(DEFAULT_BACKGROUND_FALLBACK),
+    defaultForeground: colors?.defaultForeground
+      ? RGBA.fromHex(colors.defaultForeground)
+      : cloneRgba(DEFAULT_FOREGROUND_FALLBACK),
+    defaultBackground: colors?.defaultBackground
+      ? RGBA.fromHex(colors.defaultBackground)
+      : cloneRgba(DEFAULT_BACKGROUND_FALLBACK),
   }
 }
 
 export function buildTerminalPaletteSignature(colors?: TerminalColors | null): string {
   const normalized = normalizeTerminalPalette(colors)
   const paletteSignature = normalized.palette.map((color) => color.toInts().join(",")).join(";")
-  return [paletteSignature, normalized.defaultForeground.toInts().join(","), normalized.defaultBackground.toInts().join(",")].join("|")
+  return [
+    paletteSignature,
+    normalized.defaultForeground.toInts().join(","),
+    normalized.defaultBackground.toInts().join(","),
+  ].join("|")
 }
 
 export function colorValueToRgba(value: ColorValueInput | null | undefined, role: "fg" | "bg" = "fg"): RGBA | null {

@@ -1,12 +1,12 @@
 import type { TextRenderable } from "../renderables/Text.js"
 import type { TextBuffer, TextChunk } from "../text-buffer.js"
 import { createTextAttributes } from "../utils.js"
-import { parseColor } from "./RGBA.js"
-import { isColorValue, prepareColorValueInput, type ColorValueInput } from "./color-value.js"
+import type { ColorInput } from "./RGBA.js"
+import { colorValueToRgba, type ColorValueInput } from "./color-value.js"
 
 const BrandedStyledText: unique symbol = Symbol.for("@opentui/core/StyledText")
 
-export type Color = ColorValueInput
+export type Color = ColorInput
 
 export interface StyleAttrs {
   fg?: Color
@@ -18,6 +18,11 @@ export interface StyleAttrs {
   dim?: boolean
   reverse?: boolean
   blink?: boolean
+}
+
+type StyleAttrsInput = Omit<StyleAttrs, "fg" | "bg"> & {
+  fg?: ColorValueInput
+  bg?: ColorValueInput
 }
 
 export function isStyledText(obj: any): obj is StyledText {
@@ -44,13 +49,9 @@ export function stringToStyledText(content: string): StyledText {
 
 export type StylableInput = string | number | boolean | TextChunk
 
-function applyStyle(input: StylableInput, style: StyleAttrs): TextChunk {
-  const styleFg = style.fg
-    ? (isColorValue(style.fg) ? prepareColorValueInput(style.fg) ?? undefined : parseColor(style.fg))
-    : undefined
-  const styleBg = style.bg
-    ? (isColorValue(style.bg) ? prepareColorValueInput(style.bg) ?? undefined : parseColor(style.bg))
-    : undefined
+function applyStyle(input: StylableInput, style: StyleAttrsInput): TextChunk {
+  const styleFg = style.fg ? (colorValueToRgba(style.fg, "fg") ?? undefined) : undefined
+  const styleBg = style.bg ? (colorValueToRgba(style.bg, "bg") ?? undefined) : undefined
 
   if (typeof input === "object" && "__isChunk" in input) {
     const existingChunk = input as TextChunk
@@ -123,14 +124,17 @@ export const reverse = (input: StylableInput): TextChunk => applyStyle(input, { 
 export const blink = (input: StylableInput): TextChunk => applyStyle(input, { blink: true })
 
 // Custom color functions
-export const fg =
-  (color: Color) =>
-  (input: StylableInput): TextChunk =>
-    applyStyle(input, { fg: color })
-export const bg =
-  (color: Color) =>
-  (input: StylableInput): TextChunk =>
-    applyStyle(input, { bg: color })
+export function fg(color: Color): (input: StylableInput) => TextChunk
+export function fg(color: ColorValueInput): (input: StylableInput) => TextChunk
+export function fg(color: ColorValueInput): (input: StylableInput) => TextChunk {
+  return (input: StylableInput): TextChunk => applyStyle(input, { fg: color })
+}
+
+export function bg(color: Color): (input: StylableInput) => TextChunk
+export function bg(color: ColorValueInput): (input: StylableInput) => TextChunk
+export function bg(color: ColorValueInput): (input: StylableInput) => TextChunk {
+  return (input: StylableInput): TextChunk => applyStyle(input, { bg: color })
+}
 
 export const link =
   (url: string) =>

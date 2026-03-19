@@ -28,7 +28,16 @@ const XTERM_16_HEX = [
   "#00ffff",
   "#ffffff",
 ] as const
-const REUSED_BASE_HEX = ["#ef4444", "#f59e0b", "#84cc16", "#06b6d4", "#3b82f6", "#a855f7", "#ec4899", "#f8fafc"] as const
+const REUSED_BASE_HEX = [
+  "#ef4444",
+  "#f59e0b",
+  "#84cc16",
+  "#06b6d4",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
+  "#f8fafc",
+] as const
 
 const DEFAULT_FRAMES = 24
 const DEFAULT_SWATCHES = 128
@@ -75,7 +84,11 @@ function buildScenarioColors(name: ScenarioName, swatches: number): RGBA[] {
   if (name === "unique-rgb") {
     return Array.from({ length: swatches }, (_, index) => {
       const t = swatches <= 1 ? 0 : index / (swatches - 1)
-      return RGBA.fromInts(Math.round(255 * t), Math.round(255 * (1 - Math.abs(0.5 - t) * 2)), Math.round(255 * (1 - t)))
+      return RGBA.fromInts(
+        Math.round(255 * t),
+        Math.round(255 * (1 - Math.abs(0.5 - t) * 2)),
+        Math.round(255 * (1 - t)),
+      )
     })
   }
 

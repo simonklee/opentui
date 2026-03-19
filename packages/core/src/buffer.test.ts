@@ -153,6 +153,17 @@ describe("OptimizedBuffer", () => {
       expect(taggedSpans[0].fgTag).not.toBe(taggedSpans[1].fgTag)
       expect(buffer.buffers.fgTag[0]).not.toBe(buffer.buffers.fgTag[1])
     })
+
+    it("should preserve intentful RGBA constructors through draw APIs", () => {
+      const bg = RGBA.fromHex("#000000")
+
+      buffer.clear(bg)
+      buffer.setCell(0, 0, "A", RGBA.defaultForeground(RGBA.fromHex("#ffffff")), bg)
+      buffer.setCell(1, 0, "B", RGBA.fromIndex(6), bg)
+
+      expect(buffer.buffers.fgTag[0]).toBe(COLOR_TAG_DEFAULT)
+      expect(buffer.buffers.fgTag[1]).toBe(6)
+    })
   })
 
   describe("snapshot tests with unicode encoding", () => {

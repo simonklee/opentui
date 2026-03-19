@@ -16,11 +16,10 @@ export type { LineInfo, AllocatorStats, BuildOptions, ColorDebugStats }
 
 import { RGBA } from "./lib/RGBA.js"
 import {
-  COLOR_TAG_RGB,
-  normalizeColorValue,
+  PACKED_COLOR_STRIDE,
   normalizeTerminalPalette,
+  packColorValueToF32,
   type ColorValueInput,
-  type ColorTag,
 } from "./lib/color-value.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { TextBuffer } from "./text-buffer.js"
@@ -226,7 +225,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "u32",
     },
     bufferClear: {
-      args: ["ptr", "ptr", "u16"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
     bufferGetCharPtr: {
@@ -275,19 +274,19 @@ function getOpenTUILib(libPath?: string) {
     },
 
     bufferDrawText: {
-      args: ["ptr", "ptr", "u32", "u32", "u32", "ptr", "u16", "ptr", "u16", "u32"],
+      args: ["ptr", "ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
     bufferSetCellWithAlphaBlending: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "u16", "ptr", "u16", "u32"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
     bufferSetCell: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "u16", "ptr", "u16", "u32"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
     bufferFillRect: {
-      args: ["ptr", "u32", "u32", "u32", "u32", "ptr", "u16"],
+      args: ["ptr", "u32", "u32", "u32", "u32", "ptr"],
       returns: "void",
     },
     bufferColorMatrix: {
@@ -387,19 +386,19 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawGrayscaleBuffer: {
-      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "u16", "ptr", "u16"],
+      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
     },
     bufferDrawGrayscaleBufferSupersampled: {
-      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "u16", "ptr", "u16"],
+      args: ["ptr", "i32", "i32", "ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
     },
     bufferDrawGrid: {
-      args: ["ptr", "ptr", "ptr", "u16", "ptr", "u16", "ptr", "u32", "ptr", "u32", "ptr"],
+      args: ["ptr", "ptr", "ptr", "ptr", "ptr", "u32", "ptr", "u32", "ptr"],
       returns: "void",
     },
     bufferDrawBox: {
-      args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "u16", "ptr", "u16", "ptr", "u32"],
+      args: ["ptr", "i32", "i32", "u32", "u32", "ptr", "u32", "ptr", "ptr", "ptr", "u32"],
       returns: "void",
     },
     bufferPushScissorRect: {
@@ -547,11 +546,11 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferSetDefaultFg: {
-      args: ["ptr", "ptr", "u16"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
     textBufferSetDefaultBg: {
-      args: ["ptr", "ptr", "u16"],
+      args: ["ptr", "ptr"],
       returns: "void",
     },
     textBufferSetDefaultAttributes: {
@@ -665,7 +664,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     textBufferViewSetSelection: {
-      args: ["ptr", "u32", "u32", "ptr", "u16", "ptr", "u16"],
+      args: ["ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
     },
     textBufferViewResetSelection: {
@@ -677,15 +676,15 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     textBufferViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "u16", "ptr", "u16"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
       returns: "bool",
     },
     textBufferViewUpdateSelection: {
-      args: ["ptr", "u32", "ptr", "u16", "ptr", "u16"],
+      args: ["ptr", "u32", "ptr", "ptr"],
       returns: "void",
     },
     textBufferViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "u16", "ptr", "u16"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr"],
       returns: "bool",
     },
     textBufferViewResetLocalSelection: {
@@ -967,7 +966,7 @@ function getOpenTUILib(libPath?: string) {
 
     // EditorView selection and editing methods
     editorViewSetSelection: {
-      args: ["ptr", "u32", "u32", "ptr", "u16", "ptr", "u16"],
+      args: ["ptr", "u32", "u32", "ptr", "ptr"],
       returns: "void",
     },
     editorViewResetSelection: {
@@ -979,15 +978,15 @@ function getOpenTUILib(libPath?: string) {
       returns: "u64",
     },
     editorViewSetLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "u16", "ptr", "u16", "bool", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
       returns: "bool",
     },
     editorViewUpdateSelection: {
-      args: ["ptr", "u32", "ptr", "u16", "ptr", "u16"],
+      args: ["ptr", "u32", "ptr", "ptr"],
       returns: "void",
     },
     editorViewUpdateLocalSelection: {
-      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "u16", "ptr", "u16", "bool", "bool"],
+      args: ["ptr", "i32", "i32", "i32", "i32", "ptr", "ptr", "bool", "bool"],
       returns: "bool",
     },
     editorViewResetLocalSelection: {
@@ -1085,7 +1084,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     syntaxStyleRegister: {
-      args: ["ptr", "ptr", "usize", "ptr", "u16", "ptr", "u16", "u32"],
+      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u32"],
       returns: "u32",
     },
     syntaxStyleResolveByName: {
@@ -1117,7 +1116,7 @@ function getOpenTUILib(libPath?: string) {
       returns: "void",
     },
     bufferDrawChar: {
-      args: ["ptr", "u32", "u32", "u32", "ptr", "u16", "ptr", "u16", "u32"],
+      args: ["ptr", "u32", "u32", "u32", "ptr", "ptr", "u32"],
       returns: "void",
     },
 
@@ -1923,6 +1922,8 @@ class FFIRenderLib implements RenderLib {
   private _anyEventHandlers: Array<(name: string, data: ArrayBuffer) => void> = []
   private nativeSpanFeedCallbackWrapper: JSCallback | null = null
   private nativeSpanFeedHandlers = new Map<Pointer, NativeSpanFeedEventHandler>()
+  private readonly _scratchColorA = new Float32Array(PACKED_COLOR_STRIDE)
+  private readonly _scratchColorB = new Float32Array(PACKED_COLOR_STRIDE)
 
   constructor(libPath?: string) {
     this.opentui = getOpenTUILib(libPath)
@@ -1930,19 +1931,12 @@ class FFIRenderLib implements RenderLib {
     this.setupEventBus()
   }
 
-  private normalizeColor(
+  private packColor(
     value: ColorValueInput | null | undefined,
     role: "fg" | "bg",
-  ): { rgba: RGBA; tag: ColorTag } | null {
-    return normalizeColorValue(value, { role })
-  }
-
-  private colorBuffer(value: { rgba: RGBA; tag: ColorTag } | null): Float32Array | null {
-    return value?.rgba.buffer ?? null
-  }
-
-  private colorTag(value: { rgba: RGBA; tag: ColorTag } | null): ColorTag {
-    return value?.tag ?? COLOR_TAG_RGB
+    out: Float32Array,
+  ): Float32Array | null {
+    return packColorValueToF32(value, role, out)
   }
 
   private setupLogging() {
@@ -2259,8 +2253,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public bufferClear(buffer: Pointer, color: ColorValueInput) {
-    const normalizedBg = this.normalizeColor(color, "bg")
-    this.opentui.symbols.bufferClear(buffer, this.colorBuffer(normalizedBg), this.colorTag(normalizedBg))
+    const bgPacked = this.packColor(color, "bg", this._scratchColorA)!
+    this.opentui.symbols.bufferClear(buffer, bgPacked)
   }
 
   public bufferDrawText(
@@ -2274,21 +2268,10 @@ class FFIRenderLib implements RenderLib {
   ) {
     const textBytes = this.encoder.encode(text)
     const textLength = textBytes.byteLength
-    const fg = this.normalizeColor(color, "fg")
-    const bg = this.normalizeColor(bgColor ?? null, "bg")
+    const fgPacked = this.packColor(color, "fg", this._scratchColorA)!
+    const bgPacked = this.packColor(bgColor ?? null, "bg", this._scratchColorB)
 
-    this.opentui.symbols.bufferDrawText(
-      buffer,
-      textBytes,
-      textLength,
-      x,
-      y,
-      this.colorBuffer(fg),
-      this.colorTag(fg),
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      attributes ?? 0,
-    )
+    this.opentui.symbols.bufferDrawText(buffer, textBytes, textLength, x, y, fgPacked, bgPacked, attributes ?? 0)
   }
 
   public bufferSetCellWithAlphaBlending(
@@ -2301,20 +2284,10 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const fg = this.normalizeColor(color, "fg")
-    const bg = this.normalizeColor(bgColor, "bg")
+    const fgPacked = this.packColor(color, "fg", this._scratchColorA)!
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorB)!
 
-    this.opentui.symbols.bufferSetCellWithAlphaBlending(
-      buffer,
-      x,
-      y,
-      charPtr,
-      this.colorBuffer(fg),
-      this.colorTag(fg),
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      attributes ?? 0,
-    )
+    this.opentui.symbols.bufferSetCellWithAlphaBlending(buffer, x, y, charPtr, fgPacked, bgPacked, attributes ?? 0)
   }
 
   public bufferSetCell(
@@ -2327,25 +2300,15 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const fg = this.normalizeColor(color, "fg")
-    const bg = this.normalizeColor(bgColor, "bg")
+    const fgPacked = this.packColor(color, "fg", this._scratchColorA)!
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorB)!
 
-    this.opentui.symbols.bufferSetCell(
-      buffer,
-      x,
-      y,
-      charPtr,
-      this.colorBuffer(fg),
-      this.colorTag(fg),
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      attributes ?? 0,
-    )
+    this.opentui.symbols.bufferSetCell(buffer, x, y, charPtr, fgPacked, bgPacked, attributes ?? 0)
   }
 
   public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: ColorValueInput) {
-    const bg = this.normalizeColor(color, "bg")
-    this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, this.colorBuffer(bg), this.colorTag(bg))
+    const bgPacked = this.packColor(color, "bg", this._scratchColorA)!
+    this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, bgPacked)
   }
 
   public bufferColorMatrix(
@@ -2414,8 +2377,8 @@ class FFIRenderLib implements RenderLib {
     fg: ColorValueInput | null,
     bg: ColorValueInput | null,
   ): void {
-    const normalizedFg = this.normalizeColor(fg, "fg")
-    const normalizedBg = this.normalizeColor(bg, "bg")
+    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
+    const bgPacked = this.packColor(bg, "bg", this._scratchColorB)
 
     this.opentui.symbols.bufferDrawGrayscaleBuffer(
       buffer,
@@ -2424,10 +2387,8 @@ class FFIRenderLib implements RenderLib {
       intensitiesPtr,
       srcWidth,
       srcHeight,
-      this.colorBuffer(normalizedFg),
-      this.colorTag(normalizedFg),
-      this.colorBuffer(normalizedBg),
-      this.colorTag(normalizedBg),
+      fgPacked,
+      bgPacked,
     )
   }
 
@@ -2441,8 +2402,8 @@ class FFIRenderLib implements RenderLib {
     fg: ColorValueInput | null,
     bg: ColorValueInput | null,
   ): void {
-    const normalizedFg = this.normalizeColor(fg, "fg")
-    const normalizedBg = this.normalizeColor(bg, "bg")
+    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
+    const bgPacked = this.packColor(bg, "bg", this._scratchColorB)
 
     this.opentui.symbols.bufferDrawGrayscaleBufferSupersampled(
       buffer,
@@ -2451,10 +2412,8 @@ class FFIRenderLib implements RenderLib {
       intensitiesPtr,
       srcWidth,
       srcHeight,
-      this.colorBuffer(normalizedFg),
-      this.colorTag(normalizedFg),
-      this.colorBuffer(normalizedBg),
-      this.colorTag(normalizedBg),
+      fgPacked,
+      bgPacked,
     )
   }
 
@@ -2469,8 +2428,8 @@ class FFIRenderLib implements RenderLib {
     rowCount: number,
     options: { drawInner: boolean; drawOuter: boolean },
   ): void {
-    const normalizedBorderFg = this.normalizeColor(borderFg, "fg")
-    const normalizedBorderBg = this.normalizeColor(borderBg, "bg")
+    const borderFgPacked = this.packColor(borderFg, "fg", this._scratchColorA)!
+    const borderBgPacked = this.packColor(borderBg, "bg", this._scratchColorB)!
     const optionsBuffer = GridDrawOptionsStruct.pack({
       drawInner: options.drawInner,
       drawOuter: options.drawOuter,
@@ -2479,10 +2438,8 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferDrawGrid(
       buffer,
       borderChars,
-      this.colorBuffer(normalizedBorderFg),
-      this.colorTag(normalizedBorderFg),
-      this.colorBuffer(normalizedBorderBg),
-      this.colorTag(normalizedBorderBg),
+      borderFgPacked,
+      borderBgPacked,
       columnOffsets,
       columnCount,
       rowOffsets,
@@ -2503,8 +2460,8 @@ class FFIRenderLib implements RenderLib {
     backgroundColor: ColorValueInput,
     title: string | null,
   ): void {
-    const normalizedBorderColor = this.normalizeColor(borderColor, "fg")
-    const normalizedBackgroundColor = this.normalizeColor(backgroundColor, "bg")
+    const borderPacked = this.packColor(borderColor, "fg", this._scratchColorA)!
+    const backgroundPacked = this.packColor(backgroundColor, "bg", this._scratchColorB)!
     const titleBytes = title ? this.encoder.encode(title) : null
     const titleLen = title ? titleBytes!.length : 0
     const titlePtr = title ? titleBytes : null
@@ -2517,10 +2474,8 @@ class FFIRenderLib implements RenderLib {
       height,
       borderChars,
       packedOptions,
-      this.colorBuffer(normalizedBorderColor),
-      this.colorTag(normalizedBorderColor),
-      this.colorBuffer(normalizedBackgroundColor),
-      this.colorTag(normalizedBackgroundColor),
+      borderPacked,
+      backgroundPacked,
       titlePtr,
       titleLen,
     )
@@ -2811,13 +2766,13 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferSetDefaultFg(buffer: Pointer, fg: ColorValueInput | null): void {
-    const normalizedFg = this.normalizeColor(fg, "fg")
-    this.opentui.symbols.textBufferSetDefaultFg(buffer, this.colorBuffer(normalizedFg), this.colorTag(normalizedFg))
+    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
+    this.opentui.symbols.textBufferSetDefaultFg(buffer, fgPacked)
   }
 
   public textBufferSetDefaultBg(buffer: Pointer, bg: ColorValueInput | null): void {
-    const normalizedBg = this.normalizeColor(bg, "bg")
-    this.opentui.symbols.textBufferSetDefaultBg(buffer, this.colorBuffer(normalizedBg), this.colorTag(normalizedBg))
+    const bgPacked = this.packColor(bg, "bg", this._scratchColorA)
+    this.opentui.symbols.textBufferSetDefaultBg(buffer, bgPacked)
   }
 
   public textBufferSetDefaultAttributes(buffer: Pointer, attributes: number | null): void {
@@ -2989,17 +2944,9 @@ class FFIRenderLib implements RenderLib {
     bgColor: ColorValueInput | null,
     fgColor: ColorValueInput | null,
   ): void {
-    const bg = this.normalizeColor(bgColor, "bg")
-    const fg = this.normalizeColor(fgColor, "fg")
-    this.opentui.symbols.textBufferViewSetSelection(
-      view,
-      start,
-      end,
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      this.colorBuffer(fg),
-      this.colorTag(fg),
-    )
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    this.opentui.symbols.textBufferViewSetSelection(view, start, end, bgPacked, fgPacked)
   }
 
   public textBufferViewResetSelection(view: Pointer): void {
@@ -3033,18 +2980,16 @@ class FFIRenderLib implements RenderLib {
     bgColor: ColorValueInput | null,
     fgColor: ColorValueInput | null,
   ): boolean {
-    const bg = this.normalizeColor(bgColor, "bg")
-    const fg = this.normalizeColor(fgColor, "fg")
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
     return this.opentui.symbols.textBufferViewSetLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      this.colorBuffer(fg),
-      this.colorTag(fg),
+      bgPacked,
+      fgPacked,
     )
   }
 
@@ -3054,16 +2999,9 @@ class FFIRenderLib implements RenderLib {
     bgColor: ColorValueInput | null,
     fgColor: ColorValueInput | null,
   ): void {
-    const bg = this.normalizeColor(bgColor, "bg")
-    const fg = this.normalizeColor(fgColor, "fg")
-    this.opentui.symbols.textBufferViewUpdateSelection(
-      view,
-      end,
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      this.colorBuffer(fg),
-      this.colorTag(fg),
-    )
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    this.opentui.symbols.textBufferViewUpdateSelection(view, end, bgPacked, fgPacked)
   }
 
   public textBufferViewUpdateLocalSelection(
@@ -3075,18 +3013,16 @@ class FFIRenderLib implements RenderLib {
     bgColor: ColorValueInput | null,
     fgColor: ColorValueInput | null,
   ): boolean {
-    const bg = this.normalizeColor(bgColor, "bg")
-    const fg = this.normalizeColor(fgColor, "fg")
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
     return this.opentui.symbols.textBufferViewUpdateLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      this.colorBuffer(fg),
-      this.colorTag(fg),
+      bgPacked,
+      fgPacked,
     )
   }
 
@@ -3652,17 +3588,9 @@ class FFIRenderLib implements RenderLib {
     bgColor: ColorValueInput | null,
     fgColor: ColorValueInput | null,
   ): void {
-    const bg = this.normalizeColor(bgColor, "bg")
-    const fg = this.normalizeColor(fgColor, "fg")
-    this.opentui.symbols.editorViewSetSelection(
-      view,
-      start,
-      end,
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      this.colorBuffer(fg),
-      this.colorTag(fg),
-    )
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    this.opentui.symbols.editorViewSetSelection(view, start, end, bgPacked, fgPacked)
   }
 
   public editorViewResetSelection(view: Pointer): void {
@@ -3690,18 +3618,16 @@ class FFIRenderLib implements RenderLib {
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bg = this.normalizeColor(bgColor, "bg")
-    const fg = this.normalizeColor(fgColor, "fg")
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
     return this.opentui.symbols.editorViewSetLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      this.colorBuffer(fg),
-      this.colorTag(fg),
+      bgPacked,
+      fgPacked,
       updateCursor,
       followCursor,
     )
@@ -3713,16 +3639,9 @@ class FFIRenderLib implements RenderLib {
     bgColor: ColorValueInput | null,
     fgColor: ColorValueInput | null,
   ): void {
-    const bg = this.normalizeColor(bgColor, "bg")
-    const fg = this.normalizeColor(fgColor, "fg")
-    this.opentui.symbols.editorViewUpdateSelection(
-      view,
-      end,
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      this.colorBuffer(fg),
-      this.colorTag(fg),
-    )
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    this.opentui.symbols.editorViewUpdateSelection(view, end, bgPacked, fgPacked)
   }
 
   public editorViewUpdateLocalSelection(
@@ -3736,18 +3655,16 @@ class FFIRenderLib implements RenderLib {
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bg = this.normalizeColor(bgColor, "bg")
-    const fg = this.normalizeColor(fgColor, "fg")
+    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
     return this.opentui.symbols.editorViewUpdateLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      this.colorBuffer(bg),
-      this.colorTag(bg),
-      this.colorBuffer(fg),
-      this.colorTag(fg),
+      bgPacked,
+      fgPacked,
       updateCursor,
       followCursor,
     )
@@ -3949,20 +3866,10 @@ class FFIRenderLib implements RenderLib {
     bg: ColorValueInput,
     attributes: number = 0,
   ): void {
-    const normalizedFg = this.normalizeColor(fg, "fg")
-    const normalizedBg = this.normalizeColor(bg, "bg")
+    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)!
+    const bgPacked = this.packColor(bg, "bg", this._scratchColorB)!
 
-    this.opentui.symbols.bufferDrawChar(
-      buffer,
-      char,
-      x,
-      y,
-      this.colorBuffer(normalizedFg),
-      this.colorTag(normalizedFg),
-      this.colorBuffer(normalizedBg),
-      this.colorTag(normalizedBg),
-      attributes,
-    )
+    this.opentui.symbols.bufferDrawChar(buffer, char, x, y, fgPacked, bgPacked, attributes)
   }
 
   public registerNativeSpanFeedStream(stream: Pointer, handler: NativeSpanFeedEventHandler): void {
@@ -4065,18 +3972,9 @@ class FFIRenderLib implements RenderLib {
     attributes: number,
   ): number {
     const nameBytes = this.encoder.encode(name)
-    const normalizedFg = this.normalizeColor(fg, "fg")
-    const normalizedBg = this.normalizeColor(bg, "bg")
-    return this.opentui.symbols.syntaxStyleRegister(
-      style,
-      nameBytes,
-      nameBytes.length,
-      this.colorBuffer(normalizedFg),
-      this.colorTag(normalizedFg),
-      this.colorBuffer(normalizedBg),
-      this.colorTag(normalizedBg),
-      attributes,
-    )
+    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
+    const bgPacked = this.packColor(bg, "bg", this._scratchColorB)
+    return this.opentui.symbols.syntaxStyleRegister(style, nameBytes, nameBytes.length, fgPacked, bgPacked, attributes)
   }
 
   public syntaxStyleResolveByName(style: Pointer, name: string): number | null {

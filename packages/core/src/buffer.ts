@@ -1,11 +1,13 @@
 import { RGBA } from "./lib"
-import { normalizeColorValue, type ColorValueInput } from "./lib/color-value.js"
+import { normalizeColorValue, type ColorValue, type ColorValueInput } from "./lib/color-value.js"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
 import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine } from "./types.js"
 import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
+
+export type BufferColor = RGBA | ColorValue
 
 // Pack drawing options into a single u32
 // bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
@@ -231,29 +233,49 @@ export class OptimizedBuffer {
     return lines
   }
 
-  public clear(bg: ColorValueInput = RGBA.fromValues(0, 0, 0, 1)): void {
+  public clear(bg?: RGBA): void
+  public clear(bg: ColorValueInput): void
+  public clear(bg: RGBA | ColorValueInput = RGBA.fromValues(0, 0, 0, 1)): void {
     this.guard()
     this.lib.bufferClear(this.bufferPtr, bg)
   }
 
+  public setCell(x: number, y: number, char: string, fg: RGBA, bg: RGBA, attributes?: number): void
   public setCell(
     x: number,
     y: number,
     char: string,
     fg: ColorValueInput,
     bg: ColorValueInput,
+    attributes?: number,
+  ): void
+  public setCell(
+    x: number,
+    y: number,
+    char: string,
+    fg: RGBA | ColorValueInput,
+    bg: RGBA | ColorValueInput,
     attributes: number = 0,
   ): void {
     this.guard()
     this.lib.bufferSetCell(this.bufferPtr, x, y, char, fg, bg, attributes)
   }
 
+  public setCellWithAlphaBlending(x: number, y: number, char: string, fg: RGBA, bg: RGBA, attributes?: number): void
   public setCellWithAlphaBlending(
     x: number,
     y: number,
     char: string,
     fg: ColorValueInput,
     bg: ColorValueInput,
+    attributes?: number,
+  ): void
+  public setCellWithAlphaBlending(
+    x: number,
+    y: number,
+    char: string,
+    fg: RGBA | ColorValueInput,
+    bg: RGBA | ColorValueInput,
     attributes: number = 0,
   ): void {
     this.guard()
@@ -264,10 +286,28 @@ export class OptimizedBuffer {
     text: string,
     x: number,
     y: number,
+    fg: RGBA,
+    bg?: RGBA,
+    attributes?: number,
+    selection?: { start: number; end: number; bgColor?: RGBA; fgColor?: RGBA } | null,
+  ): void
+  public drawText(
+    text: string,
+    x: number,
+    y: number,
     fg: ColorValueInput,
     bg?: ColorValueInput,
+    attributes?: number,
+    selection?: { start: number; end: number; bgColor?: BufferColor; fgColor?: BufferColor } | null,
+  ): void
+  public drawText(
+    text: string,
+    x: number,
+    y: number,
+    fg: RGBA | ColorValueInput,
+    bg?: RGBA | ColorValueInput,
     attributes: number = 0,
-    selection?: { start: number; end: number; bgColor?: ColorValueInput; fgColor?: ColorValueInput } | null,
+    selection?: { start: number; end: number; bgColor?: BufferColor; fgColor?: BufferColor } | null,
   ): void {
     this.guard()
     if (!selection) {
@@ -306,7 +346,9 @@ export class OptimizedBuffer {
     }
   }
 
-  public fillRect(x: number, y: number, width: number, height: number, bg: ColorValueInput): void {
+  public fillRect(x: number, y: number, width: number, height: number, bg: RGBA): void
+  public fillRect(x: number, y: number, width: number, height: number, bg: ColorValueInput): void
+  public fillRect(x: number, y: number, width: number, height: number, bg: RGBA | ColorValueInput): void {
     this.lib.bufferFillRect(this.bufferPtr, x, y, width, height, bg)
   }
 
@@ -457,8 +499,8 @@ export class OptimizedBuffer {
     borderStyle?: BorderStyle
     customBorderChars?: Uint32Array
     border: boolean | BorderSides[]
-    borderColor: ColorValueInput
-    backgroundColor: ColorValueInput
+    borderColor: BufferColor
+    backgroundColor: BufferColor
     shouldFill?: boolean
     title?: string
     titleAlignment?: "left" | "center" | "right"
@@ -530,8 +572,8 @@ export class OptimizedBuffer {
 
   public drawGrid(options: {
     borderChars: Uint32Array
-    borderFg: ColorValueInput
-    borderBg: ColorValueInput
+    borderFg: BufferColor
+    borderBg: BufferColor
     columnOffsets: Int32Array
     rowOffsets: Int32Array
     drawInner: boolean
@@ -558,12 +600,21 @@ export class OptimizedBuffer {
     )
   }
 
+  public drawChar(char: number, x: number, y: number, fg: RGBA, bg: RGBA, attributes?: number): void
   public drawChar(
     char: number,
     x: number,
     y: number,
     fg: ColorValueInput,
     bg: ColorValueInput,
+    attributes?: number,
+  ): void
+  public drawChar(
+    char: number,
+    x: number,
+    y: number,
+    fg: RGBA | ColorValueInput,
+    bg: RGBA | ColorValueInput,
     attributes: number = 0,
   ): void {
     this.guard()
