@@ -5,14 +5,13 @@ import {
   type CursorStyle,
   type CursorStyleOptions,
   type TargetChannel,
-  type ColorDebugStats,
   type DebugOverlayCorner,
   type WidthMethod,
   type Highlight,
   type LineInfo,
   type MousePointerStyle,
 } from "./types.js"
-export type { LineInfo, AllocatorStats, BuildOptions, ColorDebugStats }
+export type { LineInfo, AllocatorStats, BuildOptions }
 
 import { RGBA } from "./lib/RGBA.js"
 import {
@@ -52,6 +51,14 @@ import type {
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
 import type { TerminalColors } from "./lib/terminal-palette.js"
+
+interface InternalColorDebugStats {
+  conversions: number
+  cache_hits: number
+  cache_misses: number
+  cache_size: number
+  palette_epoch: number
+}
 
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
@@ -1563,8 +1570,6 @@ export interface RenderLib {
   getCursorState: (renderer: Pointer) => CursorState
   setCursorStyleOptions: (renderer: Pointer, options: CursorStyleOptions) => void
   setDebugOverlay: (renderer: Pointer, enabled: boolean, corner: DebugOverlayCorner) => void
-  resetColorDebugStats: (renderer: Pointer, clearCache: boolean) => void
-  getColorDebugStats: (renderer: Pointer) => ColorDebugStats
   clearTerminal: (renderer: Pointer) => void
   setTerminalTitle: (renderer: Pointer, title: string) => void
   copyToClipboardOSC52: (renderer: Pointer, target: number, payload: Uint8Array) => boolean
@@ -2603,10 +2608,10 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.resetColorDebugStats(renderer, clearCache)
   }
 
-  public getColorDebugStats(renderer: Pointer): ColorDebugStats {
+  public getColorDebugStats(renderer: Pointer): InternalColorDebugStats {
     const statsBuffer = new ArrayBuffer(ColorDebugStatsStruct.size)
     this.opentui.symbols.getColorDebugStats(renderer, ptr(statsBuffer))
-    return ColorDebugStatsStruct.unpack(statsBuffer) as ColorDebugStats
+    return ColorDebugStatsStruct.unpack(statsBuffer) as InternalColorDebugStats
   }
 
   public clearTerminal(renderer: Pointer) {

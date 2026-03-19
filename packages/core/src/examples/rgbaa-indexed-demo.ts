@@ -18,10 +18,29 @@ import type { TerminalColors } from "../lib/terminal-palette.js"
 import type { TextChunk } from "../text-buffer.js"
 import { setupCommonDemoKeys } from "./lib/standalone-keys.js"
 
+type DemoTextChunk = Omit<TextChunk, "fg" | "bg"> & {
+  fg?: ColorValueInput
+  bg?: ColorValueInput
+}
+
 type ScenarioMode = "reused" | "unique"
 type PalettePresetName = "detected" | "xterm" | "solarized-dark"
 type RunOptions = {
   autoDetectPalette?: boolean
+}
+
+interface InternalColorDebugStats {
+  conversions: number
+  cache_hits: number
+  cache_misses: number
+  cache_size: number
+  palette_epoch: number
+}
+
+interface InternalPaletteDebugRenderer {
+  publishPalette(colors: TerminalColors | null): void
+  resetColorDebugStats(options?: { clearCache?: boolean }): void
+  getColorDebugStats(): InternalColorDebugStats
 }
 
 const SWATCH_COUNT = 32
@@ -101,6 +120,18 @@ let visiblePalette: RGBA[] = fullPalette.slice(0, 16)
 let lastStatsLabel = ""
 let visualChecklistRunning = false
 
+function publishPalette(renderer: CliRenderer, colors: TerminalColors | null): void {
+  ;(renderer as unknown as InternalPaletteDebugRenderer).publishPalette(colors)
+}
+
+function resetRendererColorDebugStats(renderer: CliRenderer, options?: { clearCache?: boolean }): void {
+  ;(renderer as unknown as InternalPaletteDebugRenderer).resetColorDebugStats(options)
+}
+
+function readColorDebugStats(renderer: CliRenderer): InternalColorDebugStats {
+  return (renderer as unknown as InternalPaletteDebugRenderer).getColorDebugStats()
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -108,7 +139,7 @@ function sleep(ms: number): Promise<void> {
 function chunk(
   text: string,
   options: { fg?: ColorValueInput; bg?: ColorValueInput; attributes?: number } = {},
-): TextChunk {
+): DemoTextChunk {
   return {
     __isChunk: true,
     text,
@@ -192,7 +223,7 @@ function buildSourceColors(mode: ScenarioMode, count: number): RGBA[] {
 }
 
 function buildRgbFallbackLine(label: string, colors: RGBA[]): StyledText {
-  const chunks: TextChunk[] = [
+  const chunks: DemoTextChunk[] = [
     chunk(label.padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
   ]
@@ -202,11 +233,11 @@ function buildRgbFallbackLine(label: string, colors: RGBA[]): StyledText {
     if ((i + 1) % 8 === 0) chunks.push(chunk(" "))
   }
 
-  return new StyledText(chunks)
+  return new StyledText(chunks as TextChunk[])
 }
 
 function buildIndexedIntentLine(label: string, colors: RGBA[]): StyledText {
-  const chunks: TextChunk[] = [
+  const chunks: DemoTextChunk[] = [
     chunk(label.padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
   ]
@@ -217,7 +248,7 @@ function buildIndexedIntentLine(label: string, colors: RGBA[]): StyledText {
     if ((i + 1) % 8 === 0) chunks.push(chunk(" "))
   }
 
-  return new StyledText(chunks)
+  return new StyledText(chunks as TextChunk[])
 }
 
 function buildDefaultIntentLine(): StyledText {
@@ -239,11 +270,11 @@ function buildDefaultIntentLine(): StyledText {
     chunk(" Warning ", { fg: warningFg, bg: indexedColor(3, warning), attributes: TextAttributes.BOLD }),
     chunk("  "),
     chunk(" defaults ", { fg: defaultColor(defaultSurfaceFg), bg: defaultColor(surface) }),
-  ])
+  ] as TextChunk[])
 }
 
 function buildPaletteLine(label: string, start: number, end: number): StyledText {
-  const chunks: TextChunk[] = [
+  const chunks: DemoTextChunk[] = [
     chunk(label.padEnd(15), { fg: COLOR_LABEL, attributes: TextAttributes.BOLD }),
     chunk(" "),
   ]
@@ -255,7 +286,7 @@ function buildPaletteLine(label: string, start: number, end: number): StyledText
     chunks.push(chunk(" "))
   }
 
-  return new StyledText(chunks)
+  return new StyledText(chunks as TextChunk[])
 }
 
 function colorModeLabel(renderer: CliRenderer): string {
@@ -295,7 +326,7 @@ function setStatus(message: string, color: RGBA): void {
 function updateStatsLabel(renderer: CliRenderer): void {
   if (!cacheStatsText) return
 
-  const stats = renderer.getColorDebugStats()
+  const stats = readColorDebugStats(renderer)
   const label =
     `palette=${palettePreset} mode=${colorModeLabel(renderer)} scenario=${scenarioMode} glyph=${swatchGlyph}` +
     `\n` +
@@ -337,7 +368,7 @@ function refreshView(renderer: CliRenderer): void {
 }
 
 function resetColorStats(renderer: CliRenderer, clearCache: boolean): void {
-  renderer.resetColorDebugStats({ clearCache })
+  resetRendererColorDebugStats(renderer, { clearCache })
   lastStatsLabel = ""
 }
 
@@ -348,7 +379,7 @@ function applyPresetPalette(
 ): void {
   const colors = buildPresetPalette(name)
   applyPalette(colors, name)
-  renderer.publishPalette(colors)
+  publishPalette(renderer, colors)
   if (options.resetStats ?? true) {
     resetColorStats(renderer, true)
   }
@@ -370,7 +401,7 @@ async function detectPalette(renderer: CliRenderer, clearRendererCache: boolean)
 
     const colors = await renderer.getPalette({ size: 256 })
     applyPalette(colors, "detected")
-    renderer.publishPalette(colors)
+    publishPalette(renderer, colors)
     resetColorStats(renderer, true)
     setStatus("Published detected terminal palette and reset RGB->index stats.", COLOR_SUCCESS)
   } catch (error) {
@@ -449,7 +480,7 @@ type ChecklistSnapshot = {
 }
 
 function snapshotStats(renderer: CliRenderer, label: string): ChecklistSnapshot {
-  const stats = renderer.getColorDebugStats()
+  const stats = readColorDebugStats(renderer)
   return {
     label,
     mode: colorModeLabel(renderer),
@@ -564,7 +595,7 @@ export function run(renderer: CliRenderer, options: RunOptions = {}): void {
   renderer.setBackgroundColor(COLOR_BG)
 
   applyPalette(buildPresetPalette("xterm"), "xterm")
-  renderer.publishPalette(buildPresetPalette("xterm"))
+  publishPalette(renderer, buildPresetPalette("xterm"))
   resetColorStats(renderer, true)
 
   rootContainer = new BoxRenderable(renderer, {

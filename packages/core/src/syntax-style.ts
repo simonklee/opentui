@@ -1,5 +1,4 @@
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
-import { colorValueToRgba, type ColorValueInput } from "./lib/color-value.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
 import { type Pointer } from "bun:ffi"
 import { createTextAttributes } from "./utils.js"
@@ -17,11 +16,6 @@ export interface MergedStyle {
   fg?: RGBA
   bg?: RGBA
   attributes: number
-}
-
-type StyleDefinitionInput = Omit<StyleDefinition, "fg" | "bg"> & {
-  fg?: ColorValueInput
-  bg?: ColorValueInput
 }
 
 export interface ThemeTokenStyle {
@@ -115,34 +109,20 @@ export class SyntaxStyle {
     if (this._destroyed) throw new Error("NativeSyntaxStyle is destroyed")
   }
 
-  public registerStyle(name: string, style: StyleDefinition): number
-  public registerStyle(name: string, style: StyleDefinitionInput): number
-  public registerStyle(name: string, style: StyleDefinition | StyleDefinitionInput): number {
+  public registerStyle(name: string, style: StyleDefinition): number {
     this.guard()
 
-    const normalizedStyle: StyleDefinition = {
-      ...style,
-      fg: style.fg ? (colorValueToRgba(style.fg, "fg") ?? undefined) : undefined,
-      bg: style.bg ? (colorValueToRgba(style.bg, "bg") ?? undefined) : undefined,
-    }
-
     const attributes = createTextAttributes({
-      bold: normalizedStyle.bold,
-      italic: normalizedStyle.italic,
-      underline: normalizedStyle.underline,
-      dim: normalizedStyle.dim,
+      bold: style.bold,
+      italic: style.italic,
+      underline: style.underline,
+      dim: style.dim,
     })
 
-    const id = this.lib.syntaxStyleRegister(
-      this.stylePtr,
-      name,
-      normalizedStyle.fg ?? null,
-      normalizedStyle.bg ?? null,
-      attributes,
-    )
+    const id = this.lib.syntaxStyleRegister(this.stylePtr, name, style.fg ?? null, style.bg ?? null, attributes)
 
     this.nameCache.set(name, id)
-    this.styleDefs.set(name, normalizedStyle)
+    this.styleDefs.set(name, style)
 
     return id
   }

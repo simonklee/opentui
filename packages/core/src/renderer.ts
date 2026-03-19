@@ -2,7 +2,6 @@ import { ANSI } from "./ansi.js"
 import { Renderable, RootRenderable } from "./Renderable.js"
 import {
   DebugOverlayCorner,
-  type ColorDebugStats,
   type CursorStyleOptions,
   type MousePointerStyle,
   type RenderContext,
@@ -38,6 +37,19 @@ import {
 } from "./lib/terminal-capability-detection.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
+
+interface InternalColorDebugStats {
+  conversions: number
+  cache_hits: number
+  cache_misses: number
+  cache_size: number
+  palette_epoch: number
+}
+
+interface InternalRendererPaletteDebugLib extends RenderLib {
+  resetColorDebugStats: (renderer: Pointer, clearCache: boolean) => void
+  getColorDebugStats: (renderer: Pointer) => InternalColorDebugStats
+}
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -2466,7 +2478,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this._cachedPalette = null
   }
 
-  public publishPalette(colors: TerminalColors | null): void {
+  private publishPalette(colors: TerminalColors | null): void {
     if (!colors) {
       this.clearPaletteCache()
     }
@@ -2480,12 +2492,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.requestRender()
   }
 
-  public resetColorDebugStats(options: { clearCache?: boolean } = {}): void {
-    this.lib.resetColorDebugStats(this.rendererPtr, options.clearCache ?? false)
+  private resetColorDebugStats(options: { clearCache?: boolean } = {}): void {
+    ;(this.lib as InternalRendererPaletteDebugLib).resetColorDebugStats(this.rendererPtr, options.clearCache ?? false)
   }
 
-  public getColorDebugStats(): ColorDebugStats {
-    return this.lib.getColorDebugStats(this.rendererPtr)
+  private getColorDebugStats(): InternalColorDebugStats {
+    return (this.lib as InternalRendererPaletteDebugLib).getColorDebugStats(this.rendererPtr)
   }
 
   /**

@@ -10,6 +10,14 @@ import { buildTerminalPaletteSignature } from "../lib/color-value.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 
+interface InternalPalettePublisher {
+  publishPalette(colors: TerminalColors | null): void
+}
+
+function publishPalette(renderer: unknown, colors: TerminalColors | null): void {
+  ;(renderer as InternalPalettePublisher).publishPalette(colors)
+}
+
 function flushAsync(): Promise<void> {
   return Promise.resolve().then(() => Promise.resolve())
 }
@@ -447,7 +455,7 @@ describe("Palette cache invalidation", () => {
     const detected = await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
     expect(renderer.paletteDetectionStatus).toBe("cached")
 
-    renderer.publishPalette(null)
+    publishPalette(renderer, null)
 
     expect(renderer.paletteDetectionStatus).toBe("idle")
     // @ts-expect-error - accessing private property for testing
@@ -485,7 +493,7 @@ describe("Palette cache invalidation", () => {
     const detectPromise = renderer.getPalette({ size: 256, timeout: 300 })
     expect(renderer.paletteDetectionStatus).toBe("detecting")
 
-    renderer.publishPalette(manualPalette)
+    publishPalette(renderer, manualPalette)
 
     // @ts-expect-error - accessing private property for testing
     const epochAfterPublish = renderer._paletteEpoch

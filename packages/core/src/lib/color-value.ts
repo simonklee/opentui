@@ -142,19 +142,6 @@ function resolvePreparedColorInput(value: ColorValueInput): PreparedColorValueIn
   }
 }
 
-function isColorValue(value: unknown): value is ColorValue {
-  if (!value || typeof value !== "object") return false
-  const maybeColor = value as Partial<ColorValue>
-  return maybeColor.kind === "rgb" || maybeColor.kind === "indexed" || maybeColor.kind === "default"
-}
-
-export function prepareColorValueInput(
-  value: ColorValueInput | null | undefined,
-): PreparedColorValueInput | null | undefined {
-  if (value == null) return value
-  return resolvePreparedColorInput(value)
-}
-
 export function getFallbackAnsi256Palette(): readonly RGBA[] {
   if (!fallbackAnsi256Palette) {
     fallbackAnsi256Palette = buildFallbackAnsi256Palette()
@@ -269,16 +256,6 @@ export function packColorValueToF32(
   return out
 }
 
-export function colorValuesEqual(
-  a: NormalizedColorValue | null | undefined,
-  b: NormalizedColorValue | null | undefined,
-): boolean {
-  if (a === b) return true
-  if (!a || !b) return false
-
-  return a.tag === b.tag && a.rgba.equals(b.rgba)
-}
-
 export function normalizeTerminalPalette(colors?: TerminalColors | null): {
   palette: RGBA[]
   defaultForeground: RGBA
@@ -309,9 +286,3 @@ export function buildTerminalPaletteSignature(colors?: TerminalColors | null): s
     normalized.defaultBackground.toInts().join(","),
   ].join("|")
 }
-
-export function colorValueToRgba(value: ColorValueInput | null | undefined, role: "fg" | "bg" = "fg"): RGBA | null {
-  return normalizeColorValue(value, { role })?.rgba ?? null
-}
-
-export { isColorValue }

@@ -1,16 +1,13 @@
 import type { TextRenderable } from "./index.js"
 import { BaseRenderable, type BaseRenderableOptions } from "../Renderable.js"
-import { RGBA, type ColorInput } from "../lib/RGBA.js"
-import { colorValueToRgba, type ColorValue } from "../lib/color-value.js"
+import { RGBA, parseColor } from "../lib/RGBA.js"
 import { isStyledText, StyledText } from "../lib/styled-text.js"
 import { type TextChunk } from "../text-buffer.js"
 import type { RenderContext } from "../types.js"
 
-export type TextNodeColor = ColorInput | ColorValue
-
 export interface TextNodeOptions extends BaseRenderableOptions {
-  fg?: TextNodeColor
-  bg?: TextNodeColor
+  fg?: string | RGBA
+  bg?: string | RGBA
   attributes?: number
   link?: { url: string }
 }
@@ -47,8 +44,8 @@ export class TextNodeRenderable extends BaseRenderable {
   constructor(options: TextNodeOptions) {
     super(options)
 
-    this._fg = options.fg ? (colorValueToRgba(options.fg, "fg") ?? undefined) : undefined
-    this._bg = options.bg ? (colorValueToRgba(options.bg, "bg") ?? undefined) : undefined
+    this._fg = options.fg ? parseColor(options.fg) : undefined
+    this._bg = options.bg ? parseColor(options.bg) : undefined
     this._attributes = options.attributes ?? 0
     this._link = options.link
   }
@@ -262,23 +259,23 @@ export class TextNodeRenderable extends BaseRenderable {
     return this._fg
   }
 
-  public set fg(fg: TextNodeColor | undefined) {
+  public set fg(fg: RGBA | string | undefined) {
     if (!fg) {
       this._fg = undefined
       this.requestRender()
       return
     }
-    this._fg = colorValueToRgba(fg, "fg") ?? undefined
+    this._fg = parseColor(fg)
     this.requestRender()
   }
 
-  public set bg(bg: TextNodeColor | undefined) {
+  public set bg(bg: RGBA | string | undefined) {
     if (!bg) {
       this._bg = undefined
       this.requestRender()
       return
     }
-    this._bg = colorValueToRgba(bg, "bg") ?? undefined
+    this._bg = parseColor(bg)
     this.requestRender()
   }
 

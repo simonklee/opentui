@@ -6,7 +6,36 @@ import { RGBA, StyledText, TextRenderable, indexedColor, type ColorValueInput } 
 import type { TerminalColors } from "../lib/terminal-palette.js"
 import type { TextChunk } from "../text-buffer.js"
 import { createTestRenderer } from "../testing/test-renderer.js"
-import type { ColorDebugStats } from "../types.js"
+
+type BenchmarkTextChunk = Omit<TextChunk, "fg" | "bg"> & {
+  fg?: ColorValueInput
+}
+
+interface ColorDebugStats {
+  conversions: number
+  cache_hits: number
+  cache_misses: number
+  cache_size: number
+  palette_epoch: number
+}
+
+interface InternalPaletteDebugRenderer {
+  publishPalette(colors: TerminalColors | null): void
+  resetColorDebugStats(options?: { clearCache?: boolean }): void
+  getColorDebugStats(): ColorDebugStats
+}
+
+function publishPalette(renderer: unknown, colors: TerminalColors | null): void {
+  ;(renderer as InternalPaletteDebugRenderer).publishPalette(colors)
+}
+
+function resetColorDebugStats(renderer: unknown, options?: { clearCache?: boolean }): void {
+  ;(renderer as InternalPaletteDebugRenderer).resetColorDebugStats(options)
+}
+
+function getColorDebugStats(renderer: unknown): ColorDebugStats {
+  return (renderer as InternalPaletteDebugRenderer).getColorDebugStats()
+}
 
 type ScenarioName = "reused-rgb" | "unique-rgb" | "explicit-indexed"
 
@@ -66,7 +95,7 @@ function buildPalette(): TerminalColors {
   }
 }
 
-function chunk(text: string, options: { fg?: ColorValueInput; attributes?: number } = {}): TextChunk {
+function chunk(text: string, options: { fg?: ColorValueInput; attributes?: number } = {}): BenchmarkTextChunk {
   return {
     __isChunk: true,
     text,
@@ -97,7 +126,7 @@ function buildScenarioColors(name: ScenarioName, swatches: number): RGBA[] {
 
 function buildLine(name: ScenarioName, glyph: string, swatches: number): StyledText {
   const colors = buildScenarioColors(name, swatches)
-  const chunks: TextChunk[] = []
+  const chunks: BenchmarkTextChunk[] = []
 
   for (let index = 0; index < colors.length; index++) {
     const color = colors[index]
@@ -105,18 +134,18 @@ function buildLine(name: ScenarioName, glyph: string, swatches: number): StyledT
     chunks.push(chunk(glyph, { fg }))
   }
 
-  return new StyledText(chunks)
+  return new StyledText(chunks as TextChunk[])
 }
 
 function buildBenchmarkFrame(glyph: string, swatches: number, rows: number, scenario: ScenarioName): StyledText {
-  const chunks: TextChunk[] = []
+  const chunks: BenchmarkTextChunk[] = []
 
   for (let row = 0; row < rows; row++) {
     chunks.push(...buildLine(scenario, glyph, swatches).chunks)
     if (row < rows - 1) chunks.push(chunk("\n"))
   }
 
-  return new StyledText(chunks)
+  return new StyledText(chunks as TextChunk[])
 }
 
 function diffStats(a: ColorDebugStats, b: ColorDebugStats): ColorDebugStats {
@@ -143,7 +172,7 @@ async function main(): Promise<void> {
     useThread: false,
   })
 
-  renderer.publishPalette(buildPalette())
+  publishPalette(renderer, buildPalette())
 
   const renderable = new TextRenderable(renderer, {
     id: "rgbaa-indexed-benchmark",
@@ -156,13 +185,13 @@ async function main(): Promise<void> {
   const scenarioResults: Array<Record<string, unknown>> = []
 
   for (const scenario of ["reused-rgb", "unique-rgb", "explicit-indexed"] as const) {
-    renderer.resetColorDebugStats({ clearCache: true })
+    resetColorDebugStats(renderer, { clearCache: true })
 
     renderable.content = buildBenchmarkFrame("█", swatches, rows, scenario)
     const firstStart = performance.now()
     await renderOnce()
     const firstElapsedMs = performance.now() - firstStart
-    const firstStats = renderer.getColorDebugStats()
+    const firstStats = getColorDebugStats(renderer)
 
     const steadyStart = performance.now()
     for (let frame = 1; frame < frames; frame++) {
@@ -171,7 +200,7 @@ async function main(): Promise<void> {
       await renderOnce()
     }
     const steadyElapsedMs = performance.now() - steadyStart
-    const finalStats = renderer.getColorDebugStats()
+    const finalStats = getColorDebugStats(renderer)
     const steadyStats = diffStats(firstStats, finalStats)
 
     scenarioResults.push({

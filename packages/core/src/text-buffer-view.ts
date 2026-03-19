@@ -1,10 +1,7 @@
 import { RGBA } from "./lib/RGBA.js"
-import type { ColorValue, ColorValueInput } from "./lib/color-value.js"
 import { resolveRenderLib, type LineInfo, type RenderLib } from "./zig.js"
 import { type Pointer } from "bun:ffi"
 import type { TextBuffer } from "./text-buffer.js"
-
-export type SelectionColor = RGBA | ColorValue
 
 export class TextBufferView {
   private lib: RenderLib
@@ -34,21 +31,12 @@ export class TextBufferView {
     return this.viewPtr
   }
 
-  public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void
-  public setSelection(start: number, end: number, bgColor?: ColorValueInput, fgColor?: ColorValueInput): void
-  public setSelection(
-    start: number,
-    end: number,
-    bgColor?: RGBA | ColorValueInput,
-    fgColor?: RGBA | ColorValueInput,
-  ): void {
+  public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
     this.guard()
     this.lib.textBufferViewSetSelection(this.viewPtr, start, end, bgColor ?? null, fgColor ?? null)
   }
 
-  public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void
-  public updateSelection(end: number, bgColor?: ColorValueInput, fgColor?: ColorValueInput): void
-  public updateSelection(end: number, bgColor?: RGBA | ColorValueInput, fgColor?: RGBA | ColorValueInput): void {
+  public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void {
     this.guard()
     this.lib.textBufferViewUpdateSelection(this.viewPtr, end, bgColor ?? null, fgColor ?? null)
   }
@@ -75,22 +63,6 @@ export class TextBufferView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
-  ): boolean
-  public setLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: ColorValueInput,
-    fgColor?: ColorValueInput,
-  ): boolean
-  public setLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: RGBA | ColorValueInput,
-    fgColor?: RGBA | ColorValueInput,
   ): boolean {
     this.guard()
     return this.lib.textBufferViewSetLocalSelection(
@@ -111,22 +83,6 @@ export class TextBufferView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
-  ): boolean
-  public updateLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: ColorValueInput,
-    fgColor?: ColorValueInput,
-  ): boolean
-  public updateLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: RGBA | ColorValueInput,
-    fgColor?: RGBA | ColorValueInput,
   ): boolean {
     this.guard()
     return this.lib.textBufferViewUpdateLocalSelection(

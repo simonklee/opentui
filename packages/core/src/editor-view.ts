@@ -1,18 +1,8 @@
 import { RGBA } from "./lib/RGBA.js"
-import type { ColorValue, ColorValueInput } from "./lib/color-value.js"
 import { resolveRenderLib, type RenderLib, type VisualCursor, type LineInfo } from "./zig.js"
 import { type Pointer } from "bun:ffi"
 import type { EditBuffer } from "./edit-buffer.js"
 import { createExtmarksController } from "./lib/index.js"
-
-export type EditorViewColor = RGBA | ColorValue
-
-export interface PlaceholderTextChunk {
-  text: string
-  fg?: EditorViewColor
-  bg?: EditorViewColor
-  attributes?: number
-}
 
 export interface Viewport {
   offsetY: number
@@ -87,21 +77,12 @@ export class EditorView {
     return this.lib.editorViewGetTotalVirtualLineCount(this.viewPtr)
   }
 
-  public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void
-  public setSelection(start: number, end: number, bgColor?: ColorValueInput, fgColor?: ColorValueInput): void
-  public setSelection(
-    start: number,
-    end: number,
-    bgColor?: RGBA | ColorValueInput,
-    fgColor?: RGBA | ColorValueInput,
-  ): void {
+  public setSelection(start: number, end: number, bgColor?: RGBA, fgColor?: RGBA): void {
     this.guard()
     this.lib.editorViewSetSelection(this.viewPtr, start, end, bgColor ?? null, fgColor ?? null)
   }
 
-  public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void
-  public updateSelection(end: number, bgColor?: ColorValueInput, fgColor?: ColorValueInput): void
-  public updateSelection(end: number, bgColor?: RGBA | ColorValueInput, fgColor?: RGBA | ColorValueInput): void {
+  public updateSelection(end: number, bgColor?: RGBA, fgColor?: RGBA): void {
     this.guard()
     this.lib.editorViewUpdateSelection(this.viewPtr, end, bgColor ?? null, fgColor ?? null)
   }
@@ -130,26 +111,6 @@ export class EditorView {
     fgColor?: RGBA,
     updateCursor?: boolean,
     followCursor?: boolean,
-  ): boolean
-  public setLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: ColorValueInput,
-    fgColor?: ColorValueInput,
-    updateCursor?: boolean,
-    followCursor?: boolean,
-  ): boolean
-  public setLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: RGBA | ColorValueInput,
-    fgColor?: RGBA | ColorValueInput,
-    updateCursor?: boolean,
-    followCursor?: boolean,
   ): boolean {
     this.guard()
     return this.lib.editorViewSetLocalSelection(
@@ -172,26 +133,6 @@ export class EditorView {
     focusY: number,
     bgColor?: RGBA,
     fgColor?: RGBA,
-    updateCursor?: boolean,
-    followCursor?: boolean,
-  ): boolean
-  public updateLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: ColorValueInput,
-    fgColor?: ColorValueInput,
-    updateCursor?: boolean,
-    followCursor?: boolean,
-  ): boolean
-  public updateLocalSelection(
-    anchorX: number,
-    anchorY: number,
-    focusX: number,
-    focusY: number,
-    bgColor?: RGBA | ColorValueInput,
-    fgColor?: RGBA | ColorValueInput,
     updateCursor?: boolean,
     followCursor?: boolean,
   ): boolean {
@@ -305,11 +246,7 @@ export class EditorView {
     return this._extmarksController
   }
 
-  public setPlaceholderStyledText(chunks: { text: string; fg?: RGBA; bg?: RGBA; attributes?: number }[]): void
-  public setPlaceholderStyledText(chunks: PlaceholderTextChunk[]): void
-  public setPlaceholderStyledText(
-    chunks: Array<{ text: string; fg?: RGBA | ColorValueInput; bg?: RGBA | ColorValueInput; attributes?: number }>,
-  ): void {
+  public setPlaceholderStyledText(chunks: { text: string; fg?: RGBA; bg?: RGBA; attributes?: number }[]): void {
     this.guard()
     this.lib.editorViewSetPlaceholderStyledText(this.viewPtr, chunks)
   }

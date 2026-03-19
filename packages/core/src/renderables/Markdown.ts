@@ -747,7 +747,6 @@ export class MarkdownRenderable extends Renderable {
 
   private resolveTableRenderableOptions(): ResolvedTableRenderableOptions {
     const borders = this._tableOptions?.borders ?? true
-    const concealBorderColor = this.getStyle("conceal")?.fg
 
     return {
       columnWidthMode: this._tableOptions?.widthMode ?? "full",
@@ -758,9 +757,7 @@ export class MarkdownRenderable extends Renderable {
       outerBorder: this._tableOptions?.outerBorder ?? borders,
       showBorders: borders,
       borderStyle: this._tableOptions?.borderStyle ?? "single",
-      borderColor:
-        this._tableOptions?.borderColor ??
-        (concealBorderColor instanceof RGBA || typeof concealBorderColor === "string" ? concealBorderColor : "#888888"),
+      borderColor: this._tableOptions?.borderColor ?? this.getStyle("conceal")?.fg ?? "#888888",
       selectable: this._tableOptions?.selectable ?? true,
     }
   }
