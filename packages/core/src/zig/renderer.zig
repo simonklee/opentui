@@ -26,73 +26,6 @@ pub const RendererError = error{
     WriteFailed,
 };
 
-fn rgbaComponentToU8(component: f32) u8 {
-    if (!std.math.isFinite(component)) return 0;
-
-    const clamped = std.math.clamp(component, 0.0, 1.0);
-    return @intFromFloat(@round(clamped * 255.0));
-}
-
-fn u8RgbToRgba(r: u8, g: u8, b: u8) RGBA {
-    return .{
-        @as(f32, @floatFromInt(r)) / 255.0,
-        @as(f32, @floatFromInt(g)) / 255.0,
-        @as(f32, @floatFromInt(b)) / 255.0,
-        1.0,
-    };
-}
-
-fn fallbackAnsi256Color(index: usize) RGBA {
-    const base = [_][3]u8{
-        .{ 0x00, 0x00, 0x00 },
-        .{ 0x80, 0x00, 0x00 },
-        .{ 0x00, 0x80, 0x00 },
-        .{ 0x80, 0x80, 0x00 },
-        .{ 0x00, 0x00, 0x80 },
-        .{ 0x80, 0x00, 0x80 },
-        .{ 0x00, 0x80, 0x80 },
-        .{ 0xc0, 0xc0, 0xc0 },
-        .{ 0x80, 0x80, 0x80 },
-        .{ 0xff, 0x00, 0x00 },
-        .{ 0x00, 0xff, 0x00 },
-        .{ 0xff, 0xff, 0x00 },
-        .{ 0x00, 0x00, 0xff },
-        .{ 0xff, 0x00, 0xff },
-        .{ 0x00, 0xff, 0xff },
-        .{ 0xff, 0xff, 0xff },
-    };
-    const cube_levels = [_]u8{ 0, 95, 135, 175, 215, 255 };
-
-    if (index < base.len) {
-        return u8RgbToRgba(base[index][0], base[index][1], base[index][2]);
-    }
-
-    if (index < 232) {
-        const cube_index = index - 16;
-        const r = cube_levels[(cube_index / 36) % 6];
-        const g = cube_levels[(cube_index / 6) % 6];
-        const b = cube_levels[cube_index % 6];
-        return u8RgbToRgba(r, g, b);
-    }
-
-    const gray_value: u8 = @intCast(8 + (index - 232) * 10);
-    return u8RgbToRgba(gray_value, gray_value, gray_value);
-}
-
-fn colorDistanceSquared(a: RGBA, b: RGBA) f32 {
-    const dr = a[0] - b[0];
-    const dg = a[1] - b[1];
-    const db = a[2] - b[2];
-    return dr * dr + dg * dg + db * db;
-}
-
-fn rgbaToRgb24(rgba: RGBA) u32 {
-    const r = @as(u32, rgbaComponentToU8(rgba[0]));
-    const g = @as(u32, rgbaComponentToU8(rgba[1]));
-    const b = @as(u32, rgbaComponentToU8(rgba[2]));
-    return (r << 16) | (g << 8) | b;
-}
-
 pub const DebugOverlayCorner = enum {
     topLeft,
     topRight,
@@ -577,7 +510,7 @@ pub const CliRenderer = struct {
 
     fn resetFallbackPaletteState(self: *CliRenderer) void {
         for (0..self.palette_rgba.len) |index| {
-            self.palette_rgba[index] = fallbackAnsi256Color(index);
+            self.palette_rgba[index] = ansi.fallbackAnsi256Color(index);
         }
         self.default_fg_rgba = .{ 1.0, 1.0, 1.0, 1.0 };
         self.default_bg_rgba = .{ 0.0, 0.0, 0.0, 1.0 };
@@ -602,7 +535,7 @@ pub const CliRenderer = struct {
     }
 
     fn cachedNearestPaletteIndex(self: *CliRenderer, rgba: RGBA) u8 {
-        const rgb24 = rgbaToRgb24(rgba);
+        const rgb24 = ansi.rgbaToRgb24(rgba);
         const key = (@as(u64, self.palette_epoch) << 24) | @as(u64, rgb24);
 
         if (self.palette_index_cache.get(key)) |cached| {
@@ -613,7 +546,7 @@ pub const CliRenderer = struct {
         var best_distance = std.math.inf(f32);
 
         for (self.palette_rgba, 0..) |candidate, index| {
-            const distance = colorDistanceSquared(rgba, candidate);
+            const distance = ansi.colorDistanceSquared(rgba, candidate);
             if (distance < best_distance) {
                 best_distance = distance;
                 best_index = @intCast(index);
@@ -666,9 +599,9 @@ pub const CliRenderer = struct {
             return;
         }
 
-        const r = rgbaComponentToU8(rgba[0]);
-        const g = rgbaComponentToU8(rgba[1]);
-        const b = rgbaComponentToU8(rgba[2]);
+        const r = ansi.rgbaComponentToU8(rgba[0]);
+        const g = ansi.rgbaComponentToU8(rgba[1]);
+        const b = ansi.rgbaComponentToU8(rgba[2]);
 
         if (is_background) {
             ansi.ANSI.bgColorOutput(writer, r, g, b) catch {};
@@ -965,9 +898,9 @@ pub const CliRenderer = struct {
                 },
             }
 
-            const cursorR = rgbaComponentToU8(cursorColor[0]);
-            const cursorG = rgbaComponentToU8(cursorColor[1]);
-            const cursorB = rgbaComponentToU8(cursorColor[2]);
+            const cursorR = ansi.rgbaComponentToU8(cursorColor[0]);
+            const cursorG = ansi.rgbaComponentToU8(cursorColor[1]);
+            const cursorB = ansi.rgbaComponentToU8(cursorColor[2]);
 
             const styleTag: u8 = @intFromEnum(cursorStyle.style);
             const styleChanged = (self.lastCursorStyleTag == null or self.lastCursorStyleTag.? != styleTag) or

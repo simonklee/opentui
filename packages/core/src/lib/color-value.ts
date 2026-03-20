@@ -1,8 +1,15 @@
 import { RGBA, parseColor, type ColorInput } from "./RGBA.js"
+import {
+  COLOR_TAG_DEFAULT,
+  COLOR_TAG_RGB,
+  DEFAULT_BACKGROUND_RGB,
+  DEFAULT_FOREGROUND_RGB,
+  ansi256IndexToRgb,
+  normalizeIndexedColorIndex,
+} from "./ansi-palette.js"
 import type { TerminalColors } from "./terminal-palette.js"
 
-export const COLOR_TAG_RGB = 256
-export const COLOR_TAG_DEFAULT = 257
+export { COLOR_TAG_DEFAULT, COLOR_TAG_RGB }
 export const PACKED_COLOR_STRIDE = 5
 
 export type ColorTag = number
@@ -56,61 +63,17 @@ interface NormalizedTerminalPalette {
   defaultBackground: RGBA
 }
 
-const ANSI16_HEX = [
-  "#000000",
-  "#800000",
-  "#008000",
-  "#808000",
-  "#000080",
-  "#800080",
-  "#008080",
-  "#c0c0c0",
-  "#808080",
-  "#ff0000",
-  "#00ff00",
-  "#ffff00",
-  "#0000ff",
-  "#ff00ff",
-  "#00ffff",
-  "#ffffff",
-] as const
-
-const ANSI_256_CUBE_LEVELS = [0, 95, 135, 175, 215, 255] as const
-const DEFAULT_FOREGROUND_FALLBACK = RGBA.fromInts(255, 255, 255)
-const DEFAULT_BACKGROUND_FALLBACK = RGBA.fromInts(0, 0, 0)
+const DEFAULT_FOREGROUND_FALLBACK = RGBA.fromInts(...DEFAULT_FOREGROUND_RGB)
+const DEFAULT_BACKGROUND_FALLBACK = RGBA.fromInts(...DEFAULT_BACKGROUND_RGB)
 
 let fallbackAnsi256Palette: RGBA[] | null = null
 let currentColorBasis: NormalizedTerminalPalette | null = null
 
-function cloneRgba(rgba: RGBA): RGBA {
-  return RGBA.fromValues(rgba.r, rgba.g, rgba.b, rgba.a)
-}
-
 function buildFallbackAnsi256Palette(): RGBA[] {
-  const palette = ANSI16_HEX.map((hex) => RGBA.fromHex(hex))
-
-  for (const r of ANSI_256_CUBE_LEVELS) {
-    for (const g of ANSI_256_CUBE_LEVELS) {
-      for (const b of ANSI_256_CUBE_LEVELS) {
-        palette.push(RGBA.fromInts(r, g, b))
-      }
-    }
-  }
-
-  for (let i = 0; i < 24; i++) {
-    const value = 8 + i * 10
-    palette.push(RGBA.fromInts(value, value, value))
-  }
-
-  return palette
-}
-
-function normalizeIndexedColorIndex(index: number): number {
-  if (!Number.isInteger(index) || index < 0 || index > 255) {
-    throw new RangeError(`Indexed color must be an integer in the range 0..255, got ${index}`)
-  }
-
-  return index
+  return Array.from({ length: 256 }, (_, index) => {
+    const [r, g, b] = ansi256IndexToRgb(index)
+    return RGBA.fromInts(r, g, b)
+  })
 }
 
 function getNormalizedRGBAIntentTag(rgba: RGBA): ColorTag | undefined {
@@ -146,14 +109,14 @@ function resolveColorBasis(options: { palette?: readonly RGBA[]; defaultFg?: RGB
 }
 
 function resolveImplicitIndexedSnapshot(index: number, palette: readonly RGBA[]): RGBA {
-  return cloneRgba(palette[index] ?? getFallbackAnsi256Palette()[index] ?? DEFAULT_FOREGROUND_FALLBACK)
+  return RGBA.clone(palette[index] ?? getFallbackAnsi256Palette()[index] ?? DEFAULT_FOREGROUND_FALLBACK)
 }
 
 function resolveImplicitDefaultSnapshot(
   role: "fg" | "bg" | undefined,
   defaults: { defaultForeground: RGBA; defaultBackground: RGBA },
 ): RGBA {
-  return cloneRgba(role === "bg" ? defaults.defaultBackground : defaults.defaultForeground)
+  return RGBA.clone(role === "bg" ? defaults.defaultBackground : defaults.defaultForeground)
 }
 
 function normalizeIntentfulRGBA(
@@ -283,7 +246,7 @@ export function normalizeColorValue(
 
   if (preparedValue.kind === "rgb") {
     return {
-      rgba: cloneRgba(preparedValue.rgba as RGBA),
+      rgba: RGBA.clone(preparedValue.rgba as RGBA),
       tag: COLOR_TAG_RGB,
     }
   }
@@ -343,10 +306,10 @@ export function normalizeTerminalPalette(colors?: TerminalColors | null): {
     }),
     defaultForeground: colors?.defaultForeground
       ? RGBA.fromHex(colors.defaultForeground)
-      : cloneRgba(DEFAULT_FOREGROUND_FALLBACK),
+      : RGBA.clone(DEFAULT_FOREGROUND_FALLBACK),
     defaultBackground: colors?.defaultBackground
       ? RGBA.fromHex(colors.defaultBackground)
-      : cloneRgba(DEFAULT_BACKGROUND_FALLBACK),
+      : RGBA.clone(DEFAULT_BACKGROUND_FALLBACK),
   }
 }
 

@@ -120,6 +120,29 @@ describe("RGBA class", () => {
     })
   })
 
+  describe("clone", () => {
+    test("creates a detached copy", () => {
+      const original = RGBA.fromValues(0.1, 0.2, 0.3, 0.4)
+      const cloned = RGBA.clone(original)
+
+      expect(cloned).not.toBe(original)
+      expect(cloned.buffer).not.toBe(original.buffer)
+      expect(cloned.toInts()).toEqual(original.toInts())
+
+      cloned.r = 0.9
+      expect(original.r).toBeCloseTo(0.1, 5)
+    })
+  })
+
+  describe("intent helpers", () => {
+    test("fromIndex uses ANSI256 fallback snapshots", () => {
+      expect(RGBA.fromIndex(9).toInts()).toEqual([255, 0, 0, 255])
+      expect(RGBA.fromIndex(21).toInts()).toEqual([0, 0, 255, 255])
+      expect(RGBA.fromIndex(232).toInts()).toEqual([8, 8, 8, 255])
+      expect(RGBA.fromIndex(255).toInts()).toEqual([238, 238, 238, 255])
+    })
+  })
+
   describe("fromHex", () => {
     test("creates RGBA from hex string", () => {
       const rgba = RGBA.fromHex("#FF8040")

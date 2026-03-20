@@ -1,24 +1,11 @@
-const ANSI16_HEX = [
-  "#000000",
-  "#800000",
-  "#008000",
-  "#808000",
-  "#000080",
-  "#800080",
-  "#008080",
-  "#c0c0c0",
-  "#808080",
-  "#ff0000",
-  "#00ff00",
-  "#ffff00",
-  "#0000ff",
-  "#ff00ff",
-  "#00ffff",
-  "#ffffff",
-] as const
+import {
+  COLOR_TAG_DEFAULT,
+  DEFAULT_BACKGROUND_RGB,
+  DEFAULT_FOREGROUND_RGB,
+  ansi256IndexToRgb,
+  normalizeIndexedColorIndex,
+} from "./ansi-palette.js"
 
-const ANSI_256_CUBE_LEVELS = [0, 95, 135, 175, 215, 255] as const
-const COLOR_TAG_DEFAULT = 257
 const RGBA_INTENT = Symbol("@opentui/core/RGBA.intent")
 
 type IntentSnapshotMode = "explicit" | "implicit"
@@ -31,20 +18,8 @@ type IntentfulRGBA = RGBA & {
   [RGBA_INTENT]?: IntentMetadata
 }
 
-function normalizeIndexedColorIndex(index: number): number {
-  if (!Number.isInteger(index) || index < 0 || index > 255) {
-    throw new RangeError(`Indexed color must be an integer in the range 0..255, got ${index}`)
-  }
-
-  return index
-}
-
-function cloneRgba(rgba: RGBA): RGBA {
-  return RGBA.fromValues(rgba.r, rgba.g, rgba.b, rgba.a)
-}
-
 function withIntent(rgba: RGBA, tag: number | undefined, snapshotMode: IntentSnapshotMode = "explicit"): RGBA {
-  const intentful = cloneRgba(rgba) as IntentfulRGBA
+  const intentful = RGBA.clone(rgba) as IntentfulRGBA
 
   if (tag === undefined) {
     delete intentful[RGBA_INTENT]
@@ -56,22 +31,8 @@ function withIntent(rgba: RGBA, tag: number | undefined, snapshotMode: IntentSna
 }
 
 function rgbaForAnsi256Index(index: number): RGBA {
-  const normalizedIndex = normalizeIndexedColorIndex(index)
-
-  if (normalizedIndex < 16) {
-    return RGBA.fromHex(ANSI16_HEX[normalizedIndex])
-  }
-
-  if (normalizedIndex < 232) {
-    const cubeIndex = normalizedIndex - 16
-    const r = Math.floor(cubeIndex / 36)
-    const g = Math.floor(cubeIndex / 6) % 6
-    const b = cubeIndex % 6
-    return RGBA.fromInts(ANSI_256_CUBE_LEVELS[r], ANSI_256_CUBE_LEVELS[g], ANSI_256_CUBE_LEVELS[b])
-  }
-
-  const value = 8 + (normalizedIndex - 232) * 10
-  return RGBA.fromInts(value, value, value)
+  const [r, g, b] = ansi256IndexToRgb(index)
+  return RGBA.fromInts(r, g, b)
 }
 
 export class RGBA {
@@ -87,6 +48,10 @@ export class RGBA {
 
   static fromValues(r: number, g: number, b: number, a: number = 1.0) {
     return new RGBA(new Float32Array([r, g, b, a]))
+  }
+
+  static clone(rgba: RGBA) {
+    return RGBA.fromValues(rgba.r, rgba.g, rgba.b, rgba.a)
   }
 
   static fromInts(r: number, g: number, b: number, a: number = 255) {
@@ -108,7 +73,7 @@ export class RGBA {
 
   static defaultForeground(snapshot?: ColorInput): RGBA {
     return withIntent(
-      snapshot ? parseColor(snapshot) : RGBA.fromInts(255, 255, 255),
+      snapshot ? parseColor(snapshot) : RGBA.fromInts(...DEFAULT_FOREGROUND_RGB),
       COLOR_TAG_DEFAULT,
       snapshot ? "explicit" : "implicit",
     )
@@ -116,7 +81,7 @@ export class RGBA {
 
   static defaultBackground(snapshot?: ColorInput): RGBA {
     return withIntent(
-      snapshot ? parseColor(snapshot) : RGBA.fromInts(0, 0, 0),
+      snapshot ? parseColor(snapshot) : RGBA.fromInts(...DEFAULT_BACKGROUND_RGB),
       COLOR_TAG_DEFAULT,
       snapshot ? "explicit" : "implicit",
     )
