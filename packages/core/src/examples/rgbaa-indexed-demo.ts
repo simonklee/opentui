@@ -20,6 +20,7 @@ type PalettePresetName = "detected" | "xterm" | "solarized-dark"
 
 interface InternalPalettePublisher {
   publishPalette(colors: TerminalColors | null): void
+  _cachedPalette?: TerminalColors | null
 }
 
 const SWATCH_COUNT = 32
@@ -98,9 +99,14 @@ let swatchGlyph = "█"
 let fullPalette: RGBA[] = normalizeTerminalPalette(null).palette
 let visiblePalette: RGBA[] = fullPalette.slice(0, 16)
 let paletteGeneration = 0
+let previousPublishedPalette: TerminalColors | null | undefined = undefined
 
 function publishPalette(renderer: CliRenderer, colors: TerminalColors | null): void {
   ;(renderer as unknown as InternalPalettePublisher).publishPalette(colors)
+}
+
+function getPublishedPalette(renderer: CliRenderer): TerminalColors | null {
+  return (renderer as unknown as InternalPalettePublisher)._cachedPalette ?? null
 }
 
 function chunk(text: string, options: { fg?: RGBA; bg?: RGBA; attributes?: number } = {}): TextChunk {
@@ -174,11 +180,7 @@ function buildSourceColors(mode: ScenarioMode, count: number): RGBA[] {
 
   return Array.from({ length: count }, (_, index) => {
     const t = count <= 1 ? 0 : index / (count - 1)
-    return RGBA.fromInts(
-      Math.round(255 * t),
-      Math.round(255 * (1 - Math.abs(0.5 - t) * 2)),
-      Math.round(255 * (1 - t)),
-    )
+    return RGBA.fromInts(Math.round(255 * t), Math.round(255 * (1 - Math.abs(0.5 - t) * 2)), Math.round(255 * (1 - t)))
   })
 }
 
@@ -292,7 +294,13 @@ function setStatus(message: string, color: RGBA): void {
 }
 
 function refreshView(renderer: CliRenderer): void {
-  if (!rgbSnapshotLineText || !explicitIndexedLineText || !defaultIntentLineText || !paletteTopText || !paletteBottomText) {
+  if (
+    !rgbSnapshotLineText ||
+    !explicitIndexedLineText ||
+    !defaultIntentLineText ||
+    !paletteTopText ||
+    !paletteBottomText
+  ) {
     return
   }
 
@@ -354,6 +362,8 @@ function toggleSwatchGlyph(): void {
 export function run(renderer: CliRenderer): void {
   renderer.start()
   renderer.setBackgroundColor(COLOR_BG)
+
+  previousPublishedPalette = getPublishedPalette(renderer)
 
   const xtermPalette = buildPresetPalette("xterm")
   applyPalette(xtermPalette, "xterm")
@@ -494,6 +504,11 @@ export function destroy(renderer: CliRenderer): void {
   if (keyListener) {
     renderer.keyInput.off("keypress", keyListener)
     keyListener = null
+  }
+
+  if (previousPublishedPalette !== undefined) {
+    publishPalette(renderer, previousPublishedPalette)
+    previousPublishedPalette = undefined
   }
 
   if (rootContainer) {

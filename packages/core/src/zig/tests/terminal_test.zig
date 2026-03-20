@@ -94,22 +94,33 @@ test "environment variables - should be overridden by xtversion" {
     try testing.expect(term.term_info.from_xtversion);
 }
 
-test "remote ignores env overrides but accepts capability responses" {
+test "remote without forwarded env map ignores local env overrides" {
+    const term = Terminal.init(.{ .remote = true });
+
+    try testing.expect(!term.in_tmux);
+    try testing.expect(!term.caps.osc52);
+    try testing.expect(!term.caps.explicit_cursor_positioning);
+}
+
+test "remote applies forwarded env overrides and capability responses" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     var env = std.process.EnvMap.init(testing.allocator);
     defer env.deinit();
     try env.put("TMUX", "/tmp/tmux-1000/default,12345,0");
+    try env.put("TERM", "screen-256color");
     try env.put("TERM_PROGRAM", "iTerm.app");
     try env.put("WT_SESSION", "test-session");
 
     var term = Terminal.init(.{ .remote = true, .env_map = &env });
 
-    try testing.expect(!term.in_tmux);
-    try testing.expect(!term.caps.osc52);
-    try testing.expect(!term.caps.explicit_cursor_positioning);
+    try testing.expect(term.in_tmux);
+    try testing.expect(term.caps.osc52);
+    try testing.expect(term.caps.explicit_cursor_positioning);
+    try testing.expect(term.caps.ansi256);
 
     term.processCapabilityResponse("\x1bP>|kitty(0.40.1)\x1b\\");
+    try testing.expect(term.caps.rgb);
     try testing.expect(term.caps.osc52);
 }
 
@@ -434,6 +445,30 @@ test "processCapabilityResponse - ghostty does not set explicit_cursor_positioni
     const response = "\x1bP>|ghostty 1.1.3\x1b\\";
     term.processCapabilityResponse(response);
 
+    try testing.expect(!term.caps.explicit_cursor_positioning);
+}
+
+test "processCapabilityResponse - wezterm applies color and hyperlink heuristics" {
+    var term: Terminal = .{};
+
+    const response = "\x1bP>|wezterm\x1b\\";
+    term.processCapabilityResponse(response);
+
+    try testing.expect(term.caps.rgb);
+    try testing.expect(term.caps.ansi256);
+    try testing.expect(term.caps.osc52);
+    try testing.expect(term.caps.hyperlinks);
+}
+
+test "processCapabilityResponse - foot applies color heuristics without explicit cursor positioning" {
+    var term: Terminal = .{};
+
+    const response = "\x1bP>|foot 1.17.2\x1b\\";
+    term.processCapabilityResponse(response);
+
+    try testing.expect(term.caps.rgb);
+    try testing.expect(term.caps.ansi256);
+    try testing.expect(term.caps.osc52);
     try testing.expect(!term.caps.explicit_cursor_positioning);
 }
 

@@ -396,6 +396,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private minTargetFrameTime: number = 1000 / this.maxFps
   private immediateRerenderRequested: boolean = false
   private updateScheduled: boolean = false
+  private forceFullRepaintRequested: boolean = false
 
   private liveRequestCounter: number = 0
   private _controlState: RendererControlState = RendererControlState.IDLE
@@ -813,7 +814,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
       const now = this.clock.now()
-      const elapsed = now - this.lastTime
+      const elapsed = Math.max(0, now - this.lastTime)
       const delay = Math.max(this.minTargetFrameTime - elapsed, 0)
 
       if (delay === 0) {
@@ -1161,6 +1162,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (isCapabilityResponse(sequence)) {
       this.lib.processCapabilityResponse(this.rendererPtr, sequence)
       this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
+      this.forceFullRepaintRequested = true
+      this.requestRender()
       this.emit("capabilities", this._capabilities)
       return true
     }
@@ -1391,9 +1394,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     ) {
       const canStartSelection = Boolean(
         maybeRenderable &&
-          maybeRenderable.selectable &&
-          !maybeRenderable.isDestroyed &&
-          maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
+        maybeRenderable.selectable &&
+        !maybeRenderable.isDestroyed &&
+        maybeRenderable.shouldStartSelection(mouseEvent.x, mouseEvent.y),
       )
 
       if (canStartSelection && maybeRenderable) {
@@ -2057,7 +2060,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
     try {
       const now = this.clock.now()
-      const elapsed = now - this.lastTime
+      const elapsed = Math.max(0, now - this.lastTime)
 
       const deltaTime = elapsed
       this.lastTime = now
@@ -2158,17 +2161,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       throw new Error("Rendering called concurrently")
     }
 
-    let force = false
+    let force = this.forceFullRepaintRequested
     if (this._splitHeight > 0) {
       // TODO: Flickering could maybe be even more reduced by moving the flush to the native layer,
       // to output the flush with the buffered writer, after the render is done.
-      force = this.flushStdoutCache(this._splitHeight)
+      force = this.flushStdoutCache(this._splitHeight) || force
     }
 
     this.renderingNative = true
-    this.lib.render(this.rendererPtr, force)
-    // this.dumpStdoutBuffer(Date.now())
-    this.renderingNative = false
+    try {
+      this.lib.render(this.rendererPtr, force)
+      this.forceFullRepaintRequested = false
+      // this.dumpStdoutBuffer(Date.now())
+    } finally {
+      this.renderingNative = false
+    }
   }
 
   private collectStatSample(frameTime: number): void {
@@ -2450,6 +2457,9 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   public clearPaletteCache(): void {
     this._paletteCache.clear()
     this._cachedPalette = null
+    this._paletteDetectionPromise = null
+    this._paletteDetectionSize = 0
+    this._palettePublishGeneration = (this._palettePublishGeneration + 1) >>> 0
   }
 
   private publishPalette(colors: TerminalColors | null): void {
@@ -2486,9 +2496,10 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       return cachedPalette
     }
 
-    if (this._paletteDetectionPromise) {
+    const ongoingDetection = this._paletteDetectionPromise
+    if (ongoingDetection) {
       if (this._paletteDetectionSize >= requestedSize) {
-        return this._paletteDetectionPromise.then((palette) => {
+        return ongoingDetection.then((palette) => {
           const cached = this.getCachedPaletteBySize(requestedSize)
           if (cached) {
             this._cachedPalette = cached
@@ -2499,13 +2510,17 @@ export class CliRenderer extends EventEmitter implements RenderContext {
             ...palette,
             palette: palette.palette.slice(0, requestedSize),
           }
-          this._paletteCache.set(requestedSize, projected)
-          this._cachedPalette = projected
+
+          if (this._paletteDetectionPromise === ongoingDetection) {
+            this._paletteCache.set(requestedSize, projected)
+            this._cachedPalette = projected
+          }
+
           return projected
         })
       }
 
-      await this._paletteDetectionPromise
+      await ongoingDetection
       const afterWait = this.getCachedPaletteBySize(requestedSize)
       if (afterWait) {
         this._cachedPalette = afterWait
@@ -2515,10 +2530,15 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     const detector = this.ensurePaletteDetector()
     const publishGeneration = this._palettePublishGeneration
-    this._paletteDetectionSize = requestedSize
-    this._paletteDetectionPromise = detector
+    let detectionWasCommitted = false
+    const detectionPromise = detector
       .detect({ ...options, timeout: detectionTimeout })
       .then((result) => {
+        if (this._paletteDetectionPromise !== detectionPromise) {
+          return result
+        }
+
+        detectionWasCommitted = true
         this._paletteCache.set(result.palette.length, result)
         this._cachedPalette = result
         this._paletteDetectionPromise = null
@@ -2535,12 +2555,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
         return result
       })
       .catch((error) => {
-        this._paletteDetectionPromise = null
-        this._paletteDetectionSize = 0
+        if (this._paletteDetectionPromise === detectionPromise) {
+          this._paletteDetectionPromise = null
+          this._paletteDetectionSize = 0
+        }
+
         throw error
       })
 
-    const detected = await this._paletteDetectionPromise
+    this._paletteDetectionSize = requestedSize
+    this._paletteDetectionPromise = detectionPromise
+
+    const detected = await detectionPromise
+    if (!detectionWasCommitted) {
+      return detected
+    }
+
     const projected = this.getCachedPaletteBySize(requestedSize) ?? detected
     this._cachedPalette = projected
     return projected

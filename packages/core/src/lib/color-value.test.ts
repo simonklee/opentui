@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test"
+import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 
 import { RGBA } from "./RGBA.js"
 import {
@@ -12,9 +12,18 @@ import {
   normalizeColorValue,
   normalizeTerminalPalette,
   packColorValueToF32,
+  setCurrentColorBasis,
 } from "./color-value.js"
 
 describe("color-value", () => {
+  beforeEach(() => {
+    setCurrentColorBasis(null)
+  })
+
+  afterEach(() => {
+    setCurrentColorBasis(null)
+  })
+
   it("distinguishes unset from explicit default", () => {
     expect(normalizeColorValue(null, { role: "fg" })).toBeNull()
 
@@ -49,6 +58,71 @@ describe("color-value", () => {
     expect(normalizeColorValue(indexed, { role: "fg" })?.tag).toBe(12)
     expect(normalizeColorValue(defaultFg, { role: "fg" })?.tag).toBe(COLOR_TAG_DEFAULT)
     expect(normalizeColorValue(defaultBg, { role: "bg" })?.tag).toBe(COLOR_TAG_DEFAULT)
+  })
+
+  it("does not mutate caller-owned snapshots when constructing intentful RGBA values", () => {
+    const indexedSnapshot = RGBA.fromHex("#112233")
+    const defaultSnapshot = RGBA.fromHex("#abcdef")
+
+    const indexed = RGBA.fromIndex(6, indexedSnapshot)
+    const defaultFg = RGBA.defaultForeground(defaultSnapshot)
+
+    expect(indexed).not.toBe(indexedSnapshot)
+    expect(defaultFg).not.toBe(defaultSnapshot)
+    expect(RGBA.getIntentTag(indexedSnapshot)).toBeUndefined()
+    expect(RGBA.getIntentTag(defaultSnapshot)).toBeUndefined()
+    expect(RGBA.getIntentTag(indexed)).toBe(6)
+    expect(RGBA.getIntentTag(defaultFg)).toBe(COLOR_TAG_DEFAULT)
+    expect(indexed.toInts()).toEqual(indexedSnapshot.toInts())
+    expect(defaultFg.toInts()).toEqual(defaultSnapshot.toInts())
+  })
+
+  it("resolves implicit intentful RGBA snapshots against the current published basis", () => {
+    setCurrentColorBasis({
+      palette: Array.from({ length: 16 }, (_, index) => (index === 6 ? "#123456" : "#000000")),
+      defaultForeground: "#abcdef",
+      defaultBackground: "#654321",
+      cursorColor: null,
+      mouseForeground: null,
+      mouseBackground: null,
+      tekForeground: null,
+      tekBackground: null,
+      highlightBackground: null,
+      highlightForeground: null,
+    })
+
+    const indexed = normalizeColorValue(RGBA.fromIndex(6), { role: "fg" })
+    const defaultFg = normalizeColorValue(RGBA.defaultForeground(), { role: "fg" })
+    const defaultBg = normalizeColorValue(RGBA.defaultBackground(), { role: "bg" })
+
+    expect(indexed?.tag).toBe(6)
+    expect(indexed?.rgba.toInts()).toEqual([18, 52, 86, 255])
+    expect(defaultFg?.rgba.toInts()).toEqual([171, 205, 239, 255])
+    expect(defaultBg?.rgba.toInts()).toEqual([101, 67, 33, 255])
+  })
+
+  it("packs implicit indexed intent using the current published basis", () => {
+    setCurrentColorBasis({
+      palette: Array.from({ length: 16 }, (_, index) => (index === 6 ? "#224466" : "#000000")),
+      defaultForeground: null,
+      defaultBackground: null,
+      cursorColor: null,
+      mouseForeground: null,
+      mouseBackground: null,
+      tekForeground: null,
+      tekBackground: null,
+      highlightBackground: null,
+      highlightForeground: null,
+    })
+
+    const packed = new Float32Array(PACKED_COLOR_STRIDE)
+    packColorValueToF32(RGBA.fromIndex(6), "fg", packed)
+
+    expect(packed[0]).toBeCloseTo(34 / 255, 6)
+    expect(packed[1]).toBeCloseTo(68 / 255, 6)
+    expect(packed[2]).toBeCloseTo(102 / 255, 6)
+    expect(packed[3]).toBe(1)
+    expect(packed[4]).toBe(6)
   })
 
   it("decodes rgb, indexed, and default tags", () => {

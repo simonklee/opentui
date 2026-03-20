@@ -10,6 +10,10 @@ export interface Clock {
 
 export class SystemClock implements Clock {
   public now(): number {
+    if (typeof globalThis.performance?.now === "function") {
+      return globalThis.performance.now()
+    }
+
     return Date.now()
   }
 

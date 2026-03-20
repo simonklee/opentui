@@ -884,6 +884,42 @@ test "renderer - explicit default and indexed tags use ANSI default/indexed outp
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") != null);
 }
 
+test "renderer - indexed snapshots fall back to rgb and explicit bg default resets without ansi256" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = true;
+    cli_renderer.terminal.caps.ansi256 = false;
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    next_buffer.set(0, 0, buffer.Cell{
+        .char = 'A',
+        .fg = RGBA{ 0.2, 0.4, 0.6, 1.0 },
+        .bg = RGBA{ 0.0, 0.0, 0.0, 1.0 },
+        .fg_tag = ansi.indexedColorTag(6),
+        .bg_tag = ansi.COLOR_TAG_DEFAULT,
+        .attributes = 0,
+    });
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;51;102;153m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;6m") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[49m") != null);
+}
+
 test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

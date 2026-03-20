@@ -330,12 +330,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         self.caps.hyperlinks = true;
     }
 
-    if (self.opts.remote) {
-        return;
-    }
-
     var env_map_storage: ?std.process.EnvMap = null;
-    const env_map: *const std.process.EnvMap = self.opts.env_map orelse blk: {
+    const maybe_env_map: ?*const std.process.EnvMap = self.opts.env_map orelse blk: {
+        if (self.opts.remote) {
+            break :blk null;
+        }
+
         env_map_storage = std.process.getEnvMap(std.heap.page_allocator) catch |err| {
             logger.err("Failed to get environment map: {}", .{err});
             return;
@@ -343,6 +343,12 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
         break :blk &env_map_storage.?;
     };
     defer if (env_map_storage) |*map| map.deinit();
+
+    if (maybe_env_map == null) {
+        return;
+    }
+
+    const env_map = maybe_env_map.?;
 
     if (!self.term_info.from_xtversion) {
         if (env_map.get("TMUX")) |_| {
@@ -359,12 +365,9 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.caps.unicode = .wcwidth;
                 self.caps.explicit_cursor_positioning = true;
             }
-            if (std.mem.indexOf(u8, term, "256color") != null) {
-                self.caps.ansi256 = true;
-            }
+            self.applyTerminalColorHeuristics(term);
             if (std.mem.indexOf(u8, term, "alacritty") != null) {
                 self.caps.explicit_cursor_positioning = true;
-                self.caps.ansi256 = true;
             }
         }
     }
@@ -401,18 +404,20 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.caps.ansi256 = true;
             } else if (std.mem.eql(u8, prog, "Alacritty")) {
                 self.caps.explicit_cursor_positioning = true;
-                self.caps.ansi256 = true;
             }
+
+            self.applyTerminalColorHeuristics(prog);
         }
 
         if (env_map.get("ALACRITTY_SOCKET") != null or env_map.get("ALACRITTY_LOG") != null) {
             self.caps.explicit_cursor_positioning = true;
-            self.caps.ansi256 = true;
             if (self.term_info.name_len == 0) {
                 const name = "Alacritty";
                 @memcpy(self.term_info.name[0..name.len], name);
                 self.term_info.name_len = name.len;
             }
+
+            self.applyTerminalColorHeuristics("Alacritty");
         }
     }
 
@@ -690,6 +695,11 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         }
     }
 
+    self.applyTerminalColorHeuristics(response);
+    if (self.term_info.from_xtversion) {
+        self.applyTerminalColorHeuristics(self.getTerminalName());
+    }
+
     // Kitty detection
     if (std.mem.indexOf(u8, response, "kitty")) |_| {
         self.caps.kitty_keyboard = true;
@@ -765,6 +775,40 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     }
 
     if (!self.caps.hyperlinks and isHyperlinkTerm(response)) {
+        self.caps.hyperlinks = true;
+    }
+}
+
+fn isTrueColorTerm(value: []const u8) bool {
+    return std.ascii.indexOfIgnoreCase(value, "iterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "kitty") != null or
+        std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
+        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
+        std.ascii.indexOfIgnoreCase(value, "contour") != null or
+        std.ascii.indexOfIgnoreCase(value, "foot") != null or
+        std.ascii.indexOfIgnoreCase(value, "rio") != null or
+        std.ascii.indexOfIgnoreCase(value, "ghostty") != null;
+}
+
+fn isAnsi256Term(value: []const u8) bool {
+    return isTrueColorTerm(value) or std.ascii.indexOfIgnoreCase(value, "256color") != null;
+}
+
+fn applyTerminalColorHeuristics(self: *Terminal, value: []const u8) void {
+    if (value.len == 0) return;
+
+    if (isTrueColorTerm(value)) {
+        self.caps.rgb = true;
+        self.caps.ansi256 = true;
+    } else if (isAnsi256Term(value)) {
+        self.caps.ansi256 = true;
+    }
+
+    if (!self.caps.osc52 and isOsc52Term(value)) {
+        self.caps.osc52 = true;
+    }
+
+    if (!self.caps.hyperlinks and isHyperlinkTerm(value)) {
         self.caps.hyperlinks = true;
     }
 }

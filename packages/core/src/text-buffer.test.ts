@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { TextBuffer } from "./text-buffer.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
+import { COLOR_TAG_DEFAULT } from "./lib/color-value.js"
 
 describe("TextBuffer", () => {
   let buffer: TextBuffer
@@ -152,11 +153,15 @@ describe("TextBuffer", () => {
     })
 
     it("should accept intentful RGBA constructors for default colors", () => {
-      buffer.setDefaultFg(RGBA.fromIndex(6))
-      buffer.setDefaultBg(RGBA.defaultBackground())
+      const fg = RGBA.fromIndex(6)
+      const bg = RGBA.defaultBackground()
+
+      buffer.setDefaultFg(fg)
+      buffer.setDefaultBg(bg)
       buffer.resetDefaults()
 
-      expect(true).toBe(true)
+      expect(RGBA.getIntentTag(fg)).toBe(6)
+      expect(RGBA.getIntentTag(bg)).toBe(COLOR_TAG_DEFAULT)
     })
 
     it("should set and reset default attributes", () => {

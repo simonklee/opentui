@@ -1,4 +1,4 @@
-import { test, expect, describe } from "bun:test"
+import { test, expect, describe, spyOn } from "bun:test"
 import { createTestRenderer, type TestRendererOptions } from "../testing/test-renderer.js"
 import { EventEmitter } from "events"
 import { Buffer } from "node:buffer"
@@ -508,6 +508,124 @@ describe("Palette cache invalidation", () => {
     // @ts-expect-error - accessing private property for testing
     expect(renderer._paletteEpoch).toBe(epochAfterPublish)
 
+    renderer.destroy()
+  })
+
+  test("clearPaletteCache severs in-flight detections and ignores stale results", async () => {
+    const clock = new ManualClock()
+    const { renderer } = await createTestRenderer({ clock })
+
+    const firstPalette: TerminalColors = {
+      palette: Array.from({ length: 16 }, () => "#110000"),
+      defaultForeground: "#ffffff",
+      defaultBackground: "#000000",
+      cursorColor: null,
+      mouseForeground: null,
+      mouseBackground: null,
+      tekForeground: null,
+      tekBackground: null,
+      highlightBackground: null,
+      highlightForeground: null,
+    }
+    const secondPalette: TerminalColors = {
+      palette: Array.from({ length: 16 }, () => "#220000"),
+      defaultForeground: "#ffffff",
+      defaultBackground: "#000000",
+      cursorColor: null,
+      mouseForeground: null,
+      mouseBackground: null,
+      tekForeground: null,
+      tekBackground: null,
+      highlightBackground: null,
+      highlightForeground: null,
+    }
+
+    const resolves: Array<(colors: TerminalColors) => void> = []
+    let detectCalls = 0
+
+    // @ts-expect-error - testing private renderer state
+    renderer._paletteDetector = {
+      detect: () => {
+        detectCalls += 1
+        return new Promise<TerminalColors>((resolve) => {
+          resolves.push(resolve)
+        })
+      },
+      detectOSCSupport: async () => true,
+      cleanup: () => {},
+    }
+
+    const firstPromise = renderer.getPalette({ size: 16, timeout: 300 })
+    // @ts-expect-error - testing private renderer state
+    const firstDetectionPromise = renderer._paletteDetectionPromise
+
+    renderer.clearPaletteCache()
+
+    expect(renderer.paletteDetectionStatus).toBe("idle")
+    // @ts-expect-error - testing private renderer state
+    expect(renderer._paletteDetectionPromise).toBeNull()
+
+    const secondPromise = renderer.getPalette({ size: 16, timeout: 300 })
+    // @ts-expect-error - testing private renderer state
+    expect(renderer._paletteDetectionPromise).not.toBe(firstDetectionPromise)
+    expect(detectCalls).toBe(2)
+
+    resolves[1](secondPalette)
+    await flushAsync()
+    resolves[0](firstPalette)
+    await flushAsync()
+
+    const first = await firstPromise
+    const second = await secondPromise
+    const cached = await renderer.getPalette({ size: 16, timeout: 300 })
+
+    expect(first.palette[0]).toBe("#110000")
+    expect(second.palette[0]).toBe("#220000")
+    expect(cached).toBe(second)
+    expect(cached.palette[0]).toBe("#220000")
+
+    renderer.destroy()
+  })
+})
+
+describe("Capability repaint handling", () => {
+  test("capability responses request a forced repaint", async () => {
+    const clock = new ManualClock()
+    const { renderer } = await createTestRenderer({ clock })
+
+    const renderSpy = spyOn(renderer.lib, "render")
+    // @ts-expect-error - mocking for test
+    const originalProcessCapabilityResponse = renderer.lib.processCapabilityResponse
+    // @ts-expect-error - mocking for test
+    const originalGetTerminalCapabilities = renderer.lib.getTerminalCapabilities
+
+    // @ts-expect-error - mocking for test
+    renderer.lib.processCapabilityResponse = () => {}
+    // @ts-expect-error - mocking for test
+    renderer.lib.getTerminalCapabilities = () => ({ rgb: true, ansi256: true, unicode: "unicode" })
+
+    // @ts-expect-error - testing private renderer state
+    expect(renderer.forceFullRepaintRequested).toBe(false)
+
+    // @ts-expect-error - testing private renderer method
+    renderer.capabilityHandler("\x1bP>|wezterm\x1b\\")
+
+    // @ts-expect-error - testing private renderer state
+    expect(renderer.forceFullRepaintRequested).toBe(true)
+    // @ts-expect-error - testing private renderer state
+    expect(renderer.updateScheduled).toBe(true)
+
+    // @ts-expect-error - testing private renderer method
+    await renderer.activateFrame()
+
+    const lastCall = renderSpy.mock.calls.at(-1)
+    expect(lastCall?.[1]).toBe(true)
+
+    renderSpy.mockRestore()
+    // @ts-expect-error - restore mock
+    renderer.lib.processCapabilityResponse = originalProcessCapabilityResponse
+    // @ts-expect-error - restore mock
+    renderer.lib.getTerminalCapabilities = originalGetTerminalCapabilities
     renderer.destroy()
   })
 })

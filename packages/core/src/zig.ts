@@ -14,7 +14,12 @@ import {
 export type { LineInfo, AllocatorStats, BuildOptions }
 
 import { RGBA } from "./lib/RGBA.js"
-import { PACKED_COLOR_STRIDE, normalizeTerminalPalette, packColorValueToF32 } from "./lib/color-value.js"
+import {
+  PACKED_COLOR_STRIDE,
+  normalizeTerminalPalette,
+  packColorValueToF32,
+  setCurrentColorBasis,
+} from "./lib/color-value.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { TextBuffer } from "./text-buffer.js"
 import { env, registerEnvVar } from "./lib/env.js"
@@ -2090,6 +2095,7 @@ class FFIRenderLib implements RenderLib {
     paletteEpoch: number,
   ): void {
     const normalized = normalizeTerminalPalette(colors)
+    setCurrentColorBasis(colors)
     const paletteBuffer = new Float32Array(normalized.palette.length * 4)
 
     for (let index = 0; index < normalized.palette.length; index++) {

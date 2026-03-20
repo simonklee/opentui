@@ -50,6 +50,12 @@ export interface NormalizedColorValue {
   tag: ColorTag
 }
 
+interface NormalizedTerminalPalette {
+  palette: RGBA[]
+  defaultForeground: RGBA
+  defaultBackground: RGBA
+}
+
 const ANSI16_HEX = [
   "#000000",
   "#800000",
@@ -74,6 +80,7 @@ const DEFAULT_FOREGROUND_FALLBACK = RGBA.fromInts(255, 255, 255)
 const DEFAULT_BACKGROUND_FALLBACK = RGBA.fromInts(0, 0, 0)
 
 let fallbackAnsi256Palette: RGBA[] | null = null
+let currentColorBasis: NormalizedTerminalPalette | null = null
 
 function cloneRgba(rgba: RGBA): RGBA {
   return RGBA.fromValues(rgba.r, rgba.g, rgba.b, rgba.a)
@@ -114,6 +121,78 @@ function getNormalizedRGBAIntentTag(rgba: RGBA): ColorTag | undefined {
   if (Number.isInteger(tag) && tag >= 0 && tag <= 255) return tag
 
   return undefined
+}
+
+function getCurrentColorBasis(): NormalizedTerminalPalette {
+  if (!currentColorBasis) {
+    currentColorBasis = normalizeTerminalPalette(null)
+  }
+
+  return currentColorBasis
+}
+
+function resolveColorBasis(options: { palette?: readonly RGBA[]; defaultFg?: RGBA; defaultBg?: RGBA }): {
+  palette: readonly RGBA[]
+  defaultForeground: RGBA
+  defaultBackground: RGBA
+} {
+  const currentBasis = getCurrentColorBasis()
+
+  return {
+    palette: options.palette ?? currentBasis.palette,
+    defaultForeground: options.defaultFg ?? currentBasis.defaultForeground,
+    defaultBackground: options.defaultBg ?? currentBasis.defaultBackground,
+  }
+}
+
+function resolveImplicitIndexedSnapshot(index: number, palette: readonly RGBA[]): RGBA {
+  return cloneRgba(palette[index] ?? getFallbackAnsi256Palette()[index] ?? DEFAULT_FOREGROUND_FALLBACK)
+}
+
+function resolveImplicitDefaultSnapshot(
+  role: "fg" | "bg" | undefined,
+  defaults: { defaultForeground: RGBA; defaultBackground: RGBA },
+): RGBA {
+  return cloneRgba(role === "bg" ? defaults.defaultBackground : defaults.defaultForeground)
+}
+
+function normalizeIntentfulRGBA(
+  rgba: RGBA,
+  options: {
+    palette?: readonly RGBA[]
+    defaultFg?: RGBA
+    defaultBg?: RGBA
+    role?: "fg" | "bg"
+  },
+): NormalizedColorValue {
+  const tag = getNormalizedRGBAIntentTag(rgba) ?? COLOR_TAG_RGB
+  if (tag === COLOR_TAG_RGB) {
+    return {
+      rgba,
+      tag,
+    }
+  }
+
+  const metadata = RGBA.getIntentMetadata(rgba)
+  if (!metadata || metadata.snapshotMode === "explicit") {
+    return {
+      rgba,
+      tag,
+    }
+  }
+
+  const basis = resolveColorBasis(options)
+  if (tag === COLOR_TAG_DEFAULT) {
+    return {
+      rgba: resolveImplicitDefaultSnapshot(options.role, basis),
+      tag,
+    }
+  }
+
+  return {
+    rgba: resolveImplicitIndexedSnapshot(tag, basis.palette),
+    tag,
+  }
 }
 
 function resolvePreparedColorInput(value: ColorValueInput): PreparedColorValueInput {
@@ -158,6 +237,10 @@ export function getDefaultBackgroundFallback(): RGBA {
   return DEFAULT_BACKGROUND_FALLBACK
 }
 
+export function setCurrentColorBasis(colors?: TerminalColors | null): void {
+  currentColorBasis = normalizeTerminalPalette(colors)
+}
+
 export function rgbColor(rgba: ColorInput): RGBColorValue {
   return { kind: "rgb", rgba }
 }
@@ -195,29 +278,23 @@ export function normalizeColorValue(
 
   const preparedValue = resolvePreparedColorInput(value)
   if (preparedValue instanceof RGBA) {
-    const tag = getNormalizedRGBAIntentTag(preparedValue) ?? COLOR_TAG_RGB
-    return {
-      rgba: preparedValue,
-      tag,
-    }
+    return normalizeIntentfulRGBA(preparedValue, options)
   }
 
   if (preparedValue.kind === "rgb") {
-    RGBA.setIntentTag(preparedValue.rgba as RGBA, undefined)
     return {
-      rgba: preparedValue.rgba as RGBA,
+      rgba: cloneRgba(preparedValue.rgba as RGBA),
       tag: COLOR_TAG_RGB,
     }
   }
 
+  const basis = resolveColorBasis(options)
+
   if (preparedValue.kind === "indexed") {
-    const palette = options.palette ?? getFallbackAnsi256Palette()
     const index = normalizeIndexedColorIndex(preparedValue.index)
     const snapshot = preparedValue.rgba
       ? (preparedValue.rgba as RGBA)
-      : cloneRgba(palette[index] ?? getFallbackAnsi256Palette()[index] ?? DEFAULT_FOREGROUND_FALLBACK)
-
-    RGBA.setIntentTag(snapshot, index)
+      : resolveImplicitIndexedSnapshot(index, basis.palette)
 
     return {
       rgba: snapshot,
@@ -225,13 +302,9 @@ export function normalizeColorValue(
     }
   }
 
-  const fallbackSnapshot =
-    options.role === "bg"
-      ? (options.defaultBg ?? DEFAULT_BACKGROUND_FALLBACK)
-      : (options.defaultFg ?? DEFAULT_FOREGROUND_FALLBACK)
-  const snapshot = preparedValue.rgba ? (preparedValue.rgba as RGBA) : cloneRgba(fallbackSnapshot)
-
-  RGBA.setIntentTag(snapshot, COLOR_TAG_DEFAULT)
+  const snapshot = preparedValue.rgba
+    ? (preparedValue.rgba as RGBA)
+    : resolveImplicitDefaultSnapshot(options.role, basis)
 
   return {
     rgba: snapshot,

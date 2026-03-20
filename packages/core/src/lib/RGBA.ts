@@ -19,10 +19,16 @@ const ANSI16_HEX = [
 
 const ANSI_256_CUBE_LEVELS = [0, 95, 135, 175, 215, 255] as const
 const COLOR_TAG_DEFAULT = 257
-const RGBA_INTENT_TAG = Symbol("@opentui/core/RGBA.intent-tag")
+const RGBA_INTENT = Symbol("@opentui/core/RGBA.intent")
+
+type IntentSnapshotMode = "explicit" | "implicit"
+type IntentMetadata = {
+  tag: number
+  snapshotMode: IntentSnapshotMode
+}
 
 type IntentfulRGBA = RGBA & {
-  [RGBA_INTENT_TAG]?: number
+  [RGBA_INTENT]?: IntentMetadata
 }
 
 function normalizeIndexedColorIndex(index: number): number {
@@ -33,16 +39,20 @@ function normalizeIndexedColorIndex(index: number): number {
   return index
 }
 
-function setIntentTag(rgba: RGBA, tag: number | undefined): RGBA {
-  const intentful = rgba as IntentfulRGBA
+function cloneRgba(rgba: RGBA): RGBA {
+  return RGBA.fromValues(rgba.r, rgba.g, rgba.b, rgba.a)
+}
+
+function withIntent(rgba: RGBA, tag: number | undefined, snapshotMode: IntentSnapshotMode = "explicit"): RGBA {
+  const intentful = cloneRgba(rgba) as IntentfulRGBA
 
   if (tag === undefined) {
-    delete intentful[RGBA_INTENT_TAG]
-    return rgba
+    delete intentful[RGBA_INTENT]
+    return intentful
   }
 
-  intentful[RGBA_INTENT_TAG] = tag
-  return rgba
+  intentful[RGBA_INTENT] = { tag, snapshotMode }
+  return intentful
 }
 
 function rgbaForAnsi256Index(index: number): RGBA {
@@ -88,23 +98,46 @@ export class RGBA {
   }
 
   static fromIndex(index: number, snapshot?: ColorInput): RGBA {
-    return setIntentTag(snapshot ? parseColor(snapshot) : rgbaForAnsi256Index(index), normalizeIndexedColorIndex(index))
+    const normalizedIndex = normalizeIndexedColorIndex(index)
+    return withIntent(
+      snapshot ? parseColor(snapshot) : rgbaForAnsi256Index(normalizedIndex),
+      normalizedIndex,
+      snapshot ? "explicit" : "implicit",
+    )
   }
 
   static defaultForeground(snapshot?: ColorInput): RGBA {
-    return setIntentTag(snapshot ? parseColor(snapshot) : RGBA.fromInts(255, 255, 255), COLOR_TAG_DEFAULT)
+    return withIntent(
+      snapshot ? parseColor(snapshot) : RGBA.fromInts(255, 255, 255),
+      COLOR_TAG_DEFAULT,
+      snapshot ? "explicit" : "implicit",
+    )
   }
 
   static defaultBackground(snapshot?: ColorInput): RGBA {
-    return setIntentTag(snapshot ? parseColor(snapshot) : RGBA.fromInts(0, 0, 0), COLOR_TAG_DEFAULT)
+    return withIntent(
+      snapshot ? parseColor(snapshot) : RGBA.fromInts(0, 0, 0),
+      COLOR_TAG_DEFAULT,
+      snapshot ? "explicit" : "implicit",
+    )
   }
 
   static getIntentTag(rgba: RGBA): number | undefined {
-    return (rgba as IntentfulRGBA)[RGBA_INTENT_TAG]
+    return (rgba as IntentfulRGBA)[RGBA_INTENT]?.tag
   }
 
-  static setIntentTag(rgba: RGBA, tag: number | undefined): RGBA {
-    return setIntentTag(rgba, tag)
+  static getIntentMetadata(rgba: RGBA): { tag: number; snapshotMode: "explicit" | "implicit" } | undefined {
+    const metadata = (rgba as IntentfulRGBA)[RGBA_INTENT]
+    if (!metadata) return undefined
+
+    return {
+      tag: metadata.tag,
+      snapshotMode: metadata.snapshotMode,
+    }
+  }
+
+  static setIntentTag(rgba: RGBA, tag: number | undefined, snapshotMode: "explicit" | "implicit" = "explicit"): RGBA {
+    return withIntent(rgba, tag, snapshotMode)
   }
 
   toInts(): [number, number, number, number] {
