@@ -24,7 +24,9 @@ import { KeyHandler, InternalKeyHandler } from "./lib/KeyHandler.js"
 import { env, registerEnvVar } from "./lib/env.js"
 import { getTreeSitterClient } from "./lib/tree-sitter/index.js"
 import {
+  buildTerminalPaletteSignature,
   createTerminalPalette,
+  normalizeTerminalPalette,
   type TerminalPaletteDetector,
   type TerminalColors,
   type GetPaletteOptions,
@@ -470,9 +472,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private lifecyclePasses: Set<Renderable> = new Set()
   private _openConsoleOnError: boolean = true
   private _paletteDetector: TerminalPaletteDetector | null = null
+  private _paletteCache = new Map<number, TerminalColors>()
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
-  private _paletteDetectionSize: number | null = null
+  private _paletteDetectionSize = 0
+  private _paletteEpoch = 0
+  private _publishedPaletteSignature: string | null = null
+  private _palettePublishGeneration = 0
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
   private _terminalFocusState: boolean | null = null
@@ -1124,6 +1130,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.queryPixelResolution()
+    this.ensureNativePaletteState()
   }
 
   private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
@@ -1980,9 +1987,13 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._paletteDetector.cleanup()
       this._paletteDetector = null
     }
+    this._paletteCache.clear()
     this._paletteDetectionPromise = null
-    this._paletteDetectionSize = null
+    this._paletteDetectionSize = 0
     this._cachedPalette = null
+    this._publishedPaletteSignature = null
+    this._paletteEpoch = 0
+    this._palettePublishGeneration = 0
 
     this.emit(CliRenderEvents.DESTROY)
 
@@ -2382,51 +2393,37 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get paletteDetectionStatus(): "idle" | "detecting" | "cached" {
-    if (this._cachedPalette) return "cached"
     if (this._paletteDetectionPromise) return "detecting"
+    if (this._paletteCache.size > 0) return "cached"
     return "idle"
   }
 
-  public clearPaletteCache(): void {
-    this._cachedPalette = null
+  private getCachedPaletteBySize(size: number): TerminalColors | null {
+    const exactMatch = this._paletteCache.get(size)
+    if (exactMatch) {
+      return exactMatch
+    }
+
+    const largerSize = [...this._paletteCache.keys()].sort((a, b) => a - b).find((candidate) => candidate >= size)
+    if (largerSize === undefined) {
+      return null
+    }
+
+    const source = this._paletteCache.get(largerSize)
+    if (!source) {
+      return null
+    }
+
+    const projected = {
+      ...source,
+      palette: source.palette.slice(0, size),
+    }
+
+    this._paletteCache.set(size, projected)
+    return projected
   }
 
-  /**
-   * Detects the terminal's color palette
-   *
-   * @returns Promise resolving to TerminalColors object containing palette and special colors
-   * @throws Error if renderer is suspended
-   */
-  public async getPalette(options?: GetPaletteOptions): Promise<TerminalColors> {
-    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
-      throw new Error("Cannot detect palette while renderer is suspended")
-    }
-
-    const requestedSize = options?.size ?? 16
-
-    if (this._cachedPalette && this._cachedPalette.palette.length !== requestedSize) {
-      this._cachedPalette = null
-    }
-
-    if (this._cachedPalette) {
-      return this._cachedPalette
-    }
-
-    if (this._paletteDetectionPromise) {
-      if (this._paletteDetectionSize === requestedSize) {
-        return this._paletteDetectionPromise
-      }
-
-      await this._paletteDetectionPromise
-
-      const cachedPalette = this._cachedPalette as TerminalColors | null
-      if (cachedPalette != null && cachedPalette["palette"].length === requestedSize) {
-        return cachedPalette
-      }
-
-      this._cachedPalette = null
-    }
-
+  private ensurePaletteDetector(): TerminalPaletteDetector {
     if (!this._paletteDetector) {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
@@ -2443,21 +2440,124 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       )
     }
 
-    const detectionPromise = this._paletteDetector.detect(options).then((result) => {
-      this._cachedPalette = result
-      return result
-    })
+    return this._paletteDetector
+  }
 
-    this._paletteDetectionPromise = detectionPromise
-    this._paletteDetectionSize = requestedSize
+  private syncNativePaletteState(colors: TerminalColors | null): void {
+    const signature = buildTerminalPaletteSignature(colors)
+    if (this._publishedPaletteSignature !== null && this._publishedPaletteSignature !== signature) {
+      this._paletteEpoch = (this._paletteEpoch + 1) >>> 0
+    }
 
-    try {
-      return await detectionPromise
-    } finally {
-      if (this._paletteDetectionPromise === detectionPromise) {
-        this._paletteDetectionPromise = null
-        this._paletteDetectionSize = null
+    this._publishedPaletteSignature = signature
+
+    const normalized = normalizeTerminalPalette(colors)
+    this.lib.rendererSetPaletteState(
+      this.rendererPtr,
+      normalized.palette,
+      normalized.defaultForeground,
+      normalized.defaultBackground,
+      this._paletteEpoch,
+    )
+  }
+
+  private ensureNativePaletteState(): void {
+    if (!this._terminalIsSetup || this._isDestroyed) return
+    const publishGeneration = this._palettePublishGeneration
+
+    void this.getPalette({ size: 256 })
+      .then((colors) => {
+        if (this._palettePublishGeneration === publishGeneration) {
+          this.syncNativePaletteState(colors)
+        }
+        this.requestRender()
+      })
+      .catch(() => {})
+  }
+
+  public clearPaletteCache(): void {
+    this._paletteCache.clear()
+    this._cachedPalette = null
+  }
+
+  /**
+   * Detects the terminal's color palette
+   *
+   * @returns Promise resolving to TerminalColors object containing palette and special colors
+   * @throws Error if renderer is suspended
+   */
+  public async getPalette(options?: GetPaletteOptions): Promise<TerminalColors> {
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      throw new Error("Cannot detect palette while renderer is suspended")
+    }
+
+    const requestedSize = options?.size ?? 16
+    const detectionTimeout = options?.timeout
+
+    const cachedPalette = this.getCachedPaletteBySize(requestedSize)
+    if (cachedPalette) {
+      this._cachedPalette = cachedPalette
+      return cachedPalette
+    }
+
+    if (this._paletteDetectionPromise) {
+      if (this._paletteDetectionSize >= requestedSize) {
+        return this._paletteDetectionPromise.then((palette) => {
+          const cached = this.getCachedPaletteBySize(requestedSize)
+          if (cached) {
+            this._cachedPalette = cached
+            return cached
+          }
+
+          const projected = {
+            ...palette,
+            palette: palette.palette.slice(0, requestedSize),
+          }
+          this._paletteCache.set(requestedSize, projected)
+          this._cachedPalette = projected
+          return projected
+        })
+      }
+
+      await this._paletteDetectionPromise
+
+      const afterWait = this.getCachedPaletteBySize(requestedSize)
+      if (afterWait) {
+        this._cachedPalette = afterWait
+        return afterWait
       }
     }
+
+    const detector = this.ensurePaletteDetector()
+    const publishGeneration = this._palettePublishGeneration
+    this._paletteDetectionSize = requestedSize
+    this._paletteDetectionPromise = detector
+      .detect({ ...options, timeout: detectionTimeout })
+      .then((result) => {
+        this._paletteCache.set(result.palette.length, result)
+        this._cachedPalette = result
+        this._paletteDetectionPromise = null
+        this._paletteDetectionSize = 0
+
+        if (this._palettePublishGeneration === publishGeneration) {
+          if (result.palette.length >= 256) {
+            this.syncNativePaletteState(result)
+          } else if (this._terminalIsSetup && !this._paletteCache.has(256)) {
+            this.ensureNativePaletteState()
+          }
+        }
+
+        return result
+      })
+      .catch((error) => {
+        this._paletteDetectionPromise = null
+        this._paletteDetectionSize = 0
+        throw error
+      })
+
+    const detected = await this._paletteDetectionPromise
+    const finalPalette = this.getCachedPaletteBySize(requestedSize) ?? detected
+    this._cachedPalette = finalPalette
+    return finalPalette
   }
 }

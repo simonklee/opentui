@@ -178,6 +178,10 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
+    rendererSetPaletteState: {
+      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u32"],
+      returns: "void",
+    },
 
     queryPixelResolution: {
       args: ["ptr"],
@@ -1398,6 +1402,13 @@ export interface RenderLib {
   render: (renderer: Pointer, force: boolean) => void
   getNextBuffer: (renderer: Pointer) => OptimizedBuffer
   getCurrentBuffer: (renderer: Pointer) => OptimizedBuffer
+  rendererSetPaletteState: (
+    renderer: Pointer,
+    palette: readonly RGBA[],
+    defaultForeground: RGBA,
+    defaultBackground: RGBA,
+    paletteEpoch: number,
+  ) => void
   createOptimizedBuffer: (
     width: number,
     height: number,
@@ -2067,6 +2078,34 @@ class FFIRenderLib implements RenderLib {
     const height = this.opentui.symbols.getBufferHeight(bufferPtr)
 
     return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod: "unicode" })
+  }
+
+  public rendererSetPaletteState(
+    renderer: Pointer,
+    palette: readonly RGBA[],
+    defaultForeground: RGBA,
+    defaultBackground: RGBA,
+    paletteEpoch: number,
+  ): void {
+    const paletteBuffer = new Float32Array(palette.length * 4)
+
+    for (let index = 0; index < palette.length; index++) {
+      const color = palette[index]
+      const base = index * 4
+      paletteBuffer[base] = color.r
+      paletteBuffer[base + 1] = color.g
+      paletteBuffer[base + 2] = color.b
+      paletteBuffer[base + 3] = color.a
+    }
+
+    this.opentui.symbols.rendererSetPaletteState(
+      renderer,
+      paletteBuffer,
+      paletteBuffer.length,
+      defaultForeground.buffer,
+      defaultBackground.buffer,
+      paletteEpoch >>> 0,
+    )
   }
 
   public bufferGetCharPtr(buffer: Pointer): Pointer {

@@ -948,6 +948,88 @@ test "renderer - rgb colors fall back to ANSI256 mapping when rgb is unavailable
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;2;") == null);
 }
 
+test "renderer - rgb fallback uses published palette state" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const target = RGBA{ 0.3, 0.6, 0.9, 1.0 };
+    var palette = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    palette[42] = target;
+    cli_renderer.setPaletteState(palette[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 1);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, target, RGBA{ 0.0, 0.0, 0.0, 1.0 }, 0);
+
+    cli_renderer.render(false);
+
+    const output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;42m") != null);
+}
+
+test "renderer - palette epoch changes force repaint and use new palette mapping" {
+    const pool = gp.initGlobalPool(std.testing.allocator);
+    defer gp.deinitGlobalPool();
+    var local_link_pool = link.LinkPool.init(std.testing.allocator);
+    defer local_link_pool.deinit();
+
+    var cli_renderer = try CliRenderer.create(
+        std.testing.allocator,
+        2,
+        1,
+        pool,
+        true,
+    );
+    defer cli_renderer.destroy();
+
+    cli_renderer.terminal.caps.rgb = false;
+    cli_renderer.terminal.caps.ansi256 = true;
+
+    const target = RGBA{ 0.3, 0.6, 0.9, 1.0 };
+    const bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
+
+    var palette_a = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    palette_a[42] = target;
+    cli_renderer.setPaletteState(palette_a[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, bg, 1);
+
+    const next_buffer = cli_renderer.getNextBuffer();
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const first_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, first_output, "\x1b[38;5;42m") != null);
+
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const second_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, second_output, "A") == null);
+
+    var palette_b = [_]RGBA{RGBA{ 0.0, 0.0, 0.0, 1.0 }} ** 256;
+    palette_b[77] = target;
+    cli_renderer.setPaletteState(palette_b[0..], RGBA{ 1.0, 1.0, 1.0, 1.0 }, bg, 2);
+
+    try next_buffer.drawText("A", 0, 0, target, bg, 0);
+    cli_renderer.render(false);
+
+    const third_output = cli_renderer.getLastOutputForTest();
+    try std.testing.expect(std.mem.indexOf(u8, third_output, "A") != null);
+    try std.testing.expect(std.mem.indexOf(u8, third_output, "\x1b[38;5;77m") != null);
+}
+
 test "renderer - transparent rgb backgrounds still emit 49 reset" {
     const pool = gp.initGlobalPool(std.testing.allocator);
     defer gp.deinitGlobalPool();

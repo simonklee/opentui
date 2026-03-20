@@ -121,6 +121,13 @@ pub const CliRenderer = struct {
     lastCursorBlinking: ?bool = null,
     lastCursorColorRGB: ?[3]u8 = null,
     lastMousePointerStyle: Terminal.MousePointerStyle = .default,
+    palette_rgba: [256]RGBA,
+    default_fg_rgba: RGBA,
+    default_bg_rgba: RGBA,
+    palette_epoch: u32,
+    last_rendered_palette_epoch: ?u32 = null,
+    force_full_repaint: bool = false,
+    palette_index_cache: std.AutoHashMapUnmanaged(u64, u8) = .{},
 
     // Preallocated output buffer
     var outputBuffer: [OUTPUT_BUFFER_SIZE]u8 = undefined;
@@ -251,8 +258,13 @@ pub const CliRenderer = struct {
             .hitGridWidth = width,
             .hitGridHeight = height,
             .hitScissorStack = hitScissorStack,
+            .palette_rgba = undefined,
+            .default_fg_rgba = .{ 1.0, 1.0, 1.0, 1.0 },
+            .default_bg_rgba = .{ 0.0, 0.0, 0.0, 1.0 },
+            .palette_epoch = 0,
         };
 
+        self.resetFallbackPaletteState();
         nextBuffer.setBlendBackdropColor(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], 1.0 });
 
         try currentBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, CLEAR_CHAR);
@@ -290,6 +302,7 @@ pub const CliRenderer = struct {
         self.statSamples.stdoutWriteTime.deinit(self.allocator);
         self.statSamples.cellsUpdated.deinit(self.allocator);
         self.statSamples.frameCallbackTime.deinit(self.allocator);
+        self.palette_index_cache.deinit(self.allocator);
 
         self.allocator.free(self.currentHitGrid);
         self.allocator.free(self.nextHitGrid);
@@ -495,12 +508,44 @@ pub const CliRenderer = struct {
         self.nextRenderBuffer.setBlendBackdropColor(.{ rgba[0], rgba[1], rgba[2], 1.0 });
     }
 
-    fn nearestFallbackAnsi256Index(rgba: RGBA) u8 {
+    fn resetFallbackPaletteState(self: *CliRenderer) void {
+        for (0..self.palette_rgba.len) |index| {
+            self.palette_rgba[index] = ansi.fallbackAnsi256Color(index);
+        }
+        self.default_fg_rgba = .{ 1.0, 1.0, 1.0, 1.0 };
+        self.default_bg_rgba = .{ 0.0, 0.0, 0.0, 1.0 };
+    }
+
+    pub fn setPaletteState(self: *CliRenderer, palette: []const RGBA, default_fg: RGBA, default_bg: RGBA, palette_epoch: u32) void {
+        self.resetFallbackPaletteState();
+
+        const copy_len = @min(palette.len, self.palette_rgba.len);
+        for (palette[0..copy_len], 0..) |color, index| {
+            self.palette_rgba[index] = color;
+        }
+
+        self.default_fg_rgba = default_fg;
+        self.default_bg_rgba = default_bg;
+
+        if (self.palette_epoch != palette_epoch) {
+            self.palette_epoch = palette_epoch;
+            self.force_full_repaint = true;
+            self.palette_index_cache.clearRetainingCapacity();
+        }
+    }
+
+    fn cachedNearestPaletteIndex(self: *CliRenderer, rgba: RGBA) u8 {
+        const rgb24 = ansi.rgbaToRgb24(rgba);
+        const key = (@as(u64, self.palette_epoch) << 24) | @as(u64, rgb24);
+
+        if (self.palette_index_cache.get(key)) |cached| {
+            return cached;
+        }
+
         var best_index: u8 = 0;
         var best_distance = std.math.inf(f32);
 
-        for (0..256) |index| {
-            const candidate = ansi.fallbackAnsi256Color(index);
+        for (self.palette_rgba, 0..) |candidate, index| {
             const distance = ansi.colorDistanceSquared(rgba, candidate);
             if (distance < best_distance) {
                 best_distance = distance;
@@ -508,6 +553,7 @@ pub const CliRenderer = struct {
             }
         }
 
+        self.palette_index_cache.put(self.allocator, key, best_index) catch {};
         return best_index;
     }
 
@@ -543,7 +589,7 @@ pub const CliRenderer = struct {
             const index: u8 = if (decoded.kind == .indexed)
                 decoded.index orelse 0
             else
-                nearestFallbackAnsi256Index(rgba);
+                self.cachedNearestPaletteIndex(rgba);
 
             if (is_background) {
                 ansi.ANSI.bgIndexedColorOutput(writer, index) catch {};
@@ -671,7 +717,8 @@ pub const CliRenderer = struct {
     fn prepareRenderFrame(self: *CliRenderer, force: bool) void {
         const renderStartTime = std.time.microTimestamp();
         var cellsUpdated: u32 = 0;
-        const should_force = force;
+        const palette_force = self.last_rendered_palette_epoch == null or self.last_rendered_palette_epoch.? != self.palette_epoch;
+        const should_force = force or self.force_full_repaint or palette_force;
 
         if (activeBuffer == .A) {
             outputBufferLen = 0;
@@ -891,6 +938,8 @@ pub const CliRenderer = struct {
 
         self.renderStats.cellsUpdated = cellsUpdated;
         self.renderStats.renderTime = renderTime;
+        self.last_rendered_palette_epoch = self.palette_epoch;
+        self.force_full_repaint = false;
 
         self.nextRenderBuffer.clear(.{ self.backgroundColor[0], self.backgroundColor[1], self.backgroundColor[2], self.backgroundColor[3] }, null) catch {};
 
