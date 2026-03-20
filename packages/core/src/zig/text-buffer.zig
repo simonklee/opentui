@@ -1107,7 +1107,13 @@ pub const UnifiedTextBuffer = struct {
 
                     var style_name_buf: [64]u8 = undefined;
                     const style_name = std.fmt.bufPrint(&style_name_buf, "chunk{d}", .{i}) catch continue;
-                    const style_id = (@constCast(style)).registerStyleWithTags(style_name, fg, bg, chunk.fg_tag, chunk.bg_tag, attributes) catch continue;
+                    const style_id = (@constCast(style)).registerStyleDefinition(style_name, .{
+                        .fg = fg,
+                        .bg = bg,
+                        .fg_tag = chunk.fg_tag,
+                        .bg_tag = chunk.bg_tag,
+                        .attributes = attributes,
+                    }) catch continue;
 
                     self.addHighlightByCharRange(char_pos, char_pos + chunk_len, style_id, 1, 0) catch {};
                 }

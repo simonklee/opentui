@@ -448,26 +448,26 @@ test "processCapabilityResponse - ghostty does not set explicit_cursor_positioni
     try testing.expect(!term.caps.explicit_cursor_positioning);
 }
 
-test "processCapabilityResponse - wezterm applies color and hyperlink heuristics" {
+test "processCapabilityResponse - wezterm applies osc52 and hyperlink heuristics" {
     var term: Terminal = .{};
 
     const response = "\x1bP>|wezterm\x1b\\";
     term.processCapabilityResponse(response);
 
-    try testing.expect(term.caps.rgb);
-    try testing.expect(term.caps.ansi256);
+    try testing.expect(!term.caps.rgb);
+    try testing.expect(!term.caps.ansi256);
     try testing.expect(term.caps.osc52);
     try testing.expect(term.caps.hyperlinks);
 }
 
-test "processCapabilityResponse - foot applies color heuristics without explicit cursor positioning" {
+test "processCapabilityResponse - foot applies osc52 heuristic without explicit cursor positioning" {
     var term: Terminal = .{};
 
     const response = "\x1bP>|foot 1.17.2\x1b\\";
     term.processCapabilityResponse(response);
 
-    try testing.expect(term.caps.rgb);
-    try testing.expect(term.caps.ansi256);
+    try testing.expect(!term.caps.rgb);
+    try testing.expect(!term.caps.ansi256);
     try testing.expect(term.caps.osc52);
     try testing.expect(!term.caps.explicit_cursor_positioning);
 }

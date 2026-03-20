@@ -297,34 +297,11 @@ pub const EditorView = struct {
     }
 
     pub fn setSelection(self: *EditorView, start: u32, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
-        self.setSelectionWithTags(start, end, bgColor, fgColor, tb.COLOR_TAG_RGB, tb.COLOR_TAG_RGB);
-    }
-
-    pub fn setSelectionWithTags(
-        self: *EditorView,
-        start: u32,
-        end: u32,
-        bgColor: ?tb.RGBA,
-        fgColor: ?tb.RGBA,
-        bgTag: tb.ColorTag,
-        fgTag: tb.ColorTag,
-    ) void {
-        self.text_buffer_view.setSelectionWithTags(start, end, bgColor, fgColor, bgTag, fgTag);
+        self.text_buffer_view.setSelection(start, end, bgColor, fgColor);
     }
 
     pub fn updateSelection(self: *EditorView, end: u32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA) void {
-        self.updateSelectionWithTags(end, bgColor, fgColor, tb.COLOR_TAG_RGB, tb.COLOR_TAG_RGB);
-    }
-
-    pub fn updateSelectionWithTags(
-        self: *EditorView,
-        end: u32,
-        bgColor: ?tb.RGBA,
-        fgColor: ?tb.RGBA,
-        bgTag: tb.ColorTag,
-        fgTag: tb.ColorTag,
-    ) void {
-        self.text_buffer_view.updateSelectionWithTags(end, bgColor, fgColor, bgTag, fgTag);
+        self.text_buffer_view.updateSelection(end, bgColor, fgColor);
     }
 
     pub fn resetSelection(self: *EditorView) void {
@@ -332,50 +309,20 @@ pub const EditorView = struct {
     }
 
     pub fn setLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
-        return self.setLocalSelectionWithTags(anchorX, anchorY, focusX, focusY, bgColor, fgColor, tb.COLOR_TAG_RGB, tb.COLOR_TAG_RGB, updateCursor);
-    }
-
-    pub fn setLocalSelectionWithTags(
-        self: *EditorView,
-        anchorX: i32,
-        anchorY: i32,
-        focusX: i32,
-        focusY: i32,
-        bgColor: ?tb.RGBA,
-        fgColor: ?tb.RGBA,
-        bgTag: tb.ColorTag,
-        fgTag: tb.ColorTag,
-        updateCursor: bool,
-    ) bool {
-        const changed = self.text_buffer_view.setLocalSelectionWithTags(anchorX, anchorY, focusX, focusY, bgColor, fgColor, bgTag, fgTag);
+        const changed = self.text_buffer_view.setLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
 
         if (changed and updateCursor) {
-            self.updateCursorToSelectionFocus(focusX, focusY);
+            self.syncCursorToSelectionFocus();
         }
 
         return changed;
     }
 
     pub fn updateLocalSelection(self: *EditorView, anchorX: i32, anchorY: i32, focusX: i32, focusY: i32, bgColor: ?tb.RGBA, fgColor: ?tb.RGBA, updateCursor: bool) bool {
-        return self.updateLocalSelectionWithTags(anchorX, anchorY, focusX, focusY, bgColor, fgColor, tb.COLOR_TAG_RGB, tb.COLOR_TAG_RGB, updateCursor);
-    }
-
-    pub fn updateLocalSelectionWithTags(
-        self: *EditorView,
-        anchorX: i32,
-        anchorY: i32,
-        focusX: i32,
-        focusY: i32,
-        bgColor: ?tb.RGBA,
-        fgColor: ?tb.RGBA,
-        bgTag: tb.ColorTag,
-        fgTag: tb.ColorTag,
-        updateCursor: bool,
-    ) bool {
-        const changed = self.text_buffer_view.updateLocalSelectionWithTags(anchorX, anchorY, focusX, focusY, bgColor, fgColor, bgTag, fgTag);
+        const changed = self.text_buffer_view.updateLocalSelection(anchorX, anchorY, focusX, focusY, bgColor, fgColor);
 
         if (changed and updateCursor) {
-            self.updateCursorToSelectionFocus(focusX, focusY);
+            self.syncCursorToSelectionFocus();
         }
 
         return changed;
@@ -387,7 +334,7 @@ pub const EditorView = struct {
 
     /// Updates the cursor position to match the selection focus position.
     /// Does NOT trigger viewport scrolling - TypeScript layer handles that.
-    fn updateCursorToSelectionFocus(self: *EditorView, _: i32, _: i32) void {
+    pub fn syncCursorToSelectionFocus(self: *EditorView) void {
         const selection = self.text_buffer_view.getSelection() orelse return;
 
         const focus_offset = if (self.text_buffer_view.selection_anchor_offset) |anchor| blk: {

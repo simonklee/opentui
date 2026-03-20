@@ -68,27 +68,9 @@ pub const SyntaxStyle = struct {
         self.global_allocator.destroy(self);
     }
 
-    pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u32) SyntaxStyleError!u32 {
-        return self.registerStyleWithTags(name, fg, bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB, attributes);
-    }
-
-    pub fn registerStyleWithTags(
-        self: *SyntaxStyle,
-        name: []const u8,
-        fg: ?RGBA,
-        bg: ?RGBA,
-        fg_tag: ColorTag,
-        bg_tag: ColorTag,
-        attributes: u32,
-    ) SyntaxStyleError!u32 {
+    fn putStyle(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
         if (self.name_to_id.get(name)) |existing_id| {
-            try self.id_to_style.put(self.allocator, existing_id, StyleDefinition{
-                .fg = fg,
-                .bg = bg,
-                .fg_tag = fg_tag,
-                .bg_tag = bg_tag,
-                .attributes = attributes,
-            });
+            try self.id_to_style.put(self.allocator, existing_id, definition);
             return existing_id;
         }
 
@@ -98,15 +80,21 @@ pub const SyntaxStyle = struct {
         const owned_name = self.allocator.dupe(u8, name) catch return SyntaxStyleError.OutOfMemory;
 
         try self.name_to_id.put(self.allocator, owned_name, id);
-        try self.id_to_style.put(self.allocator, id, StyleDefinition{
-            .fg = fg,
-            .bg = bg,
-            .fg_tag = fg_tag,
-            .bg_tag = bg_tag,
-            .attributes = attributes,
-        });
+        try self.id_to_style.put(self.allocator, id, definition);
 
         return id;
+    }
+
+    pub fn registerStyle(self: *SyntaxStyle, name: []const u8, fg: ?RGBA, bg: ?RGBA, attributes: u32) SyntaxStyleError!u32 {
+        return self.registerStyleDefinition(name, .{
+            .fg = fg,
+            .bg = bg,
+            .attributes = attributes,
+        });
+    }
+
+    pub fn registerStyleDefinition(self: *SyntaxStyle, name: []const u8, definition: StyleDefinition) SyntaxStyleError!u32 {
+        return self.putStyle(name, definition);
     }
 
     pub fn resolveById(self: *const SyntaxStyle, id: u32) ?StyleDefinition {

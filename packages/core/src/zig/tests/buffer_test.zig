@@ -121,7 +121,7 @@ test "OptimizedBuffer - alpha blending downgrades blended tags to rgb" {
     const base_bg = RGBA{ 0.0, 0.0, 0.0, 1.0 };
     try buf.clear(base_bg, null);
 
-    try buf.setCellWithAlphaBlendingWithTags(
+    try buf.setCellWithAlphaBlending(
         0,
         0,
         'B',
@@ -146,7 +146,7 @@ test "OptimizedBuffer - alpha blending downgrades blended tags to rgb" {
         .attributes = 0,
     });
 
-    try buf.setCellWithAlphaBlendingWithTags(
+    try buf.setCellWithAlphaBlending(
         0,
         0,
         'C',
@@ -1726,7 +1726,7 @@ test "OptimizedBuffer - fillRect removes links" {
     try std.testing.expect(ansi.TextAttributes.hasLink(buf.get(10, 0).?.attributes));
 
     // Fill rect over first link
-    try buf.fillRect(0, 0, 6, 1, bg);
+    try buf.fillRect(0, 0, 6, 1, bg, ansi.COLOR_TAG_RGB);
 
     // Cells in rect should have no link
     try std.testing.expect(!ansi.TextAttributes.hasLink(buf.get(0, 0).?.attributes));
@@ -1877,7 +1877,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer basic rendering" {
         1.0,  0.0,  0.5,
     };
 
-    buf.drawGrayscaleBuffer(2, 1, &intensities, 3, 3, null, bg);
+    buf.drawGrayscaleBuffer(2, 1, &intensities, 3, 3, null, bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell_0_0 = buf.get(2, 1).?;
     try std.testing.expectEqual(@as(u32, 32), cell_0_0.char);
@@ -1916,7 +1916,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position clipping" {
         0.5, 0.5, 0.5, 0.5,
     };
 
-    buf.drawGrayscaleBuffer(-1, -1, &intensities, 4, 4, null, bg);
+    buf.drawGrayscaleBuffer(-1, -1, &intensities, 4, 4, null, bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell_0_0 = buf.get(0, 0).?;
     try std.testing.expect(cell_0_0.char != 32);
@@ -1949,7 +1949,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer negative position fully clipped" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    buf.drawGrayscaleBuffer(-10, -10, &intensities, 4, 4, null, bg);
+    buf.drawGrayscaleBuffer(-10, -10, &intensities, 4, 4, null, bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 32), cell.char);
@@ -1981,7 +1981,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer respects scissor rect" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    buf.drawGrayscaleBuffer(0, 0, &intensities, 4, 4, null, bg);
+    buf.drawGrayscaleBuffer(0, 0, &intensities, 4, 4, null, bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell_0_0 = buf.get(0, 0).?;
     const cell_1_1 = buf.get(1, 1).?;
@@ -2018,7 +2018,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer intensity to character mapping" {
         1.0,
     };
 
-    buf.drawGrayscaleBuffer(0, 0, &intensities, 4, 1, null, bg);
+    buf.drawGrayscaleBuffer(0, 0, &intensities, 4, 1, null, bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell_0 = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(u32, 32), cell_0.char);
@@ -2061,7 +2061,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer alpha blending preserves underlying 
         1.0, 1.0, 1.0,
     };
 
-    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, semi_transparent_bg);
+    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, semi_transparent_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(1, 1).?;
     try std.testing.expect(cell.bg[0] > 0.1);
@@ -2096,7 +2096,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer fully transparent bg preserves under
         1.0, 1.0, 1.0,
     };
 
-    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, transparent_bg);
+    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, transparent_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(1, 1).?;
     try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]);
@@ -2130,7 +2130,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer opaque bg overwrites underlying" {
         1.0, 1.0, 1.0,
     };
 
-    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, blue_bg);
+    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, blue_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(1, 1).?;
     try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]);
@@ -2164,7 +2164,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer with opacity stack" {
         1.0, 1.0, 1.0,
     };
 
-    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, blue_bg);
+    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, null, blue_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     buf.popOpacity();
 
@@ -2198,7 +2198,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled alpha blending" {
     };
 
     const semi_transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.5 };
-    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, semi_transparent_bg);
+    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, semi_transparent_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expect(cell.bg[0] > 0.1);
@@ -2230,7 +2230,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled fully transparent preser
     };
 
     const transparent_bg = RGBA{ 0.0, 0.0, 1.0, 0.0 };
-    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, transparent_bg);
+    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, transparent_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expectEqual(@as(f32, 0.0), cell.bg[0]);
@@ -2264,7 +2264,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled respects scissor" {
         1.0, 1.0, 1.0, 1.0,
     };
 
-    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, bg);
+    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const inCell = buf.get(0, 0).?;
     const outCell = buf.get(2, 2).?;
@@ -2301,7 +2301,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with opacity stack" {
     };
 
     const blue_bg = RGBA{ 0.0, 0.0, 1.0, 1.0 };
-    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, blue_bg);
+    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, null, blue_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     buf.popOpacity();
 
@@ -2329,7 +2329,7 @@ test "OptimizedBuffer - blendColors with transparent destination" {
 
     const semi_white = RGBA{ 1.0, 1.0, 1.0, 0.5 };
     const transparent_fg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
-    try buf.setCellWithAlphaBlending(0, 0, 'X', semi_white, transparent_fg, 0);
+    try buf.setCellWithAlphaBlending(0, 0, 'X', semi_white, transparent_fg, 0, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expect(cell.fg[0] > 0.45);
@@ -2356,7 +2356,7 @@ test "OptimizedBuffer - blend backdrop flattens transparent destination" {
 
     const opaque_fg = RGBA{ 1.0, 1.0, 1.0, 1.0 };
     const semi_black_bg = RGBA{ 0.0, 0.0, 0.0, 0.5 };
-    try buf.setCellWithAlphaBlending(0, 0, buffer_mod.DEFAULT_SPACE_CHAR, opaque_fg, semi_black_bg, 0);
+    try buf.setCellWithAlphaBlending(0, 0, buffer_mod.DEFAULT_SPACE_CHAR, opaque_fg, semi_black_bg, 0, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expect(cell.bg[0] > 0.45);
@@ -2392,7 +2392,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer with custom fg color" {
     };
 
     const red_fg = RGBA{ 1.0, 0.0, 0.0, 1.0 };
-    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, red_fg, black_bg);
+    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, red_fg, black_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(1, 1).?;
     try std.testing.expect(cell.fg[0] > 0.9);
@@ -2425,7 +2425,7 @@ test "OptimizedBuffer - drawGrayscaleBuffer custom fg with partial intensity" {
 
     const green_fg = RGBA{ 0.0, 1.0, 0.0, 1.0 };
     const transparent_bg = RGBA{ 0.0, 0.0, 0.0, 0.0 };
-    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, green_fg, transparent_bg);
+    buf.drawGrayscaleBuffer(0, 0, &intensities, 3, 3, green_fg, transparent_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(1, 1).?;
     try std.testing.expect(cell.fg[1] > 0.2);
@@ -2457,7 +2457,7 @@ test "OptimizedBuffer - drawGrayscaleBufferSupersampled with custom fg color" {
     };
 
     const cyan_fg = RGBA{ 0.0, 1.0, 1.0, 1.0 };
-    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, cyan_fg, black_bg);
+    buf.drawGrayscaleBufferSupersampled(0, 0, &intensities, 4, 4, cyan_fg, black_bg, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
 
     const cell = buf.get(0, 0).?;
     try std.testing.expect(cell.fg[0] < 0.1);

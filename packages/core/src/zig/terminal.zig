@@ -365,10 +365,15 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.caps.unicode = .wcwidth;
                 self.caps.explicit_cursor_positioning = true;
             }
-            self.applyTerminalColorHeuristics(term);
             if (std.mem.indexOf(u8, term, "alacritty") != null) {
                 self.caps.explicit_cursor_positioning = true;
             }
+        }
+    }
+
+    if (env_map.get("TERM")) |term| {
+        if (std.ascii.indexOfIgnoreCase(term, "256color") != null) {
+            self.caps.ansi256 = true;
         }
     }
 
@@ -398,15 +403,11 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 self.caps.kitty_keyboard = false;
                 self.caps.kitty_graphics = false;
                 self.caps.unicode = .unicode;
-                self.caps.ansi256 = true;
             } else if (std.mem.eql(u8, prog, "Apple_Terminal")) {
                 self.caps.unicode = .wcwidth;
-                self.caps.ansi256 = true;
             } else if (std.mem.eql(u8, prog, "Alacritty")) {
                 self.caps.explicit_cursor_positioning = true;
             }
-
-            self.applyTerminalColorHeuristics(prog);
         }
 
         if (env_map.get("ALACRITTY_SOCKET") != null or env_map.get("ALACRITTY_LOG") != null) {
@@ -416,8 +417,6 @@ fn checkEnvironmentOverrides(self: *Terminal) void {
                 @memcpy(self.term_info.name[0..name.len], name);
                 self.term_info.name_len = name.len;
             }
-
-            self.applyTerminalColorHeuristics("Alacritty");
         }
     }
 
@@ -695,11 +694,6 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
         }
     }
 
-    self.applyTerminalColorHeuristics(response);
-    if (self.term_info.from_xtversion) {
-        self.applyTerminalColorHeuristics(self.getTerminalName());
-    }
-
     // Kitty detection
     if (std.mem.indexOf(u8, response, "kitty")) |_| {
         self.caps.kitty_keyboard = true;
@@ -737,7 +731,6 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
 
     if (std.mem.indexOf(u8, response, "alacritty")) |_| {
         self.caps.explicit_cursor_positioning = true;
-        self.caps.ansi256 = true;
     }
 
     // Sixel detection via device attributes (capability 4 in DA1 response ending with 'c')
@@ -775,40 +768,6 @@ pub fn processCapabilityResponse(self: *Terminal, response: []const u8) void {
     }
 
     if (!self.caps.hyperlinks and isHyperlinkTerm(response)) {
-        self.caps.hyperlinks = true;
-    }
-}
-
-fn isTrueColorTerm(value: []const u8) bool {
-    return std.ascii.indexOfIgnoreCase(value, "iterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "kitty") != null or
-        std.ascii.indexOfIgnoreCase(value, "alacritty") != null or
-        std.ascii.indexOfIgnoreCase(value, "wezterm") != null or
-        std.ascii.indexOfIgnoreCase(value, "contour") != null or
-        std.ascii.indexOfIgnoreCase(value, "foot") != null or
-        std.ascii.indexOfIgnoreCase(value, "rio") != null or
-        std.ascii.indexOfIgnoreCase(value, "ghostty") != null;
-}
-
-fn isAnsi256Term(value: []const u8) bool {
-    return isTrueColorTerm(value) or std.ascii.indexOfIgnoreCase(value, "256color") != null;
-}
-
-fn applyTerminalColorHeuristics(self: *Terminal, value: []const u8) void {
-    if (value.len == 0) return;
-
-    if (isTrueColorTerm(value)) {
-        self.caps.rgb = true;
-        self.caps.ansi256 = true;
-    } else if (isAnsi256Term(value)) {
-        self.caps.ansi256 = true;
-    }
-
-    if (!self.caps.osc52 and isOsc52Term(value)) {
-        self.caps.osc52 = true;
-    }
-
-    if (!self.caps.hyperlinks and isHyperlinkTerm(value)) {
         self.caps.hyperlinks = true;
     }
 }

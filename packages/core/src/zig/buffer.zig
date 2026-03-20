@@ -841,8 +841,10 @@ pub const OptimizedBuffer = struct {
         fg: RGBA,
         bg: RGBA,
         attributes: u32,
+        fg_tag: ColorTag,
+        bg_tag: ColorTag,
     ) !void {
-        return self.setCellWithAlphaBlendingCell(x, y, taggedCell(char, fg, bg, attributes, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB));
+        return self.setCellWithAlphaBlendingCell(x, y, taggedCell(char, fg, bg, attributes, fg_tag, bg_tag));
     }
 
     fn setCellWithAlphaBlendingCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) !void {
@@ -869,20 +871,6 @@ pub const OptimizedBuffer = struct {
         } else {
             self.set(x, y, effectiveCell);
         }
-    }
-
-    pub fn setCellWithAlphaBlendingWithTags(
-        self: *OptimizedBuffer,
-        x: u32,
-        y: u32,
-        char: u32,
-        fg: RGBA,
-        bg: RGBA,
-        attributes: u32,
-        fg_tag: ColorTag,
-        bg_tag: ColorTag,
-    ) !void {
-        return self.setCellWithAlphaBlendingCell(x, y, taggedCell(char, fg, bg, attributes, fg_tag, bg_tag));
     }
 
     pub fn setCellWithAlphaBlendingRaw(
@@ -937,18 +925,6 @@ pub const OptimizedBuffer = struct {
         fg: RGBA,
         bg: RGBA,
         attributes: u32,
-    ) !void {
-        return self.drawCharWithTags(char, x, y, fg, bg, attributes, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
-    }
-
-    pub fn drawCharWithTags(
-        self: *OptimizedBuffer,
-        char: u32,
-        x: u32,
-        y: u32,
-        fg: RGBA,
-        bg: RGBA,
-        attributes: u32,
         fg_tag: ColorTag,
         bg_tag: ColorTag,
     ) !void {
@@ -964,17 +940,6 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn fillRect(
-        self: *OptimizedBuffer,
-        x: u32,
-        y: u32,
-        width: u32,
-        height: u32,
-        bg: RGBA,
-    ) !void {
-        return self.fillRectWithTag(x, y, width, height, bg, ansi.COLOR_TAG_RGB);
-    }
-
-    pub fn fillRectWithTag(
         self: *OptimizedBuffer,
         x: u32,
         y: u32,
@@ -1738,21 +1703,6 @@ pub const OptimizedBuffer = struct {
         rowCount: u32,
         drawInner: bool,
         drawOuter: bool,
-    ) void {
-        self.drawGridWithTags(borderChars, borderFg, borderBg, columnOffsets, columnCount, rowOffsets, rowCount, drawInner, drawOuter, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
-    }
-
-    pub fn drawGridWithTags(
-        self: *OptimizedBuffer,
-        borderChars: [*]const u32,
-        borderFg: RGBA,
-        borderBg: RGBA,
-        columnOffsets: [*]const i32,
-        columnCount: u32,
-        rowOffsets: [*]const i32,
-        rowCount: u32,
-        drawInner: bool,
-        drawOuter: bool,
         border_fg_tag: ColorTag,
         border_bg_tag: ColorTag,
     ) void {
@@ -1880,23 +1830,6 @@ pub const OptimizedBuffer = struct {
         y: i32,
         width: u32,
         height: u32,
-        borderChars: [*]const u32, // Array of 11 border characters
-        borderSides: BorderSides,
-        borderColor: RGBA,
-        backgroundColor: RGBA,
-        shouldFill: bool,
-        title: ?[]const u8,
-        titleAlignment: u8, // 0=left, 1=center, 2=right
-    ) !void {
-        return self.drawBoxWithTags(x, y, width, height, borderChars, borderSides, borderColor, backgroundColor, shouldFill, title, titleAlignment, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
-    }
-
-    pub fn drawBoxWithTags(
-        self: *OptimizedBuffer,
-        x: i32,
-        y: i32,
-        width: u32,
-        height: u32,
         borderChars: [*]const u32,
         borderSides: BorderSides,
         borderColor: RGBA,
@@ -1958,7 +1891,7 @@ pub const OptimizedBuffer = struct {
             if (!borderSides.top and !borderSides.right and !borderSides.bottom and !borderSides.left) {
                 const fillWidth = @as(u32, @intCast(endX - startX + 1));
                 const fillHeight = @as(u32, @intCast(endY - startY + 1));
-                try self.fillRectWithTag(@intCast(startX), @intCast(startY), fillWidth, fillHeight, backgroundColor, background_tag);
+                try self.fillRect(@intCast(startX), @intCast(startY), fillWidth, fillHeight, backgroundColor, background_tag);
             } else {
                 const innerStartX = startX + if (borderSides.left and isAtActualLeft) @as(i32, 1) else @as(i32, 0);
                 const innerStartY = startY + if (borderSides.top and isAtActualTop) @as(i32, 1) else @as(i32, 0);
@@ -1968,7 +1901,7 @@ pub const OptimizedBuffer = struct {
                 if (innerEndX >= innerStartX and innerEndY >= innerStartY) {
                     const fillWidth = @as(u32, @intCast(innerEndX - innerStartX + 1));
                     const fillHeight = @as(u32, @intCast(innerEndY - innerStartY + 1));
-                    try self.fillRectWithTag(@intCast(innerStartX), @intCast(innerStartY), fillWidth, fillHeight, backgroundColor, background_tag);
+                    try self.fillRect(@intCast(innerStartX), @intCast(innerStartY), fillWidth, fillHeight, backgroundColor, background_tag);
                 }
             }
         }
@@ -2112,7 +2045,16 @@ pub const OptimizedBuffer = struct {
 
                 const cellResult = renderQuadrantBlock(pixelsRgba);
 
-                try self.setCellWithAlphaBlending(x_cell, y_cell, cellResult.char, cellResult.fg, cellResult.bg, 0);
+                try self.setCellWithAlphaBlending(
+                    x_cell,
+                    y_cell,
+                    cellResult.char,
+                    cellResult.fg,
+                    cellResult.bg,
+                    0,
+                    ansi.COLOR_TAG_RGB,
+                    ansi.COLOR_TAG_RGB,
+                );
             }
         }
     }
@@ -2162,7 +2104,7 @@ pub const OptimizedBuffer = struct {
                 char = BLOCK_CHAR;
             }
 
-            self.setCellWithAlphaBlending(cellX, cellY, char, fg, bg, 0) catch {};
+            self.setCellWithAlphaBlending(cellX, cellY, char, fg, bg, 0, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB) catch {};
         }
     }
 
@@ -2174,19 +2116,6 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn drawGrayscaleBuffer(
-        self: *OptimizedBuffer,
-        posX: i32,
-        posY: i32,
-        intensities: [*]const f32,
-        srcWidth: u32,
-        srcHeight: u32,
-        fgColor: ?RGBA,
-        bgColor: ?RGBA,
-    ) void {
-        self.drawGrayscaleBufferWithTags(posX, posY, intensities, srcWidth, srcHeight, fgColor, bgColor, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
-    }
-
-    pub fn drawGrayscaleBufferWithTags(
         self: *OptimizedBuffer,
         posX: i32,
         posY: i32,
@@ -2255,19 +2184,6 @@ pub const OptimizedBuffer = struct {
     }
 
     pub fn drawGrayscaleBufferSupersampled(
-        self: *OptimizedBuffer,
-        posX: i32,
-        posY: i32,
-        intensities: [*]const f32,
-        srcWidth: u32,
-        srcHeight: u32,
-        fgColor: ?RGBA,
-        bgColor: ?RGBA,
-    ) void {
-        self.drawGrayscaleBufferSupersampledWithTags(posX, posY, intensities, srcWidth, srcHeight, fgColor, bgColor, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
-    }
-
-    pub fn drawGrayscaleBufferSupersampledWithTags(
         self: *OptimizedBuffer,
         posX: i32,
         posY: i32,
