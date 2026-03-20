@@ -2147,10 +2147,16 @@ class FFIRenderLib implements RenderLib {
   ) {
     const textBytes = this.encoder.encode(text)
     const textLength = textBytes.byteLength
-    const fgBuffer = color.buffer
-    const bgBuffer = bgColor?.buffer ?? null
-
-    this.opentui.symbols.bufferDrawText(buffer, textBytes, textLength, x, y, fgBuffer, bgBuffer, attributes ?? 0)
+    this.opentui.symbols.bufferDrawText(
+      buffer,
+      textBytes,
+      textLength,
+      x,
+      y,
+      color.buffer,
+      bgColor?.buffer ?? null,
+      attributes ?? 0,
+    )
   }
 
   public bufferSetCellWithAlphaBlending(
@@ -2163,10 +2169,15 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const fgBuffer = color.buffer
-    const bgBuffer = bgColor.buffer
-
-    this.opentui.symbols.bufferSetCellWithAlphaBlending(buffer, x, y, charPtr, fgBuffer, bgBuffer, attributes ?? 0)
+    this.opentui.symbols.bufferSetCellWithAlphaBlending(
+      buffer,
+      x,
+      y,
+      charPtr,
+      color.buffer,
+      bgColor.buffer,
+      attributes ?? 0,
+    )
   }
 
   public bufferSetCell(
@@ -2179,10 +2190,7 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const fgBuffer = color.buffer
-    const bgBuffer = bgColor.buffer
-
-    this.opentui.symbols.bufferSetCell(buffer, x, y, charPtr, fgBuffer, bgBuffer, attributes ?? 0)
+    this.opentui.symbols.bufferSetCell(buffer, x, y, charPtr, color.buffer, bgColor.buffer, attributes ?? 0)
   }
 
   public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) {
@@ -2255,9 +2263,6 @@ class FFIRenderLib implements RenderLib {
     fg: RGBA | null,
     bg: RGBA | null,
   ): void {
-    const fgBuffer = fg?.buffer ?? null
-    const bgBuffer = bg?.buffer ?? null
-
     this.opentui.symbols.bufferDrawGrayscaleBuffer(
       buffer,
       posX,
@@ -2265,8 +2270,8 @@ class FFIRenderLib implements RenderLib {
       intensitiesPtr,
       srcWidth,
       srcHeight,
-      fgBuffer,
-      bgBuffer,
+      fg?.buffer ?? null,
+      bg?.buffer ?? null,
     )
   }
 
@@ -2280,9 +2285,6 @@ class FFIRenderLib implements RenderLib {
     fg: RGBA | null,
     bg: RGBA | null,
   ): void {
-    const fgBuffer = fg?.buffer ?? null
-    const bgBuffer = bg?.buffer ?? null
-
     this.opentui.symbols.bufferDrawGrayscaleBufferSupersampled(
       buffer,
       posX,
@@ -2290,8 +2292,8 @@ class FFIRenderLib implements RenderLib {
       intensitiesPtr,
       srcWidth,
       srcHeight,
-      fgBuffer,
-      bgBuffer,
+      fg?.buffer ?? null,
+      bg?.buffer ?? null,
     )
   }
 
@@ -2306,8 +2308,6 @@ class FFIRenderLib implements RenderLib {
     rowCount: number,
     options: { drawInner: boolean; drawOuter: boolean },
   ): void {
-    const borderFgBuffer = borderFg.buffer
-    const borderBgBuffer = borderBg.buffer
     const optionsBuffer = GridDrawOptionsStruct.pack({
       drawInner: options.drawInner,
       drawOuter: options.drawOuter,
@@ -2316,8 +2316,8 @@ class FFIRenderLib implements RenderLib {
     this.opentui.symbols.bufferDrawGrid(
       buffer,
       borderChars,
-      borderFgBuffer,
-      borderBgBuffer,
+      borderFg.buffer,
+      borderBg.buffer,
       columnOffsets,
       columnCount,
       rowOffsets,
@@ -2338,8 +2338,6 @@ class FFIRenderLib implements RenderLib {
     backgroundColor: RGBA,
     title: string | null,
   ): void {
-    const borderBuffer = borderColor.buffer
-    const backgroundBuffer = backgroundColor.buffer
     const titleBytes = title ? this.encoder.encode(title) : null
     const titleLen = title ? titleBytes!.length : 0
     const titlePtr = title ? titleBytes : null
@@ -2352,8 +2350,8 @@ class FFIRenderLib implements RenderLib {
       height,
       borderChars,
       packedOptions,
-      borderBuffer,
-      backgroundBuffer,
+      borderColor.buffer,
+      backgroundColor.buffer,
       titlePtr,
       titleLen,
     )
@@ -2810,9 +2808,7 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): void {
-    const bgBuffer = bgColor?.buffer ?? null
-    const fgBuffer = fgColor?.buffer ?? null
-    this.opentui.symbols.textBufferViewSetSelection(view, start, end, bgBuffer, fgBuffer)
+    this.opentui.symbols.textBufferViewSetSelection(view, start, end, bgColor?.buffer ?? null, fgColor?.buffer ?? null)
   }
 
   public textBufferViewResetSelection(view: Pointer): void {
@@ -2846,23 +2842,19 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): boolean {
-    const bgBuffer = bgColor?.buffer ?? null
-    const fgBuffer = fgColor?.buffer ?? null
     return this.opentui.symbols.textBufferViewSetLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      bgBuffer,
-      fgBuffer,
+      bgColor?.buffer ?? null,
+      fgColor?.buffer ?? null,
     )
   }
 
   public textBufferViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
-    const bgBuffer = bgColor?.buffer ?? null
-    const fgBuffer = fgColor?.buffer ?? null
-    this.opentui.symbols.textBufferViewUpdateSelection(view, end, bgBuffer, fgBuffer)
+    this.opentui.symbols.textBufferViewUpdateSelection(view, end, bgColor?.buffer ?? null, fgColor?.buffer ?? null)
   }
 
   public textBufferViewUpdateLocalSelection(
@@ -2874,16 +2866,14 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): boolean {
-    const bgBuffer = bgColor?.buffer ?? null
-    const fgBuffer = fgColor?.buffer ?? null
     return this.opentui.symbols.textBufferViewUpdateLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      bgBuffer,
-      fgBuffer,
+      bgColor?.buffer ?? null,
+      fgColor?.buffer ?? null,
     )
   }
 
@@ -3449,9 +3439,7 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): void {
-    const bgBuffer = bgColor?.buffer ?? null
-    const fgBuffer = fgColor?.buffer ?? null
-    this.opentui.symbols.editorViewSetSelection(view, start, end, bgBuffer, fgBuffer)
+    this.opentui.symbols.editorViewSetSelection(view, start, end, bgColor?.buffer ?? null, fgColor?.buffer ?? null)
   }
 
   public editorViewResetSelection(view: Pointer): void {
@@ -3479,25 +3467,21 @@ class FFIRenderLib implements RenderLib {
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bgBuffer = bgColor?.buffer ?? null
-    const fgBuffer = fgColor?.buffer ?? null
     return this.opentui.symbols.editorViewSetLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      bgBuffer,
-      fgBuffer,
+      bgColor?.buffer ?? null,
+      fgColor?.buffer ?? null,
       updateCursor,
       followCursor,
     )
   }
 
   public editorViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
-    const bgBuffer = bgColor?.buffer ?? null
-    const fgBuffer = fgColor?.buffer ?? null
-    this.opentui.symbols.editorViewUpdateSelection(view, end, bgBuffer, fgBuffer)
+    this.opentui.symbols.editorViewUpdateSelection(view, end, bgColor?.buffer ?? null, fgColor?.buffer ?? null)
   }
 
   public editorViewUpdateLocalSelection(
@@ -3511,16 +3495,14 @@ class FFIRenderLib implements RenderLib {
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bgBuffer = bgColor?.buffer ?? null
-    const fgBuffer = fgColor?.buffer ?? null
     return this.opentui.symbols.editorViewUpdateLocalSelection(
       view,
       anchorX,
       anchorY,
       focusX,
       focusY,
-      bgBuffer,
-      fgBuffer,
+      bgColor?.buffer ?? null,
+      fgColor?.buffer ?? null,
       updateCursor,
       followCursor,
     )
@@ -3722,10 +3704,7 @@ class FFIRenderLib implements RenderLib {
     bg: RGBA,
     attributes: number = 0,
   ): void {
-    const fgBuffer = fg.buffer
-    const bgBuffer = bg.buffer
-
-    this.opentui.symbols.bufferDrawChar(buffer, char, x, y, fgBuffer, bgBuffer, attributes)
+    this.opentui.symbols.bufferDrawChar(buffer, char, x, y, fg.buffer, bg.buffer, attributes)
   }
 
   public registerNativeSpanFeedStream(stream: Pointer, handler: NativeSpanFeedEventHandler): void {
@@ -3828,9 +3807,14 @@ class FFIRenderLib implements RenderLib {
     attributes: number,
   ): number {
     const nameBytes = this.encoder.encode(name)
-    const fgBuffer = fg?.buffer ?? null
-    const bgBuffer = bg?.buffer ?? null
-    return this.opentui.symbols.syntaxStyleRegister(style, nameBytes, nameBytes.length, fgBuffer, bgBuffer, attributes)
+    return this.opentui.symbols.syntaxStyleRegister(
+      style,
+      nameBytes,
+      nameBytes.length,
+      fg?.buffer ?? null,
+      bg?.buffer ?? null,
+      attributes,
+    )
   }
 
   public syntaxStyleResolveByName(style: Pointer, name: string): number | null {
