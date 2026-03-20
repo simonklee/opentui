@@ -46,8 +46,8 @@ export const StyledChunkStruct = defineStruct(
   ],
   {
     mapValue: (chunk: StyledChunkInput): StyledChunkInput => {
-      const normalizedFg = normalizeColorValue(chunk.fg ?? null, { role: "fg" })
-      const normalizedBg = normalizeColorValue(chunk.bg ?? null, { role: "bg" })
+      const normalizedFg = normalizeColorValue(chunk.fg ?? null)
+      const normalizedBg = normalizeColorValue(chunk.bg ?? null)
 
       if (!chunk.link || typeof chunk.link === "string") {
         return {
