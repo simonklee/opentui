@@ -575,7 +575,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.rendererPtr = rendererPtr
     this.syncNativePaletteState(null)
 
-    const forwardEnvKeys = config.forwardEnvKeys ?? [...DEFAULT_FORWARDED_ENV_KEYS]
+    const forwardEnvKeys = config.forwardEnvKeys ?? (config.remote ? [] : [...DEFAULT_FORWARDED_ENV_KEYS])
     for (const key of forwardEnvKeys) {
       const value = process.env[key]
       if (value === undefined) continue
