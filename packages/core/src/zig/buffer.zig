@@ -97,6 +97,17 @@ pub const Cell = struct {
     attributes: u32,
 };
 
+inline fn taggedCell(char: u32, fg: RGBA, bg: RGBA, attributes: u32, fg_tag: ColorTag, bg_tag: ColorTag) Cell {
+    return .{
+        .char = char,
+        .fg = fg,
+        .bg = bg,
+        .fg_tag = fg_tag,
+        .bg_tag = bg_tag,
+        .attributes = attributes,
+    };
+}
+
 fn isRGBAWithAlpha(color: RGBA) bool {
     return color[3] < 1.0;
 }
@@ -839,7 +850,33 @@ pub const OptimizedBuffer = struct {
         bg: RGBA,
         attributes: u32,
     ) !void {
-        return self.setCellWithAlphaBlendingWithTags(x, y, char, fg, bg, attributes, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
+        return self.setCellWithAlphaBlendingCell(x, y, taggedCell(char, fg, bg, attributes, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB));
+    }
+
+    fn setCellWithAlphaBlendingCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) !void {
+        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
+
+        const opacity = self.getCurrentOpacity();
+        if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
+            self.set(x, y, cell);
+            return;
+        }
+
+        const effectiveCell = taggedCell(
+            cell.char,
+            .{ cell.fg[0], cell.fg[1], cell.fg[2], cell.fg[3] * opacity },
+            .{ cell.bg[0], cell.bg[1], cell.bg[2], cell.bg[3] * opacity },
+            cell.attributes,
+            cell.fg_tag,
+            cell.bg_tag,
+        );
+
+        if (self.get(x, y)) |destCell| {
+            const blendedCell = self.blendCells(effectiveCell, destCell);
+            self.set(x, y, blendedCell);
+        } else {
+            self.set(x, y, effectiveCell);
+        }
     }
 
     pub fn setCellWithAlphaBlendingWithTags(
@@ -853,26 +890,7 @@ pub const OptimizedBuffer = struct {
         fg_tag: ColorTag,
         bg_tag: ColorTag,
     ) !void {
-        if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
-
-        // Apply current opacity from the stack
-        const opacity = self.getCurrentOpacity();
-        if (isFullyOpaque(opacity, fg, bg)) {
-            self.set(x, y, Cell{ .char = char, .fg = fg, .bg = bg, .fg_tag = fg_tag, .bg_tag = bg_tag, .attributes = attributes });
-            return;
-        }
-
-        const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
-        const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
-
-        const overlayCell = Cell{ .char = char, .fg = effectiveFg, .bg = effectiveBg, .fg_tag = fg_tag, .bg_tag = bg_tag, .attributes = attributes };
-
-        if (self.get(x, y)) |destCell| {
-            const blendedCell = self.blendCells(overlayCell, destCell);
-            self.set(x, y, blendedCell);
-        } else {
-            self.set(x, y, overlayCell);
-        }
+        return self.setCellWithAlphaBlendingCell(x, y, taggedCell(char, fg, bg, attributes, fg_tag, bg_tag));
     }
 
     pub fn setCellWithAlphaBlendingRaw(
@@ -884,46 +902,38 @@ pub const OptimizedBuffer = struct {
         bg: RGBA,
         attributes: u32,
     ) !void {
-        return self.setCellWithAlphaBlendingRawWithTags(x, y, char, fg, bg, attributes, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB);
+        return self.setCellWithAlphaBlendingRawCell(x, y, taggedCell(char, fg, bg, attributes, ansi.COLOR_TAG_RGB, ansi.COLOR_TAG_RGB));
     }
 
-    pub fn setCellWithAlphaBlendingRawWithTags(
-        self: *OptimizedBuffer,
-        x: u32,
-        y: u32,
-        char: u32,
-        fg: RGBA,
-        bg: RGBA,
-        attributes: u32,
-        fg_tag: ColorTag,
-        bg_tag: ColorTag,
-    ) !void {
+    fn setCellWithAlphaBlendingRawCell(self: *OptimizedBuffer, x: u32, y: u32, cell: Cell) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
-        // Apply current opacity from the stack
         const opacity = self.getCurrentOpacity();
-        if (isFullyOpaque(opacity, fg, bg)) {
-            const overlayCell = Cell{ .char = char, .fg = fg, .bg = bg, .fg_tag = fg_tag, .bg_tag = bg_tag, .attributes = attributes };
-            assert(!gp.isGraphemeChar(char));
-            assert(!gp.isContinuationChar(char));
-            self.setRaw(x, y, overlayCell);
+        if (isFullyOpaque(opacity, cell.fg, cell.bg)) {
+            assert(!gp.isGraphemeChar(cell.char));
+            assert(!gp.isContinuationChar(cell.char));
+            self.setRaw(x, y, cell);
             return;
         }
 
-        const effectiveFg = RGBA{ fg[0], fg[1], fg[2], fg[3] * opacity };
-        const effectiveBg = RGBA{ bg[0], bg[1], bg[2], bg[3] * opacity };
-
-        const overlayCell = Cell{ .char = char, .fg = effectiveFg, .bg = effectiveBg, .fg_tag = fg_tag, .bg_tag = bg_tag, .attributes = attributes };
+        const effectiveCell = taggedCell(
+            cell.char,
+            .{ cell.fg[0], cell.fg[1], cell.fg[2], cell.fg[3] * opacity },
+            .{ cell.bg[0], cell.bg[1], cell.bg[2], cell.bg[3] * opacity },
+            cell.attributes,
+            cell.fg_tag,
+            cell.bg_tag,
+        );
 
         if (self.get(x, y)) |destCell| {
-            const blendedCell = self.blendCells(overlayCell, destCell);
+            const blendedCell = self.blendCells(effectiveCell, destCell);
             assert(!gp.isGraphemeChar(blendedCell.char));
             assert(!gp.isContinuationChar(blendedCell.char));
             self.setRaw(x, y, blendedCell);
         } else {
-            assert(!gp.isGraphemeChar(overlayCell.char));
-            assert(!gp.isContinuationChar(overlayCell.char));
-            self.setRaw(x, y, overlayCell);
+            assert(!gp.isGraphemeChar(effectiveCell.char));
+            assert(!gp.isContinuationChar(effectiveCell.char));
+            self.setRaw(x, y, effectiveCell);
         }
     }
 
@@ -952,17 +962,12 @@ pub const OptimizedBuffer = struct {
     ) !void {
         if (!self.isPointInScissor(@intCast(x), @intCast(y))) return;
 
+        const cell = taggedCell(char, fg, bg, attributes, fg_tag, bg_tag);
+
         if (isRGBAWithAlpha(bg) or isRGBAWithAlpha(fg)) {
-            try self.setCellWithAlphaBlendingWithTags(x, y, char, fg, bg, attributes, fg_tag, bg_tag);
+            try self.setCellWithAlphaBlendingCell(x, y, cell);
         } else {
-            self.set(x, y, Cell{
-                .char = char,
-                .fg = fg,
-                .bg = bg,
-                .fg_tag = fg_tag,
-                .bg_tag = bg_tag,
-                .attributes = attributes,
-            });
+            self.set(x, y, cell);
         }
     }
 
@@ -1017,7 +1022,11 @@ pub const OptimizedBuffer = struct {
             while (fillY <= clippedEndY) : (fillY += 1) {
                 var fillX = clippedStartX;
                 while (fillX <= clippedEndX) : (fillX += 1) {
-                    try self.setCellWithAlphaBlendingWithTags(fillX, fillY, DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0, ansi.COLOR_TAG_RGB, bg_tag);
+                    try self.setCellWithAlphaBlendingCell(
+                        fillX,
+                        fillY,
+                        taggedCell(DEFAULT_SPACE_CHAR, .{ 1.0, 1.0, 1.0, 1.0 }, bg, 0, ansi.COLOR_TAG_RGB, bg_tag),
+                    );
                 }
             }
         } else {
@@ -1135,25 +1144,13 @@ pub const OptimizedBuffer = struct {
                     if (tab_x >= self.width) break;
 
                     if (isRGBAWithAlpha(bgColor)) {
-                        try self.setCellWithAlphaBlendingWithTags(
+                        try self.setCellWithAlphaBlendingCell(
                             tab_x,
                             y,
-                            DEFAULT_SPACE_CHAR,
-                            fg,
-                            bgColor,
-                            attributes,
-                            fg_tag,
-                            effectiveBgTag,
+                            taggedCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes, fg_tag, effectiveBgTag),
                         );
                     } else {
-                        self.set(tab_x, y, Cell{
-                            .char = DEFAULT_SPACE_CHAR,
-                            .fg = fg,
-                            .bg = bgColor,
-                            .fg_tag = fg_tag,
-                            .bg_tag = effectiveBgTag,
-                            .attributes = attributes,
-                        });
+                        self.set(tab_x, y, taggedCell(DEFAULT_SPACE_CHAR, fg, bgColor, attributes, fg_tag, effectiveBgTag));
                     }
                 }
                 advance_cells += g_width;
@@ -1170,16 +1167,13 @@ pub const OptimizedBuffer = struct {
             }
 
             if (isRGBAWithAlpha(bgColor)) {
-                try self.setCellWithAlphaBlendingWithTags(charX, y, encoded_char, fg, bgColor, attributes, fg_tag, effectiveBgTag);
+                try self.setCellWithAlphaBlendingCell(
+                    charX,
+                    y,
+                    taggedCell(encoded_char, fg, bgColor, attributes, fg_tag, effectiveBgTag),
+                );
             } else {
-                self.set(charX, y, Cell{
-                    .char = encoded_char,
-                    .fg = fg,
-                    .bg = bgColor,
-                    .fg_tag = fg_tag,
-                    .bg_tag = effectiveBgTag,
-                    .attributes = attributes,
-                });
+                self.set(charX, y, taggedCell(encoded_char, fg, bgColor, attributes, fg_tag, effectiveBgTag));
             }
 
             advance_cells += cell_width;
@@ -1283,7 +1277,11 @@ pub const OptimizedBuffer = struct {
                         if (graphemeId != lastDrawnGraphemeId) {
                             // We haven't drawn the start character for this grapheme (likely out of bounds to the left)
                             // Draw a space with the same attributes to fill the cell
-                            self.setCellWithAlphaBlendingWithTags(@intCast(dX), @intCast(dY), DEFAULT_SPACE_CHAR, srcFg, srcBg, srcAttr, srcFgTag, srcBgTag) catch {};
+                            self.setCellWithAlphaBlendingCell(
+                                @intCast(dX),
+                                @intCast(dY),
+                                taggedCell(DEFAULT_SPACE_CHAR, srcFg, srcBg, srcAttr, srcFgTag, srcBgTag),
+                            ) catch {};
                         }
                         continue;
                     }
@@ -1292,11 +1290,19 @@ pub const OptimizedBuffer = struct {
                         lastDrawnGraphemeId = srcChar & gp.GRAPHEME_ID_MASK;
                     }
 
-                    self.setCellWithAlphaBlendingWithTags(@intCast(dX), @intCast(dY), srcChar, srcFg, srcBg, srcAttr, srcFgTag, srcBgTag) catch {};
+                    self.setCellWithAlphaBlendingCell(
+                        @intCast(dX),
+                        @intCast(dY),
+                        taggedCell(srcChar, srcFg, srcBg, srcAttr, srcFgTag, srcBgTag),
+                    ) catch {};
                     continue;
                 }
 
-                self.setCellWithAlphaBlendingRawWithTags(@intCast(dX), @intCast(dY), srcChar, srcFg, srcBg, srcAttr, srcFgTag, srcBgTag) catch {};
+                self.setCellWithAlphaBlendingRawCell(
+                    @intCast(dX),
+                    @intCast(dY),
+                    taggedCell(srcChar, srcFg, srcBg, srcAttr, srcFgTag, srcBgTag),
+                ) catch {};
             }
         }
     }
@@ -1665,15 +1671,10 @@ pub const OptimizedBuffer = struct {
                             const fg = if (tab_col == 0 and tab_indicator_color != null) tab_indicator_color.? else drawFg;
                             const fgTag = if (tab_col == 0 and tab_indicator_color != null) ansi.COLOR_TAG_RGB else drawFgTag;
 
-                            try self.setCellWithAlphaBlendingWithTags(
+                            try self.setCellWithAlphaBlendingCell(
                                 @intCast(currentX + @as(i32, @intCast(tab_col))),
                                 @intCast(currentY),
-                                char,
-                                fg,
-                                drawBg,
-                                drawAttributes,
-                                fgTag,
-                                drawBgTag,
+                                taggedCell(char, fg, drawBg, drawAttributes, fgTag, drawBgTag),
                             );
                         }
                     } else {
@@ -1691,15 +1692,10 @@ pub const OptimizedBuffer = struct {
                             encoded_char = gp.packGraphemeStart(gid & gp.GRAPHEME_ID_MASK, g_width);
                         }
 
-                        try self.setCellWithAlphaBlendingWithTags(
+                        try self.setCellWithAlphaBlendingCell(
                             @intCast(currentX),
                             @intCast(currentY),
-                            encoded_char,
-                            drawFg,
-                            drawBg,
-                            drawAttributes,
-                            drawFgTag,
-                            drawBgTag,
+                            taggedCell(encoded_char, drawFg, drawBg, drawAttributes, drawFgTag, drawBgTag),
                         );
                     }
 
@@ -2014,7 +2010,11 @@ pub const OptimizedBuffer = struct {
                             char = if (borderSides.right) borderChars[@intFromEnum(BorderCharIndex.topRight)] else borderChars[@intFromEnum(BorderCharIndex.horizontal)];
                         }
 
-                        try self.setCellWithAlphaBlendingWithTags(@intCast(drawX), @intCast(startY), char, borderColor, backgroundColor, 0, border_tag, background_tag);
+                        try self.setCellWithAlphaBlendingCell(
+                            @intCast(drawX),
+                            @intCast(startY),
+                            taggedCell(char, borderColor, backgroundColor, 0, border_tag, background_tag),
+                        );
                     }
                 }
             }
@@ -2033,7 +2033,11 @@ pub const OptimizedBuffer = struct {
                             char = if (borderSides.right) borderChars[@intFromEnum(BorderCharIndex.bottomRight)] else borderChars[@intFromEnum(BorderCharIndex.horizontal)];
                         }
 
-                        try self.setCellWithAlphaBlendingWithTags(@intCast(drawX), @intCast(endY), char, borderColor, backgroundColor, 0, border_tag, background_tag);
+                        try self.setCellWithAlphaBlendingCell(
+                            @intCast(drawX),
+                            @intCast(endY),
+                            taggedCell(char, borderColor, backgroundColor, 0, border_tag, background_tag),
+                        );
                     }
                 }
             }
@@ -2048,12 +2052,20 @@ pub const OptimizedBuffer = struct {
             while (drawY <= verticalEndY) : (drawY += 1) {
                 // Left border
                 if (borderSides.left and isAtActualLeft and startX >= 0 and startX < @as(i32, @intCast(self.width))) {
-                    try self.setCellWithAlphaBlendingWithTags(@intCast(startX), @intCast(drawY), borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0, border_tag, background_tag);
+                    try self.setCellWithAlphaBlendingCell(
+                        @intCast(startX),
+                        @intCast(drawY),
+                        taggedCell(borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0, border_tag, background_tag),
+                    );
                 }
 
                 // Right border
                 if (borderSides.right and isAtActualRight and endX >= 0 and endX < @as(i32, @intCast(self.width))) {
-                    try self.setCellWithAlphaBlendingWithTags(@intCast(endX), @intCast(drawY), borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0, border_tag, background_tag);
+                    try self.setCellWithAlphaBlendingCell(
+                        @intCast(endX),
+                        @intCast(drawY),
+                        taggedCell(borderChars[@intFromEnum(BorderCharIndex.vertical)], borderColor, backgroundColor, 0, border_tag, background_tag),
+                    );
                 }
             }
         }
@@ -2242,9 +2254,9 @@ pub const OptimizedBuffer = struct {
                 const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
 
                 if (graphemeAware or linkAware) {
-                    self.setCellWithAlphaBlendingWithTags(destX, destY, char, fg, bg, 0, fg_tag, bg_tag) catch {};
+                    self.setCellWithAlphaBlendingCell(destX, destY, taggedCell(char, fg, bg, 0, fg_tag, bg_tag)) catch {};
                 } else {
-                    self.setCellWithAlphaBlendingRawWithTags(destX, destY, char, fg, bg, 0, fg_tag, bg_tag) catch {};
+                    self.setCellWithAlphaBlendingRawCell(destX, destY, taggedCell(char, fg, bg, 0, fg_tag, bg_tag)) catch {};
                 }
             }
         }
@@ -2339,9 +2351,9 @@ pub const OptimizedBuffer = struct {
                 const fg: RGBA = .{ baseFg[0], baseFg[1], baseFg[2], gray * baseFg[3] * opacity };
 
                 if (graphemeAware or linkAware) {
-                    self.setCellWithAlphaBlendingWithTags(destX, destY, char, fg, bg, 0, fg_tag, bg_tag) catch {};
+                    self.setCellWithAlphaBlendingCell(destX, destY, taggedCell(char, fg, bg, 0, fg_tag, bg_tag)) catch {};
                 } else {
-                    self.setCellWithAlphaBlendingRawWithTags(destX, destY, char, fg, bg, 0, fg_tag, bg_tag) catch {};
+                    self.setCellWithAlphaBlendingRawCell(destX, destY, taggedCell(char, fg, bg, 0, fg_tag, bg_tag)) catch {};
                 }
             }
         }

@@ -7,7 +7,7 @@ import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine }
 import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
 
-interface InternalBufferTagLib extends RenderLib {
+interface BufferTagReader {
   bufferGetFgTagPtr(buffer: Pointer): Pointer
   bufferGetBgTagPtr(buffer: Pointer): Pointer
 }
@@ -103,7 +103,7 @@ export class OptimizedBuffer {
     this.guard()
     if (this._rawTagBuffers === null) {
       const size = this._width * this._height
-      const tagLib = this.lib as InternalBufferTagLib
+      const tagLib = this.lib as unknown as BufferTagReader
       const fgTagPtr = tagLib.bufferGetFgTagPtr(this.bufferPtr)
       const bgTagPtr = tagLib.bufferGetBgTagPtr(this.bufferPtr)
 
