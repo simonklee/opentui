@@ -364,6 +364,23 @@ describe("RGBA class", () => {
     })
   })
 
+  describe("equals", () => {
+    test("treats tag differences as unequal", () => {
+      const rgb = RGBA.fromHex("#112233")
+      const indexed = RGBA.fromIndex(6, rgb)
+
+      expect(rgb.equals(indexed)).toBe(false)
+      expect(indexed.equals(rgb)).toBe(false)
+    })
+
+    test("matches identical rgba values and tags", () => {
+      const left = RGBA.defaultForeground("#aabbcc")
+      const right = RGBA.defaultForeground("#aabbcc")
+
+      expect(left.equals(right)).toBe(true)
+    })
+  })
+
   describe("toString", () => {
     test("formats as rgba string with 2 decimal places", () => {
       const rgba = RGBA.fromValues(0.5, 0.6, 0.7, 0.8)

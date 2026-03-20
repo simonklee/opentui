@@ -472,6 +472,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private _paletteDetector: TerminalPaletteDetector | null = null
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
+  private _paletteDetectionSize: number | null = null
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
   private _terminalFocusState: boolean | null = null
@@ -1980,6 +1981,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._paletteDetector = null
     }
     this._paletteDetectionPromise = null
+    this._paletteDetectionSize = null
     this._cachedPalette = null
 
     this.emit(CliRenderEvents.DESTROY)
@@ -2411,7 +2413,18 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     if (this._paletteDetectionPromise) {
-      return this._paletteDetectionPromise
+      if (this._paletteDetectionSize === requestedSize) {
+        return this._paletteDetectionPromise
+      }
+
+      await this._paletteDetectionPromise
+
+      const cachedPalette = this._cachedPalette as TerminalColors | null
+      if (cachedPalette != null && cachedPalette["palette"].length === requestedSize) {
+        return cachedPalette
+      }
+
+      this._cachedPalette = null
     }
 
     if (!this._paletteDetector) {
@@ -2430,12 +2443,21 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       )
     }
 
-    this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {
+    const detectionPromise = this._paletteDetector.detect(options).then((result) => {
       this._cachedPalette = result
-      this._paletteDetectionPromise = null
       return result
     })
 
-    return this._paletteDetectionPromise
+    this._paletteDetectionPromise = detectionPromise
+    this._paletteDetectionSize = requestedSize
+
+    try {
+      return await detectionPromise
+    } finally {
+      if (this._paletteDetectionPromise === detectionPromise) {
+        this._paletteDetectionPromise = null
+        this._paletteDetectionSize = null
+      }
+    }
   }
 }

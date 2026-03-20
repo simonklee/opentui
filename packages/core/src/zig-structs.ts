@@ -9,8 +9,8 @@ type StyledChunkInput = {
   text: string
   fg?: RGBA | null
   bg?: RGBA | null
-  fgTag?: number
-  bgTag?: number
+  fg_tag?: number
+  bg_tag?: number
   attributes?: number | null
   link?: { url: string } | string | null
 }
@@ -53,8 +53,8 @@ export const StyledChunkStruct = defineStruct(
           ...chunk,
           fg: normalizedFg?.rgba ?? null,
           bg: normalizedBg?.rgba ?? null,
-          fgTag: normalizedFg?.tag ?? COLOR_TAG_RGB,
-          bgTag: normalizedBg?.tag ?? COLOR_TAG_RGB,
+          fg_tag: normalizedFg?.tag ?? COLOR_TAG_RGB,
+          bg_tag: normalizedBg?.tag ?? COLOR_TAG_RGB,
         }
       }
 
@@ -62,8 +62,8 @@ export const StyledChunkStruct = defineStruct(
         ...chunk,
         fg: normalizedFg?.rgba ?? null,
         bg: normalizedBg?.rgba ?? null,
-        fgTag: normalizedFg?.tag ?? COLOR_TAG_RGB,
-        bgTag: normalizedBg?.tag ?? COLOR_TAG_RGB,
+        fg_tag: normalizedFg?.tag ?? COLOR_TAG_RGB,
+        bg_tag: normalizedBg?.tag ?? COLOR_TAG_RGB,
         link: chunk.link.url,
       }
     },

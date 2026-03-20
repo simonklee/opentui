@@ -217,6 +217,28 @@ describe("Palette caching behavior", () => {
     renderer.destroy()
   })
 
+  test("concurrent requests with different sizes redetect for the later caller", async () => {
+    const { renderer, clock } = await createPaletteRenderer()
+
+    const palette16Promise = renderer.getPalette({ size: 16, timeout: 300 })
+    const palette256Promise = renderer.getPalette({ size: 256, timeout: 300 })
+
+    await advancePaletteClock(clock, 300)
+    await flushAsync()
+
+    expect(renderer.paletteDetectionStatus).toBe("detecting")
+
+    await advancePaletteClock(clock, 300)
+
+    const [palette16, palette256] = await Promise.all([palette16Promise, palette256Promise])
+
+    expect(palette16.palette).toHaveLength(16)
+    expect(palette256.palette).toHaveLength(256)
+    expect(palette16).not.toBe(palette256)
+
+    renderer.destroy()
+  })
+
   test("palette detector created only once", async () => {
     const { renderer, clock, mockStdin, mockStdout } = await createPaletteRenderer()
 

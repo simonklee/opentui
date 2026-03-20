@@ -411,7 +411,7 @@ export function normalizeTerminalPalette(colors?: TerminalColors | null): Normal
   return {
     palette: Array.from({ length: 256 }, (_, index) => {
       const detected = colors?.palette[index]
-      return detected ? RGBA.fromHex(detected) : fallbackPalette[index]
+      return detected ? RGBA.fromHex(detected) : RGBA.clone(fallbackPalette[index])
     }),
     defaultForeground: colors?.defaultForeground
       ? RGBA.fromHex(colors.defaultForeground)
