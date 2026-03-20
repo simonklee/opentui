@@ -399,26 +399,6 @@ export fn setCursorColor(rendererPtr: *renderer.CliRenderer, color: [*]const f32
     rendererPtr.terminal.setCursorColor(utils.f32PtrToRGBA(color));
 }
 
-export fn rendererSetPaletteState(
-    rendererPtr: *renderer.CliRenderer,
-    palettePtr: [*]const f32,
-    paletteLen: usize,
-    defaultFgPtr: [*]const f32,
-    defaultBgPtr: [*]const f32,
-    paletteEpoch: u32,
-) void {
-    if (paletteLen < 256 * 4) return;
-
-    var palette: [256]renderer.RGBA = undefined;
-    var index: usize = 0;
-    while (index < palette.len) : (index += 1) {
-        const base = index * 4;
-        palette[index] = .{ palettePtr[base], palettePtr[base + 1], palettePtr[base + 2], palettePtr[base + 3] };
-    }
-
-    rendererPtr.setPaletteState(palette[0..], utils.f32PtrToRGBA(defaultFgPtr), utils.f32PtrToRGBA(defaultBgPtr), paletteEpoch);
-}
-
 pub const CursorStyleOptions = extern struct {
     style: u8,
     blinking: u8,
@@ -527,14 +507,6 @@ export fn bufferGetFgPtr(bufferPtr: *buffer.OptimizedBuffer) [*]RGBA {
 
 export fn bufferGetBgPtr(bufferPtr: *buffer.OptimizedBuffer) [*]RGBA {
     return bufferPtr.getBgPtr();
-}
-
-export fn bufferGetFgTagPtr(bufferPtr: *buffer.OptimizedBuffer) [*]buffer.ColorTag {
-    return bufferPtr.getFgTagPtr();
-}
-
-export fn bufferGetBgTagPtr(bufferPtr: *buffer.OptimizedBuffer) [*]buffer.ColorTag {
-    return bufferPtr.getBgTagPtr();
 }
 
 export fn bufferGetAttributesPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {

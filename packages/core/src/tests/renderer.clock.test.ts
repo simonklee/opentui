@@ -1,73 +1,88 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, expect, test } from "bun:test"
+import { SystemClock } from "../lib/clock.js"
+import { createTestRenderer, type TestRenderer } from "../testing/test-renderer.js"
+import { ManualClock } from "../testing/manual-clock.js"
 
-import type { Clock, TimerHandle } from "../lib/clock.js"
-import { createTestRenderer } from "../testing/test-renderer.js"
+let clock: ManualClock
+let renderer: TestRenderer
+let renderOnce: () => Promise<void>
 
-class AdjustableClock implements Clock {
-  public nowValue = 0
-  public readonly timeoutDelays: number[] = []
-  private nextId = 1
+beforeEach(async () => {
+  clock = new ManualClock()
+  ;({ renderer, renderOnce } = await createTestRenderer({ clock, maxFps: 60 }))
+})
 
-  public now(): number {
-    return this.nowValue
+afterEach(() => {
+  renderer.destroy()
+})
+
+test("requestRender() does not stall after a backward clock jump", async () => {
+  clock.setTime(10_000)
+  // @ts-expect-error - inspect private renderer timing state in regression test
+  renderer.lastTime = 10_000
+  clock.setTime(8_000)
+
+  let renderCalled = false
+  // @ts-expect-error - intercept private render method in regression test
+  renderer.renderNative = () => {
+    renderCalled = true
   }
 
-  public setTimeout(_: () => void, delayMs: number): TimerHandle {
-    this.timeoutDelays.push(delayMs)
-    return this.nextId++
+  renderer.requestRender()
+  clock.advance(20)
+  await Promise.resolve()
+
+  expect(renderCalled).toBe(true)
+})
+
+test("requestRender() uses SystemClock by default when no clock is injected", async () => {
+  const originalNow = globalThis.performance.now
+  let nowValue = 10_000
+  let defaultRenderer: TestRenderer | null = null
+
+  globalThis.performance.now = () => nowValue
+
+  try {
+    ;({ renderer: defaultRenderer } = await createTestRenderer({ maxFps: 60 }))
+
+    // @ts-expect-error - inspect private renderer clock in regression test
+    expect(defaultRenderer.clock).toBeInstanceOf(SystemClock)
+
+    // @ts-expect-error - inspect private renderer timing state in regression test
+    defaultRenderer.lastTime = 10_000
+    nowValue = 8_000
+
+    let renderCalled = false
+    // @ts-expect-error - intercept private render method in regression test
+    defaultRenderer.renderNative = () => {
+      renderCalled = true
+    }
+
+    defaultRenderer.requestRender()
+    await Bun.sleep(20)
+
+    expect(renderCalled).toBe(true)
+  } finally {
+    defaultRenderer?.destroy()
+    globalThis.performance.now = originalNow
   }
+})
 
-  public clearTimeout(handle: TimerHandle): void {
-    void handle
-  }
+test("loop() clamps negative deltaTime after a backward clock jump", async () => {
+  const deltas: number[] = []
 
-  public setInterval(_: () => void, delayMs: number): TimerHandle {
-    this.timeoutDelays.push(delayMs)
-    return this.nextId++
-  }
-
-  public clearInterval(handle: TimerHandle): void {
-    void handle
-  }
-}
-
-describe("renderer clock", () => {
-  test("requestRender clamps backward clock drift when scheduling", async () => {
-    const clock = new AdjustableClock()
-    const { renderer } = await createTestRenderer({ clock })
-
-    // @ts-expect-error - testing private renderer state
-    renderer.lastTime = 100
-    clock.nowValue = 90
-
-    const baselineTimeoutCount = clock.timeoutDelays.length
-
-    renderer.requestRender()
-
-    expect(clock.timeoutDelays).toHaveLength(baselineTimeoutCount + 1)
-    expect(clock.timeoutDelays.at(-1)).toBeCloseTo(1000 / 60, 5)
-
-    renderer.destroy()
+  renderer.setFrameCallback(async (deltaTime) => {
+    deltas.push(deltaTime)
   })
 
-  test("loop clamps negative deltaTime to zero when the clock moves backward", async () => {
-    const clock = new AdjustableClock()
-    const { renderer } = await createTestRenderer({ clock })
+  clock.setTime(10_000)
+  // @ts-expect-error - inspect private renderer timing state in regression test
+  renderer.lastTime = 10_000
+  // @ts-expect-error - inspect private renderer timing state in regression test
+  renderer.lastFpsTime = 10_000
+  clock.setTime(8_000)
 
-    let observedDeltaTime = Number.NaN
-    renderer.setFrameCallback(async (deltaTime) => {
-      observedDeltaTime = deltaTime
-    })
+  await renderOnce()
 
-    // @ts-expect-error - testing private renderer state
-    renderer.lastTime = 100
-    clock.nowValue = 90
-
-    // @ts-expect-error - testing private renderer method
-    await renderer.loop()
-
-    expect(observedDeltaTime).toBe(0)
-
-    renderer.destroy()
-  })
+  expect(deltas).toEqual([0])
 })

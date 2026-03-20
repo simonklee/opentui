@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test"
 import { TextBuffer } from "./text-buffer.js"
 import { StyledText, stringToStyledText } from "./lib/styled-text.js"
 import { RGBA } from "./lib/RGBA.js"
-import { COLOR_TAG_DEFAULT } from "./lib/color-value.js"
+import { COLOR_TAG_DEFAULT } from "./lib/ansi-palette.js"
 
 describe("TextBuffer", () => {
   let buffer: TextBuffer

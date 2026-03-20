@@ -6,17 +6,8 @@ import { Readable } from "node:stream"
 import tty from "tty"
 import { ManualClock } from "../testing/manual-clock"
 import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette"
-import { buildTerminalPaletteSignature } from "../lib/color-value.js"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
-
-interface InternalPalettePublisher {
-  publishPalette(colors: TerminalColors | null): void
-}
-
-function publishPalette(renderer: unknown, colors: TerminalColors | null): void {
-  ;(renderer as InternalPalettePublisher).publishPalette(colors)
-}
 
 function flushAsync(): Promise<void> {
   return Promise.resolve().then(() => Promise.resolve())
@@ -448,161 +439,20 @@ describe("Palette cache invalidation", () => {
 
     renderer.destroy()
   })
-
-  test("publishPalette(null) clears cached palette state", async () => {
-    const { renderer, clock, mockStdin, mockStdout } = await createPaletteRenderer()
-
-    const detected = await detectPaletteAndAdvanceClock(renderer, clock, { timeout: 300 })
-    expect(renderer.paletteDetectionStatus).toBe("cached")
-
-    publishPalette(renderer, null)
-
-    expect(renderer.paletteDetectionStatus).toBe("idle")
-    // @ts-expect-error - accessing private property for testing
-    expect(renderer._cachedPalette).toBeNull()
-
-    const redetectedPromise = renderer.getPalette({ timeout: 300 })
-    expect(renderer.paletteDetectionStatus).toBe("detecting")
-
-    await advancePaletteClock(clock, 300)
-    const redetected = await redetectedPromise
-
-    expect(redetected).not.toBe(detected)
-    expect(renderer.paletteDetectionStatus).toBe("cached")
-
-    renderer.destroy()
-  })
-
-  test("in-flight detection does not overwrite a newer published palette", async () => {
-    const { renderer, clock } = await createPaletteRenderer()
-
-    const manualPalette: TerminalColors = {
-      palette: ["#ff0000"],
-      defaultForeground: "#eeeeee",
-      defaultBackground: "#111111",
-      cursorColor: null,
-      mouseForeground: null,
-      mouseBackground: null,
-      tekForeground: null,
-      tekBackground: null,
-      highlightBackground: null,
-      highlightForeground: null,
-    }
-    const expectedSignature = buildTerminalPaletteSignature(manualPalette)
-
-    const detectPromise = renderer.getPalette({ size: 256, timeout: 300 })
-    expect(renderer.paletteDetectionStatus).toBe("detecting")
-
-    publishPalette(renderer, manualPalette)
-
-    // @ts-expect-error - accessing private property for testing
-    const epochAfterPublish = renderer._paletteEpoch
-    // @ts-expect-error - accessing private property for testing
-    expect(renderer._publishedPaletteSignature).toBe(expectedSignature)
-
-    await advancePaletteClock(clock, 300)
-    await detectPromise
-
-    // @ts-expect-error - accessing private property for testing
-    expect(renderer._publishedPaletteSignature).toBe(expectedSignature)
-    // @ts-expect-error - accessing private property for testing
-    expect(renderer._paletteEpoch).toBe(epochAfterPublish)
-
-    renderer.destroy()
-  })
-
-  test("clearPaletteCache severs in-flight detections and ignores stale results", async () => {
-    const clock = new ManualClock()
-    const { renderer } = await createTestRenderer({ clock })
-
-    const firstPalette: TerminalColors = {
-      palette: Array.from({ length: 16 }, () => "#110000"),
-      defaultForeground: "#ffffff",
-      defaultBackground: "#000000",
-      cursorColor: null,
-      mouseForeground: null,
-      mouseBackground: null,
-      tekForeground: null,
-      tekBackground: null,
-      highlightBackground: null,
-      highlightForeground: null,
-    }
-    const secondPalette: TerminalColors = {
-      palette: Array.from({ length: 16 }, () => "#220000"),
-      defaultForeground: "#ffffff",
-      defaultBackground: "#000000",
-      cursorColor: null,
-      mouseForeground: null,
-      mouseBackground: null,
-      tekForeground: null,
-      tekBackground: null,
-      highlightBackground: null,
-      highlightForeground: null,
-    }
-
-    const resolves: Array<(colors: TerminalColors) => void> = []
-    let detectCalls = 0
-
-    // @ts-expect-error - testing private renderer state
-    renderer._paletteDetector = {
-      detect: () => {
-        detectCalls += 1
-        return new Promise<TerminalColors>((resolve) => {
-          resolves.push(resolve)
-        })
-      },
-      detectOSCSupport: async () => true,
-      cleanup: () => {},
-    }
-
-    const firstPromise = renderer.getPalette({ size: 16, timeout: 300 })
-    // @ts-expect-error - testing private renderer state
-    const firstDetectionPromise = renderer._paletteDetectionPromise
-
-    renderer.clearPaletteCache()
-
-    expect(renderer.paletteDetectionStatus).toBe("idle")
-    // @ts-expect-error - testing private renderer state
-    expect(renderer._paletteDetectionPromise).toBeNull()
-
-    const secondPromise = renderer.getPalette({ size: 16, timeout: 300 })
-    // @ts-expect-error - testing private renderer state
-    expect(renderer._paletteDetectionPromise).not.toBe(firstDetectionPromise)
-    expect(detectCalls).toBe(2)
-
-    resolves[1](secondPalette)
-    await flushAsync()
-    resolves[0](firstPalette)
-    await flushAsync()
-
-    const first = await firstPromise
-    const second = await secondPromise
-    const cached = await renderer.getPalette({ size: 16, timeout: 300 })
-
-    expect(first.palette[0]).toBe("#110000")
-    expect(second.palette[0]).toBe("#220000")
-    expect(cached).toBe(second)
-    expect(cached.palette[0]).toBe("#220000")
-
-    renderer.destroy()
-  })
 })
 
 describe("Capability repaint handling", () => {
   test("capability responses request a forced repaint", async () => {
     const clock = new ManualClock()
     const { renderer } = await createTestRenderer({ clock })
+    const lib = (renderer as unknown as { lib: any }).lib
 
-    const renderSpy = spyOn(renderer.lib, "render")
-    // @ts-expect-error - mocking for test
-    const originalProcessCapabilityResponse = renderer.lib.processCapabilityResponse
-    // @ts-expect-error - mocking for test
-    const originalGetTerminalCapabilities = renderer.lib.getTerminalCapabilities
+    const renderSpy = spyOn(lib, "render")
+    const originalProcessCapabilityResponse = lib.processCapabilityResponse
+    const originalGetTerminalCapabilities = lib.getTerminalCapabilities
 
-    // @ts-expect-error - mocking for test
-    renderer.lib.processCapabilityResponse = () => {}
-    // @ts-expect-error - mocking for test
-    renderer.lib.getTerminalCapabilities = () => ({ rgb: true, ansi256: true, unicode: "unicode" })
+    lib.processCapabilityResponse = () => {}
+    lib.getTerminalCapabilities = () => ({ rgb: true, ansi256: true, unicode: "unicode" })
 
     // @ts-expect-error - testing private renderer state
     expect(renderer.forceFullRepaintRequested).toBe(false)
@@ -622,10 +472,8 @@ describe("Capability repaint handling", () => {
     expect(lastCall?.[1]).toBe(true)
 
     renderSpy.mockRestore()
-    // @ts-expect-error - restore mock
-    renderer.lib.processCapabilityResponse = originalProcessCapabilityResponse
-    // @ts-expect-error - restore mock
-    renderer.lib.getTerminalCapabilities = originalGetTerminalCapabilities
+    lib.processCapabilityResponse = originalProcessCapabilityResponse
+    lib.getTerminalCapabilities = originalGetTerminalCapabilities
     renderer.destroy()
   })
 })

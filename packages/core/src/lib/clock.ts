@@ -10,11 +10,11 @@ export interface Clock {
 
 export class SystemClock implements Clock {
   public now(): number {
-    if (typeof globalThis.performance?.now === "function") {
-      return globalThis.performance.now()
+    if (!globalThis.performance || typeof globalThis.performance.now !== "function") {
+      throw new Error("SystemClock requires globalThis.performance.now()")
     }
 
-    return Date.now()
+    return globalThis.performance.now()
   }
 
   public setTimeout(fn: () => void, delayMs: number): TimerHandle {

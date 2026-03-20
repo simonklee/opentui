@@ -1,5 +1,6 @@
 import {
   COLOR_TAG_DEFAULT,
+  COLOR_TAG_RGB,
   DEFAULT_BACKGROUND_RGB,
   DEFAULT_FOREGROUND_RGB,
   ansi256IndexToRgb,
@@ -10,6 +11,13 @@ const RGBA_INTENT = Symbol("@opentui/core/RGBA.intent")
 
 type IntentfulRGBA = RGBA & {
   [RGBA_INTENT]?: number
+}
+
+export const PACKED_COLOR_STRIDE = 5
+
+export interface NormalizedColorValue {
+  rgba: RGBA
+  tag: number
 }
 
 function withIntent(rgba: RGBA, tag: number | undefined): RGBA {
@@ -27,6 +35,16 @@ function withIntent(rgba: RGBA, tag: number | undefined): RGBA {
 function rgbaForAnsi256Index(index: number): RGBA {
   const [r, g, b] = ansi256IndexToRgb(index)
   return RGBA.fromInts(r, g, b)
+}
+
+function getNormalizedRGBAIntentTag(rgba: RGBA): number | undefined {
+  const tag = RGBA.getIntentTag(rgba)
+
+  if (tag === undefined) return undefined
+  if (tag === COLOR_TAG_RGB || tag === COLOR_TAG_DEFAULT) return tag
+  if (Number.isInteger(tag) && tag >= 0 && tag <= 255) return tag
+
+  return undefined
 }
 
 export class RGBA {
@@ -124,6 +142,28 @@ export class RGBA {
 }
 
 export type ColorInput = string | RGBA
+
+export function normalizeColorValue(value: ColorInput | null | undefined): NormalizedColorValue | null {
+  if (value == null) return null
+
+  const rgba = parseColor(value)
+  const tag = getNormalizedRGBAIntentTag(rgba) ?? COLOR_TAG_RGB
+
+  return { rgba, tag }
+}
+
+export function packColorValueToF32(value: ColorInput | null | undefined, out: Float32Array): Float32Array | null {
+  const normalized = normalizeColorValue(value)
+  if (!normalized) return null
+
+  out[0] = normalized.rgba.r
+  out[1] = normalized.rgba.g
+  out[2] = normalized.rgba.b
+  out[3] = normalized.rgba.a
+  out[4] = normalized.tag
+
+  return out
+}
 
 export function hexToRgb(hex: string): RGBA {
   hex = hex.replace(/^#/, "")

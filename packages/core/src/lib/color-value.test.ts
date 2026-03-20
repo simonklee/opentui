@@ -1,16 +1,8 @@
 import { describe, expect, it } from "bun:test"
 
-import { RGBA } from "./RGBA.js"
-import {
-  COLOR_TAG_DEFAULT,
-  COLOR_TAG_RGB,
-  PACKED_COLOR_STRIDE,
-  buildTerminalPaletteSignature,
-  decodeColorTag,
-  normalizeColorValue,
-  normalizeTerminalPalette,
-  packColorValueToF32,
-} from "./color-value.js"
+import { PACKED_COLOR_STRIDE, RGBA, normalizeColorValue, packColorValueToF32 } from "./RGBA.js"
+import { COLOR_TAG_DEFAULT, COLOR_TAG_RGB, decodeColorTag } from "./ansi-palette.js"
+import { buildTerminalPaletteSignature, normalizeTerminalPalette } from "./terminal-palette.js"
 
 describe("color-value", () => {
   it("distinguishes unset from explicit default", () => {

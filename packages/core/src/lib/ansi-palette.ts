@@ -1,4 +1,5 @@
 export type RGBTriplet = readonly [number, number, number]
+export type ColorKind = "rgb" | "indexed" | "default"
 
 export const COLOR_TAG_RGB = 256
 export const COLOR_TAG_DEFAULT = 257
@@ -52,4 +53,16 @@ export function ansi256IndexToRgb(index: number): RGBTriplet {
 
   const value = 8 + (normalizedIndex - 232) * 10
   return [value, value, value]
+}
+
+export function decodeColorTag(tag: number): { kind: ColorKind; index?: number } {
+  if (tag === COLOR_TAG_DEFAULT) {
+    return { kind: "default" }
+  }
+
+  if (tag === COLOR_TAG_RGB) {
+    return { kind: "rgb" }
+  }
+
+  return { kind: "indexed", index: normalizeIndexedColorIndex(tag) }
 }

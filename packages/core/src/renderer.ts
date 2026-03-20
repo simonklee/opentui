@@ -10,7 +10,6 @@ import {
   type WidthMethod,
 } from "./types.js"
 import { RGBA, parseColor, type ColorInput } from "./lib/RGBA.js"
-import { buildTerminalPaletteSignature } from "./lib/color-value.js"
 import type { Pointer } from "bun:ffi"
 import { OptimizedBuffer } from "./buffer.js"
 import { resolveRenderLib, type RenderLib } from "./zig.js"
@@ -37,10 +36,6 @@ import {
 } from "./lib/terminal-capability-detection.js"
 import { type Clock, type TimerHandle, SystemClock } from "./lib/clock.js"
 import { StdinParser, type StdinEvent, type StdinParserProtocolContext } from "./lib/stdin-parser.js"
-
-interface InternalRendererPaletteLib extends RenderLib {
-  rendererSetPaletteState: (renderer: Pointer, colors: TerminalColors | null | undefined, paletteEpoch: number) => void
-}
 
 registerEnvVar({
   name: "OTUI_DUMP_CAPTURES",
@@ -475,13 +470,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private lifecyclePasses: Set<Renderable> = new Set()
   private _openConsoleOnError: boolean = true
   private _paletteDetector: TerminalPaletteDetector | null = null
-  private _paletteCache = new Map<number, TerminalColors>()
   private _cachedPalette: TerminalColors | null = null
   private _paletteDetectionPromise: Promise<TerminalColors> | null = null
-  private _paletteDetectionSize = 0
-  private _paletteEpoch = 0
-  private _publishedPaletteSignature: string | null = null
-  private _palettePublishGeneration = 0
   private _onDestroy?: () => void
   private _themeMode: ThemeMode | null = null
   private _terminalFocusState: boolean | null = null
@@ -573,7 +563,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.rendererPtr = rendererPtr
-    this.syncNativePaletteState(null)
 
     const forwardEnvKeys = config.forwardEnvKeys ?? (config.remote ? [] : [...DEFAULT_FORWARDED_ENV_KEYS])
     for (const key of forwardEnvKeys) {
@@ -742,6 +731,22 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     return this._currentFocusedRenderable
   }
 
+  private normalizeClockTime(now: number, fallback: number): number {
+    if (Number.isFinite(now)) {
+      return now
+    }
+
+    return Number.isFinite(fallback) ? fallback : 0
+  }
+
+  private getElapsedMs(now: number, then: number): number {
+    if (!Number.isFinite(now) || !Number.isFinite(then)) {
+      return 0
+    }
+
+    return Math.max(now - then, 0)
+  }
+
   public focusRenderable(renderable: Renderable) {
     if (this._currentFocusedRenderable === renderable) return
 
@@ -813,8 +818,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     if (!this.updateScheduled && !this.renderTimeout) {
       this.updateScheduled = true
-      const now = this.clock.now()
-      const elapsed = Math.max(0, now - this.lastTime)
+      const now = this.normalizeClockTime(this.clock.now(), this.lastTime)
+      const elapsed = this.getElapsedMs(now, this.lastTime)
       const delay = Math.max(this.minTargetFrameTime - elapsed, 0)
 
       if (delay === 0) {
@@ -997,7 +1002,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
 
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
-    this.emit("resize", this.width, this.height)
+    this.emit(CliRenderEvents.RESIZE, this.width, this.height)
     this.requestRender()
   }
 
@@ -1118,7 +1123,6 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     }
 
     this.queryPixelResolution()
-    this.ensureNativePaletteState()
   }
 
   private stdinListener: (chunk: Buffer | string) => void = ((chunk: Buffer | string) => {
@@ -1164,7 +1168,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._capabilities = this.lib.getTerminalCapabilities(this.rendererPtr)
       this.forceFullRepaintRequested = true
       this.requestRender()
-      this.emit("capabilities", this._capabilities)
+      this.emit(CliRenderEvents.CAPABILITIES, this._capabilities)
       return true
     }
     return false
@@ -1201,14 +1205,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     if (sequence === "\x1b[?997;1n") {
       if (this._themeMode !== "dark") {
         this._themeMode = "dark"
-        this.emit("theme_mode", "dark")
+        this.emit(CliRenderEvents.THEME_MODE, "dark")
       }
       return true
     }
     if (sequence === "\x1b[?997;2n") {
       if (this._themeMode !== "light") {
         this._themeMode = "light"
-        this.emit("theme_mode", "light")
+        this.emit(CliRenderEvents.THEME_MODE, "light")
       }
       return true
     }
@@ -1572,7 +1576,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.lastMemorySnapshot.arrayBuffers,
     )
 
-    this.emit("memory:snapshot", this.lastMemorySnapshot)
+    this.emit(CliRenderEvents.MEMORY_SNAPSHOT, this.lastMemorySnapshot)
   }
 
   private startMemorySnapshotTimer(): void {
@@ -1659,7 +1663,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
     this.currentRenderBuffer = this.lib.getCurrentBuffer(this.rendererPtr)
     this._console.resize(this.width, this.height)
     this.root.resize(this.width, this.height)
-    this.emit("resize", this.width, this.height)
+    this.emit(CliRenderEvents.RESIZE, this.width, this.height)
     this.requestRender()
   }
 
@@ -1975,12 +1979,8 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this._paletteDetector.cleanup()
       this._paletteDetector = null
     }
-    this._paletteCache.clear()
     this._paletteDetectionPromise = null
-    this._paletteDetectionSize = 0
     this._cachedPalette = null
-    this._publishedPaletteSignature = null
-    this._palettePublishGeneration = 0
 
     this.emit(CliRenderEvents.DESTROY)
 
@@ -2041,7 +2041,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private startRenderLoop(): void {
     if (!this._isRunning) return
 
-    this.lastTime = this.clock.now()
+    this.lastTime = this.normalizeClockTime(this.clock.now(), 0)
     this.frameCount = 0
     this.lastFpsTime = this.lastTime
     this.currentFps = 0
@@ -2059,14 +2059,14 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       this.renderTimeout = null
     }
     try {
-      const now = this.clock.now()
-      const elapsed = Math.max(0, now - this.lastTime)
+      const now = this.normalizeClockTime(this.clock.now(), this.lastTime)
+      const elapsed = this.getElapsedMs(now, this.lastTime)
 
       const deltaTime = elapsed
       this.lastTime = now
 
       this.frameCount++
-      if (now - this.lastFpsTime >= 1000) {
+      if (this.getElapsedMs(now, this.lastFpsTime) >= 1000) {
         this.currentFps = this.frameCount
         this.frameCount = 0
         this.lastFpsTime = now
@@ -2321,7 +2321,7 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   private finishSelection(): void {
     if (this.currentSelection) {
       this.currentSelection.isDragging = false
-      this.emit("selection", this.currentSelection)
+      this.emit(CliRenderEvents.SELECTION, this.currentSelection)
       this.notifySelectablesOfSelectionChange()
     }
   }
@@ -2380,37 +2380,40 @@ export class CliRenderer extends EventEmitter implements RenderContext {
   }
 
   public get paletteDetectionStatus(): "idle" | "detecting" | "cached" {
+    if (this._cachedPalette) return "cached"
     if (this._paletteDetectionPromise) return "detecting"
-    if (this._paletteCache.size > 0) return "cached"
     return "idle"
   }
 
-  private getCachedPaletteBySize(size: number): TerminalColors | null {
-    const exactMatch = this._paletteCache.get(size)
-    if (exactMatch) {
-      return exactMatch
-    }
-
-    const largerSize = [...this._paletteCache.keys()].sort((a, b) => a - b).find((candidate) => candidate >= size)
-    if (largerSize === undefined) {
-      return null
-    }
-
-    const source = this._paletteCache.get(largerSize)
-    if (!source) {
-      return null
-    }
-
-    const projected = {
-      ...source,
-      palette: source.palette.slice(0, size),
-    }
-
-    this._paletteCache.set(size, projected)
-    return projected
+  public clearPaletteCache(): void {
+    this._cachedPalette = null
   }
 
-  private ensurePaletteDetector(): TerminalPaletteDetector {
+  /**
+   * Detects the terminal's color palette
+   *
+   * @returns Promise resolving to TerminalColors object containing palette and special colors
+   * @throws Error if renderer is suspended
+   */
+  public async getPalette(options?: GetPaletteOptions): Promise<TerminalColors> {
+    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
+      throw new Error("Cannot detect palette while renderer is suspended")
+    }
+
+    const requestedSize = options?.size ?? 16
+
+    if (this._cachedPalette && this._cachedPalette.palette.length !== requestedSize) {
+      this._cachedPalette = null
+    }
+
+    if (this._cachedPalette) {
+      return this._cachedPalette
+    }
+
+    if (this._paletteDetectionPromise) {
+      return this._paletteDetectionPromise
+    }
+
     if (!this._paletteDetector) {
       const isLegacyTmux =
         this.capabilities?.terminal?.name?.toLowerCase()?.includes("tmux") &&
@@ -2427,152 +2430,12 @@ export class CliRenderer extends EventEmitter implements RenderContext {
       )
     }
 
-    return this._paletteDetector
-  }
+    this._paletteDetectionPromise = this._paletteDetector.detect(options).then((result) => {
+      this._cachedPalette = result
+      this._paletteDetectionPromise = null
+      return result
+    })
 
-  private syncNativePaletteState(colors: TerminalColors | null): void {
-    const signature = buildTerminalPaletteSignature(colors)
-    if (this._publishedPaletteSignature !== null && this._publishedPaletteSignature !== signature) {
-      this._paletteEpoch = (this._paletteEpoch + 1) >>> 0
-    }
-
-    this._publishedPaletteSignature = signature
-    ;(this.lib as InternalRendererPaletteLib).rendererSetPaletteState(this.rendererPtr, colors, this._paletteEpoch)
-  }
-
-  private ensureNativePaletteState(): void {
-    if (!this._terminalIsSetup || this._isDestroyed) return
-    const publishGeneration = this._palettePublishGeneration
-
-    void this.getPalette({ size: 256 })
-      .then((colors) => {
-        if (this._palettePublishGeneration === publishGeneration) {
-          this.syncNativePaletteState(colors)
-        }
-        this.requestRender()
-      })
-      .catch(() => {})
-  }
-
-  public clearPaletteCache(): void {
-    this._paletteCache.clear()
-    this._cachedPalette = null
-    this._paletteDetectionPromise = null
-    this._paletteDetectionSize = 0
-    this._palettePublishGeneration = (this._palettePublishGeneration + 1) >>> 0
-  }
-
-  private publishPalette(colors: TerminalColors | null): void {
-    if (!colors) {
-      this.clearPaletteCache()
-    }
-
-    this._palettePublishGeneration = (this._palettePublishGeneration + 1) >>> 0
-    this.syncNativePaletteState(colors)
-    if (colors) {
-      this._paletteCache.set(colors.palette.length, colors)
-      this._cachedPalette = colors
-    }
-    this.requestRender()
-  }
-
-  /**
-   * Detects the terminal's color palette
-   *
-   * @returns Promise resolving to TerminalColors object containing palette and special colors
-   * @throws Error if renderer is suspended
-   */
-  public async getPalette(options?: GetPaletteOptions): Promise<TerminalColors> {
-    if (this._controlState === RendererControlState.EXPLICIT_SUSPENDED) {
-      throw new Error("Cannot detect palette while renderer is suspended")
-    }
-
-    const requestedSize = options?.size ?? 16
-    const detectionTimeout = options?.timeout
-
-    const cachedPalette = this.getCachedPaletteBySize(requestedSize)
-    if (cachedPalette) {
-      this._cachedPalette = cachedPalette
-      return cachedPalette
-    }
-
-    const ongoingDetection = this._paletteDetectionPromise
-    if (ongoingDetection) {
-      if (this._paletteDetectionSize >= requestedSize) {
-        return ongoingDetection.then((palette) => {
-          const cached = this.getCachedPaletteBySize(requestedSize)
-          if (cached) {
-            this._cachedPalette = cached
-            return cached
-          }
-
-          const projected = {
-            ...palette,
-            palette: palette.palette.slice(0, requestedSize),
-          }
-
-          if (this._paletteDetectionPromise === ongoingDetection) {
-            this._paletteCache.set(requestedSize, projected)
-            this._cachedPalette = projected
-          }
-
-          return projected
-        })
-      }
-
-      await ongoingDetection
-      const afterWait = this.getCachedPaletteBySize(requestedSize)
-      if (afterWait) {
-        this._cachedPalette = afterWait
-        return afterWait
-      }
-    }
-
-    const detector = this.ensurePaletteDetector()
-    const publishGeneration = this._palettePublishGeneration
-    let detectionWasCommitted = false
-    const detectionPromise = detector
-      .detect({ ...options, timeout: detectionTimeout })
-      .then((result) => {
-        if (this._paletteDetectionPromise !== detectionPromise) {
-          return result
-        }
-
-        detectionWasCommitted = true
-        this._paletteCache.set(result.palette.length, result)
-        this._cachedPalette = result
-        this._paletteDetectionPromise = null
-        this._paletteDetectionSize = 0
-
-        if (this._palettePublishGeneration === publishGeneration) {
-          if (result.palette.length >= 256) {
-            this.syncNativePaletteState(result)
-          } else if (this._terminalIsSetup && !this._paletteCache.has(256)) {
-            this.ensureNativePaletteState()
-          }
-        }
-
-        return result
-      })
-      .catch((error) => {
-        if (this._paletteDetectionPromise === detectionPromise) {
-          this._paletteDetectionPromise = null
-          this._paletteDetectionSize = 0
-        }
-
-        throw error
-      })
-
-    this._paletteDetectionSize = requestedSize
-    this._paletteDetectionPromise = detectionPromise
-
-    const detected = await detectionPromise
-    if (!detectionWasCommitted) {
-      return detected
-    }
-
-    const projected = this.getCachedPaletteBySize(requestedSize) ?? detected
-    this._cachedPalette = projected
-    return projected
+    return this._paletteDetectionPromise
   }
 }

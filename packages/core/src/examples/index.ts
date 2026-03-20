@@ -59,7 +59,6 @@ import * as textWrapExample from "./text-wrap.js"
 import * as editorDemo from "./editor-demo.js"
 import * as sliderDemo from "./slider-demo.js"
 import * as terminalDemo from "./terminal.js"
-import * as rgbaaIndexedDemo from "./rgbaa-indexed-demo.js"
 import * as diffDemo from "./diff-demo.js"
 import * as keypressDebugDemo from "./keypress-debug-demo.js"
 import * as extmarksDemo from "./extmarks-demo.js"
@@ -414,12 +413,6 @@ const examples: Example[] = [
     destroy: terminalDemo.destroy,
   },
   {
-    name: "RGBA+A Indexed Color Demo",
-    description: "Visualize RGB snapshots, explicit indexed colors, and terminal-default intent across palette bases",
-    run: rgbaaIndexedDemo.run,
-    destroy: rgbaaIndexedDemo.destroy,
-  },
-  {
     name: "Editor Demo",
     description: "Interactive text editor with TextareaRenderable - supports full editing capabilities",
     run: editorDemo.run,
@@ -482,7 +475,7 @@ class ExampleSelector {
   private themeMode: ThemeMode = DEFAULT_THEME_MODE
 
   private menuContainer: BoxRenderable | null = null
-  private title: ASCIIFontRenderable | null = null
+  private title: FrameBufferRenderable | null = null
   private filterBox: BoxRenderable | null = null
   private filterInput: TextareaRenderable | null = null
   private instructions: TextRenderable | null = null

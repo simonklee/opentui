@@ -13,8 +13,7 @@ import {
 } from "./types.js"
 export type { LineInfo, AllocatorStats, BuildOptions }
 
-import { RGBA } from "./lib/RGBA.js"
-import { PACKED_COLOR_STRIDE, normalizeTerminalPalette, packColorValueToF32 } from "./lib/color-value.js"
+import { RGBA, PACKED_COLOR_STRIDE, packColorValueToF32 } from "./lib/RGBA.js"
 import { OptimizedBuffer } from "./buffer.js"
 import { TextBuffer } from "./text-buffer.js"
 import { env, registerEnvVar } from "./lib/env.js"
@@ -44,8 +43,6 @@ import type {
   AllocatorStats,
 } from "./zig-structs.js"
 import { isBunfsPath } from "./lib/bunfs.js"
-import type { TerminalColors } from "./lib/terminal-palette.js"
-
 const module = await import(`@opentui/core-${process.platform}-${process.arch}/index.ts`)
 let targetLibPath = module.default
 
@@ -179,11 +176,6 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
-    rendererSetPaletteState: {
-      args: ["ptr", "ptr", "usize", "ptr", "ptr", "u32"],
-      returns: "void",
-    },
-
     queryPixelResolution: {
       args: ["ptr"],
       returns: "void",
@@ -223,14 +215,6 @@ function getOpenTUILib(libPath?: string) {
       returns: "ptr",
     },
     bufferGetBgPtr: {
-      args: ["ptr"],
-      returns: "ptr",
-    },
-    bufferGetFgTagPtr: {
-      args: ["ptr"],
-      returns: "ptr",
-    },
-    bufferGetBgTagPtr: {
       args: ["ptr"],
       returns: "ptr",
     },
@@ -2084,33 +2068,6 @@ class FFIRenderLib implements RenderLib {
     return new OptimizedBuffer(this, bufferPtr, width, height, { id: "current buffer", widthMethod: "unicode" })
   }
 
-  public rendererSetPaletteState(
-    renderer: Pointer,
-    colors: TerminalColors | null | undefined,
-    paletteEpoch: number,
-  ): void {
-    const normalized = normalizeTerminalPalette(colors)
-    const paletteBuffer = new Float32Array(normalized.palette.length * 4)
-
-    for (let index = 0; index < normalized.palette.length; index++) {
-      const color = normalized.palette[index]
-      const base = index * 4
-      paletteBuffer[base] = color.r
-      paletteBuffer[base + 1] = color.g
-      paletteBuffer[base + 2] = color.b
-      paletteBuffer[base + 3] = color.a
-    }
-
-    this.opentui.symbols.rendererSetPaletteState(
-      renderer,
-      paletteBuffer,
-      paletteBuffer.length,
-      normalized.defaultForeground.buffer,
-      normalized.defaultBackground.buffer,
-      paletteEpoch >>> 0,
-    )
-  }
-
   public bufferGetCharPtr(buffer: Pointer): Pointer {
     const ptr = this.opentui.symbols.bufferGetCharPtr(buffer)
     if (!ptr) {
@@ -2133,22 +2090,6 @@ class FFIRenderLib implements RenderLib {
       throw new Error("Failed to get bg pointer")
     }
     return ptr
-  }
-
-  public bufferGetFgTagPtr(buffer: Pointer): Pointer {
-    const fgTagPtr = this.opentui.symbols.bufferGetFgTagPtr(buffer)
-    if (!fgTagPtr) {
-      throw new Error("Failed to get fg tag pointer")
-    }
-    return fgTagPtr
-  }
-
-  public bufferGetBgTagPtr(buffer: Pointer): Pointer {
-    const bgTagPtr = this.opentui.symbols.bufferGetBgTagPtr(buffer)
-    if (!bgTagPtr) {
-      throw new Error("Failed to get bg tag pointer")
-    }
-    return bgTagPtr
   }
 
   public bufferGetAttributesPtr(buffer: Pointer): Pointer {

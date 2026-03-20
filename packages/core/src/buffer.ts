@@ -7,11 +7,6 @@ import { TargetChannel, type WidthMethod, type CapturedSpan, type CapturedLine }
 import type { TextBufferView } from "./text-buffer-view.js"
 import type { EditorView } from "./editor-view.js"
 
-interface BufferTagReader {
-  bufferGetFgTagPtr(buffer: Pointer): Pointer
-  bufferGetBgTagPtr(buffer: Pointer): Pointer
-}
-
 // Pack drawing options into a single u32
 // bits 0-3: borderSides, bit 4: shouldFill, bits 5-6: titleAlignment
 function packDrawOptions(
@@ -60,7 +55,6 @@ export class OptimizedBuffer {
     bg: Float32Array
     attributes: Uint32Array
   } | null = null
-  private _rawTagBuffers: { fgTag: Uint16Array; bgTag: Uint16Array } | null = null
   private _destroyed: boolean = false
 
   get ptr(): Pointer {
@@ -97,23 +91,6 @@ export class OptimizedBuffer {
     }
 
     return this._rawBuffers
-  }
-
-  private getTagBuffers(): { fgTag: Uint16Array; bgTag: Uint16Array } {
-    this.guard()
-    if (this._rawTagBuffers === null) {
-      const size = this._width * this._height
-      const tagLib = this.lib as unknown as BufferTagReader
-      const fgTagPtr = tagLib.bufferGetFgTagPtr(this.bufferPtr)
-      const bgTagPtr = tagLib.bufferGetBgTagPtr(this.bufferPtr)
-
-      this._rawTagBuffers = {
-        fgTag: new Uint16Array(toArrayBuffer(fgTagPtr, 0, size * 2)),
-        bgTag: new Uint16Array(toArrayBuffer(bgTagPtr, 0, size * 2)),
-      }
-    }
-
-    return this._rawTagBuffers
   }
 
   constructor(
@@ -179,7 +156,6 @@ export class OptimizedBuffer {
   public getSpanLines(): CapturedLine[] {
     this.guard()
     const { char, fg, bg, attributes } = this.buffers
-    const { fgTag, bgTag } = this.getTagBuffers()
     const lines: CapturedLine[] = []
 
     const CHAR_FLAG_CONTINUATION = 0xc0000000 | 0
@@ -189,10 +165,8 @@ export class OptimizedBuffer {
     const realTextLines = new TextDecoder().decode(realTextBytes).split("\n")
 
     for (let y = 0; y < this._height; y++) {
-      type TaggedCapturedSpan = CapturedSpan & { fgTag: number; bgTag: number }
-
-      const spans: TaggedCapturedSpan[] = []
-      let currentSpan: TaggedCapturedSpan | null = null
+      const spans: CapturedSpan[] = []
+      let currentSpan: CapturedSpan | null = null
 
       const lineChars = [...(realTextLines[y] || "")]
       let charIdx = 0
@@ -202,8 +176,6 @@ export class OptimizedBuffer {
         const cp = char[i]
         const cellFg = RGBA.fromValues(fg[i * 4], fg[i * 4 + 1], fg[i * 4 + 2], fg[i * 4 + 3])
         const cellBg = RGBA.fromValues(bg[i * 4], bg[i * 4 + 1], bg[i * 4 + 2], bg[i * 4 + 3])
-        const cellFgTag = fgTag[i]
-        const cellBgTag = bgTag[i]
         const cellAttrs = attributes[i] & 0xff
 
         // Continuation cells are placeholders for wide characters (emojis, CJK)
@@ -215,8 +187,6 @@ export class OptimizedBuffer {
           currentSpan &&
           currentSpan.fg.equals(cellFg) &&
           currentSpan.bg.equals(cellBg) &&
-          currentSpan.fgTag === cellFgTag &&
-          currentSpan.bgTag === cellBgTag &&
           currentSpan.attributes === cellAttrs
         ) {
           currentSpan.text += cellChar
@@ -230,8 +200,6 @@ export class OptimizedBuffer {
             text: cellChar,
             fg: cellFg,
             bg: cellBg,
-            fgTag: cellFgTag,
-            bgTag: cellBgTag,
             attributes: cellAttrs,
             width: 1,
           }
@@ -455,7 +423,6 @@ export class OptimizedBuffer {
     this._width = width
     this._height = height
     this._rawBuffers = null
-    this._rawTagBuffers = null
 
     this.lib.bufferResize(this.bufferPtr, width, height)
   }
