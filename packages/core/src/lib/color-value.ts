@@ -77,11 +77,7 @@ export function normalizeColorValue(value: ColorInput | null | undefined): Norma
   return { rgba, tag }
 }
 
-export function packColorValueToF32(
-  value: ColorInput | null | undefined,
-  _role: "fg" | "bg",
-  out: Float32Array,
-): Float32Array | null {
+export function packColorValueToF32(value: ColorInput | null | undefined, out: Float32Array): Float32Array | null {
   const normalized = normalizeColorValue(value)
   if (!normalized) return null
 

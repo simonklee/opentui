@@ -1880,8 +1880,8 @@ class FFIRenderLib implements RenderLib {
     this.setupEventBus()
   }
 
-  private packColor(value: RGBA | null | undefined, role: "fg" | "bg", out: Float32Array): Float32Array | null {
-    return packColorValueToF32(value, role, out)
+  private packColor(value: RGBA | null | undefined, out: Float32Array): Float32Array | null {
+    return packColorValueToF32(value, out)
   }
 
   private setupLogging() {
@@ -2198,7 +2198,7 @@ class FFIRenderLib implements RenderLib {
   }
 
   public bufferClear(buffer: Pointer, color: RGBA) {
-    const bgPacked = this.packColor(color, "bg", this._scratchColorA)!
+    const bgPacked = this.packColor(color, this._scratchColorA)!
     this.opentui.symbols.bufferClear(buffer, bgPacked)
   }
 
@@ -2213,8 +2213,8 @@ class FFIRenderLib implements RenderLib {
   ) {
     const textBytes = this.encoder.encode(text)
     const textLength = textBytes.byteLength
-    const fgPacked = this.packColor(color, "fg", this._scratchColorA)!
-    const bgPacked = this.packColor(bgColor ?? null, "bg", this._scratchColorB)
+    const fgPacked = this.packColor(color, this._scratchColorA)!
+    const bgPacked = this.packColor(bgColor ?? null, this._scratchColorB)
 
     this.opentui.symbols.bufferDrawText(buffer, textBytes, textLength, x, y, fgPacked, bgPacked, attributes ?? 0)
   }
@@ -2229,8 +2229,8 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const fgPacked = this.packColor(color, "fg", this._scratchColorA)!
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorB)!
+    const fgPacked = this.packColor(color, this._scratchColorA)!
+    const bgPacked = this.packColor(bgColor, this._scratchColorB)!
 
     this.opentui.symbols.bufferSetCellWithAlphaBlending(buffer, x, y, charPtr, fgPacked, bgPacked, attributes ?? 0)
   }
@@ -2245,14 +2245,14 @@ class FFIRenderLib implements RenderLib {
     attributes?: number,
   ) {
     const charPtr = char.codePointAt(0) ?? " ".codePointAt(0)!
-    const fgPacked = this.packColor(color, "fg", this._scratchColorA)!
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorB)!
+    const fgPacked = this.packColor(color, this._scratchColorA)!
+    const bgPacked = this.packColor(bgColor, this._scratchColorB)!
 
     this.opentui.symbols.bufferSetCell(buffer, x, y, charPtr, fgPacked, bgPacked, attributes ?? 0)
   }
 
   public bufferFillRect(buffer: Pointer, x: number, y: number, width: number, height: number, color: RGBA) {
-    const bgPacked = this.packColor(color, "bg", this._scratchColorA)!
+    const bgPacked = this.packColor(color, this._scratchColorA)!
     this.opentui.symbols.bufferFillRect(buffer, x, y, width, height, bgPacked)
   }
 
@@ -2322,8 +2322,8 @@ class FFIRenderLib implements RenderLib {
     fg: RGBA | null,
     bg: RGBA | null,
   ): void {
-    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
-    const bgPacked = this.packColor(bg, "bg", this._scratchColorB)
+    const fgPacked = this.packColor(fg, this._scratchColorA)
+    const bgPacked = this.packColor(bg, this._scratchColorB)
 
     this.opentui.symbols.bufferDrawGrayscaleBuffer(
       buffer,
@@ -2347,8 +2347,8 @@ class FFIRenderLib implements RenderLib {
     fg: RGBA | null,
     bg: RGBA | null,
   ): void {
-    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
-    const bgPacked = this.packColor(bg, "bg", this._scratchColorB)
+    const fgPacked = this.packColor(fg, this._scratchColorA)
+    const bgPacked = this.packColor(bg, this._scratchColorB)
 
     this.opentui.symbols.bufferDrawGrayscaleBufferSupersampled(
       buffer,
@@ -2373,8 +2373,8 @@ class FFIRenderLib implements RenderLib {
     rowCount: number,
     options: { drawInner: boolean; drawOuter: boolean },
   ): void {
-    const borderFgPacked = this.packColor(borderFg, "fg", this._scratchColorA)!
-    const borderBgPacked = this.packColor(borderBg, "bg", this._scratchColorB)!
+    const borderFgPacked = this.packColor(borderFg, this._scratchColorA)!
+    const borderBgPacked = this.packColor(borderBg, this._scratchColorB)!
     const optionsBuffer = GridDrawOptionsStruct.pack({
       drawInner: options.drawInner,
       drawOuter: options.drawOuter,
@@ -2405,8 +2405,8 @@ class FFIRenderLib implements RenderLib {
     backgroundColor: RGBA,
     title: string | null,
   ): void {
-    const borderPacked = this.packColor(borderColor, "fg", this._scratchColorA)!
-    const backgroundPacked = this.packColor(backgroundColor, "bg", this._scratchColorB)!
+    const borderPacked = this.packColor(borderColor, this._scratchColorA)!
+    const backgroundPacked = this.packColor(backgroundColor, this._scratchColorB)!
     const titleBytes = title ? this.encoder.encode(title) : null
     const titleLen = title ? titleBytes!.length : 0
     const titlePtr = title ? titleBytes : null
@@ -2701,12 +2701,12 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferSetDefaultFg(buffer: Pointer, fg: RGBA | null): void {
-    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
+    const fgPacked = this.packColor(fg, this._scratchColorA)
     this.opentui.symbols.textBufferSetDefaultFg(buffer, fgPacked)
   }
 
   public textBufferSetDefaultBg(buffer: Pointer, bg: RGBA | null): void {
-    const bgPacked = this.packColor(bg, "bg", this._scratchColorA)
+    const bgPacked = this.packColor(bg, this._scratchColorA)
     this.opentui.symbols.textBufferSetDefaultBg(buffer, bgPacked)
   }
 
@@ -2879,8 +2879,8 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): void {
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
-    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    const bgPacked = this.packColor(bgColor, this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, this._scratchColorB)
     this.opentui.symbols.textBufferViewSetSelection(view, start, end, bgPacked, fgPacked)
   }
 
@@ -2915,8 +2915,8 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): boolean {
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
-    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    const bgPacked = this.packColor(bgColor, this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, this._scratchColorB)
     return this.opentui.symbols.textBufferViewSetLocalSelection(
       view,
       anchorX,
@@ -2929,8 +2929,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public textBufferViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
-    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    const bgPacked = this.packColor(bgColor, this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, this._scratchColorB)
     this.opentui.symbols.textBufferViewUpdateSelection(view, end, bgPacked, fgPacked)
   }
 
@@ -2943,8 +2943,8 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): boolean {
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
-    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    const bgPacked = this.packColor(bgColor, this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, this._scratchColorB)
     return this.opentui.symbols.textBufferViewUpdateLocalSelection(
       view,
       anchorX,
@@ -3518,8 +3518,8 @@ class FFIRenderLib implements RenderLib {
     bgColor: RGBA | null,
     fgColor: RGBA | null,
   ): void {
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
-    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    const bgPacked = this.packColor(bgColor, this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, this._scratchColorB)
     this.opentui.symbols.editorViewSetSelection(view, start, end, bgPacked, fgPacked)
   }
 
@@ -3548,8 +3548,8 @@ class FFIRenderLib implements RenderLib {
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
-    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    const bgPacked = this.packColor(bgColor, this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, this._scratchColorB)
     return this.opentui.symbols.editorViewSetLocalSelection(
       view,
       anchorX,
@@ -3564,8 +3564,8 @@ class FFIRenderLib implements RenderLib {
   }
 
   public editorViewUpdateSelection(view: Pointer, end: number, bgColor: RGBA | null, fgColor: RGBA | null): void {
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
-    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    const bgPacked = this.packColor(bgColor, this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, this._scratchColorB)
     this.opentui.symbols.editorViewUpdateSelection(view, end, bgPacked, fgPacked)
   }
 
@@ -3580,8 +3580,8 @@ class FFIRenderLib implements RenderLib {
     updateCursor: boolean,
     followCursor: boolean,
   ): boolean {
-    const bgPacked = this.packColor(bgColor, "bg", this._scratchColorA)
-    const fgPacked = this.packColor(fgColor, "fg", this._scratchColorB)
+    const bgPacked = this.packColor(bgColor, this._scratchColorA)
+    const fgPacked = this.packColor(fgColor, this._scratchColorB)
     return this.opentui.symbols.editorViewUpdateLocalSelection(
       view,
       anchorX,
@@ -3791,8 +3791,8 @@ class FFIRenderLib implements RenderLib {
     bg: RGBA,
     attributes: number = 0,
   ): void {
-    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)!
-    const bgPacked = this.packColor(bg, "bg", this._scratchColorB)!
+    const fgPacked = this.packColor(fg, this._scratchColorA)!
+    const bgPacked = this.packColor(bg, this._scratchColorB)!
 
     this.opentui.symbols.bufferDrawChar(buffer, char, x, y, fgPacked, bgPacked, attributes)
   }
@@ -3897,8 +3897,8 @@ class FFIRenderLib implements RenderLib {
     attributes: number,
   ): number {
     const nameBytes = this.encoder.encode(name)
-    const fgPacked = this.packColor(fg, "fg", this._scratchColorA)
-    const bgPacked = this.packColor(bg, "bg", this._scratchColorB)
+    const fgPacked = this.packColor(fg, this._scratchColorA)
+    const bgPacked = this.packColor(bg, this._scratchColorB)
     return this.opentui.symbols.syntaxStyleRegister(style, nameBytes, nameBytes.length, fgPacked, bgPacked, attributes)
   }
 

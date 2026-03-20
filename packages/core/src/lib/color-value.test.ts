@@ -35,9 +35,9 @@ describe("color-value", () => {
     const snapshot = RGBA.fromHex("#112233")
     const packed = new Float32Array(PACKED_COLOR_STRIDE)
 
-    expect(packColorValueToF32(RGBA.fromIndex(6, snapshot), "fg", packed)).toBe(packed)
+    expect(packColorValueToF32(RGBA.fromIndex(6, snapshot), packed)).toBe(packed)
     expect(Array.from(packed)).toEqual([snapshot.r, snapshot.g, snapshot.b, snapshot.a, 6])
-    expect(packColorValueToF32(null, "bg", packed)).toBeNull()
+    expect(packColorValueToF32(null, packed)).toBeNull()
   })
 
   it("preserves indexed and default intent on RGBA instances", () => {
@@ -80,7 +80,7 @@ describe("color-value", () => {
 
   it("packs implicit indexed intent using fallback snapshots", () => {
     const packed = new Float32Array(PACKED_COLOR_STRIDE)
-    packColorValueToF32(RGBA.fromIndex(6), "fg", packed)
+    packColorValueToF32(RGBA.fromIndex(6), packed)
 
     expect(packed[0]).toBeCloseTo(0, 6)
     expect(packed[1]).toBeCloseTo(128 / 255, 6)
