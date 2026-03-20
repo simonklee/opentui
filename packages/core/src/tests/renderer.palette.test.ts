@@ -5,7 +5,12 @@ import { Buffer } from "node:buffer"
 import { Readable } from "node:stream"
 import tty from "tty"
 import { ManualClock } from "../testing/manual-clock"
-import type { GetPaletteOptions, TerminalColors } from "../lib/terminal-palette"
+import {
+  buildTerminalPaletteSignature,
+  normalizeTerminalPalette,
+  type GetPaletteOptions,
+  type TerminalColors,
+} from "../lib/terminal-palette"
 
 const OSC_SUPPORT_TIMEOUT_MS = 300
 
@@ -109,6 +114,46 @@ async function createPaletteRenderer(options: Partial<TestRendererOptions> = {})
 
   return { renderer, mockStdin, mockStdout, writes, clock }
 }
+
+describe("Palette normalization helpers", () => {
+  test("normalizes partial terminal palettes to a full 256-color basis", () => {
+    const normalized = normalizeTerminalPalette({
+      palette: ["#ff0000"],
+      defaultForeground: "#123456",
+      defaultBackground: null,
+      cursorColor: null,
+      mouseForeground: null,
+      mouseBackground: null,
+      tekForeground: null,
+      tekBackground: null,
+      highlightBackground: null,
+      highlightForeground: null,
+    })
+
+    expect(normalized.palette).toHaveLength(256)
+    expect(normalized.palette[0].toInts()).toEqual([255, 0, 0, 255])
+    expect(normalized.defaultForeground.toInts()).toEqual([18, 52, 86, 255])
+    expect(normalized.defaultBackground.toInts()).toEqual([0, 0, 0, 255])
+  })
+
+  test("changes palette signatures when the basis changes", () => {
+    const base = buildTerminalPaletteSignature(null)
+    const changed = buildTerminalPaletteSignature({
+      palette: ["#00ff00"],
+      defaultForeground: null,
+      defaultBackground: null,
+      cursorColor: null,
+      mouseForeground: null,
+      mouseBackground: null,
+      tekForeground: null,
+      tekBackground: null,
+      highlightBackground: null,
+      highlightForeground: null,
+    })
+
+    expect(changed).not.toBe(base)
+  })
+})
 
 describe("Palette caching behavior", () => {
   test("getPalette returns cached palette on subsequent calls", async () => {

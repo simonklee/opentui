@@ -1,6 +1,5 @@
-import { RGBA } from "./RGBA.js"
+import { RGBA, DEFAULT_BACKGROUND_RGB, DEFAULT_FOREGROUND_RGB, ansi256IndexToRgb } from "./RGBA.js"
 import { SystemClock, type Clock, type TimerHandle } from "./clock"
-import { DEFAULT_BACKGROUND_RGB, DEFAULT_FOREGROUND_RGB, ansi256IndexToRgb } from "./ansi-palette.js"
 
 type Hex = string | null
 

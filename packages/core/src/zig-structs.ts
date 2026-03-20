@@ -1,7 +1,6 @@
 import { defineStruct, defineEnum } from "bun-ffi-structs"
 import { ptr, toArrayBuffer, type Pointer } from "bun:ffi"
-import { RGBA, normalizeColorValue } from "./lib/RGBA.js"
-import { COLOR_TAG_RGB } from "./lib/ansi-palette.js"
+import { RGBA, COLOR_TAG_RGB, normalizeColorValue } from "./lib/RGBA.js"
 
 const rgbaPackTransform = (rgba?: RGBA) => (rgba ? ptr(rgba.buffer) : null)
 const rgbaUnpackTransform = (ptr?: Pointer) => (ptr ? RGBA.fromArray(new Float32Array(toArrayBuffer(ptr))) : undefined)
