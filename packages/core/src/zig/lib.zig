@@ -530,6 +530,14 @@ export fn bufferGetBgPtr(bufferPtr: *buffer.OptimizedBuffer) [*]RGBA {
     return bufferPtr.getBgPtr();
 }
 
+export fn bufferGetFgTagPtr(bufferPtr: *buffer.OptimizedBuffer) [*]buffer.ColorTag {
+    return bufferPtr.getFgTagPtr();
+}
+
+export fn bufferGetBgTagPtr(bufferPtr: *buffer.OptimizedBuffer) [*]buffer.ColorTag {
+    return bufferPtr.getBgTagPtr();
+}
+
 export fn bufferGetAttributesPtr(bufferPtr: *buffer.OptimizedBuffer) [*]u32 {
     return bufferPtr.getAttributesPtr();
 }

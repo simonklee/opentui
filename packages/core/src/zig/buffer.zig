@@ -285,6 +285,14 @@ pub const OptimizedBuffer = struct {
         return self.buffer.bg.ptr;
     }
 
+    pub fn getFgTagPtr(self: *OptimizedBuffer) [*]ColorTag {
+        return self.buffer.fg_tag.ptr;
+    }
+
+    pub fn getBgTagPtr(self: *OptimizedBuffer) [*]ColorTag {
+        return self.buffer.bg_tag.ptr;
+    }
+
     pub fn getAttributesPtr(self: *OptimizedBuffer) [*]u32 {
         return self.buffer.attributes.ptr;
     }

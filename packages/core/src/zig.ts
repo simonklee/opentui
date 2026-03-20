@@ -221,6 +221,14 @@ function getOpenTUILib(libPath?: string) {
       args: ["ptr"],
       returns: "ptr",
     },
+    bufferGetFgTagPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
+    bufferGetBgTagPtr: {
+      args: ["ptr"],
+      returns: "ptr",
+    },
     bufferGetAttributesPtr: {
       args: ["ptr"],
       returns: "ptr",
@@ -1414,6 +1422,8 @@ export interface RenderLib {
   bufferGetCharPtr: (buffer: Pointer) => Pointer
   bufferGetFgPtr: (buffer: Pointer) => Pointer
   bufferGetBgPtr: (buffer: Pointer) => Pointer
+  bufferGetFgTagPtr: (buffer: Pointer) => Pointer
+  bufferGetBgTagPtr: (buffer: Pointer) => Pointer
   bufferGetAttributesPtr: (buffer: Pointer) => Pointer
   bufferGetRespectAlpha: (buffer: Pointer) => boolean
   bufferSetRespectAlpha: (buffer: Pointer, respectAlpha: boolean) => void
@@ -2079,6 +2089,22 @@ class FFIRenderLib implements RenderLib {
     const ptr = this.opentui.symbols.bufferGetBgPtr(buffer)
     if (!ptr) {
       throw new Error("Failed to get bg pointer")
+    }
+    return ptr
+  }
+
+  public bufferGetFgTagPtr(buffer: Pointer): Pointer {
+    const ptr = this.opentui.symbols.bufferGetFgTagPtr(buffer)
+    if (!ptr) {
+      throw new Error("Failed to get fg tag pointer")
+    }
+    return ptr
+  }
+
+  public bufferGetBgTagPtr(buffer: Pointer): Pointer {
+    const ptr = this.opentui.symbols.bufferGetBgTagPtr(buffer)
+    if (!ptr) {
+      throw new Error("Failed to get bg tag pointer")
     }
     return ptr
   }
