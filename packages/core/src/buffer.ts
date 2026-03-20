@@ -1,5 +1,4 @@
 import { RGBA } from "./lib"
-import { normalizeColorValue } from "./lib/color-value.js"
 import { resolveRenderLib, type RenderLib } from "./zig"
 import { type Pointer, toArrayBuffer, ptr } from "bun:ffi"
 import { type BorderStyle, type BorderSides, BorderCharArrays, parseBorderStyle } from "./lib/index.js"
